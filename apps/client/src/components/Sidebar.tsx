@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
-import type { Channel } from '@gander/shared'
+import type { Channel, User } from '@gander/shared'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import ChannelIndexModal from './ChannelIndexModal.tsx'
 import ConfirmDeleteModal from './ConfirmDeleteModal.tsx'
+import VoiceControls from './VoiceControls.tsx'
 import styles from './Sidebar.module.css'
 
 interface Props {
@@ -10,12 +11,21 @@ interface Props {
   activeChannelId: string | null
   currentUserId: string
   hiddenChannelIds: Set<string>
+  users: User[]
+  voiceChannelId: string | null
+  voiceParticipants: Record<string, string[]>
+  isMuted: boolean
+  isDeafened: boolean
   onSelectChannel: (channel: Channel) => void
   onCreateChannel: (name: string, type: 'TEXT' | 'VOICE') => void
   onRenameChannel: (channelId: string, name: string) => void
   onDeleteChannel: (channelId: string) => void
   onHideChannel: (channelId: string) => void
   onToggleChannelVisibility: (channelId: string) => void
+  onJoinVoice: (channel: Channel) => void
+  onLeaveVoice: () => void
+  onToggleMute: () => void
+  onToggleDeafen: () => void
   displayName: string
   onLogout: () => void
 }
@@ -26,7 +36,7 @@ interface ContextState {
   channel: Channel
 }
 
-export default function Sidebar({ channels, activeChannelId, currentUserId, hiddenChannelIds, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, displayName, onLogout }: Props) {
+export default function Sidebar({ channels, activeChannelId, currentUserId, hiddenChannelIds, users, voiceChannelId, voiceParticipants, isMuted, isDeafened, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, displayName, onLogout }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [renaming, setRenaming] = useState<Channel | null>(null)
@@ -65,7 +75,7 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
     return items
   }
 
-  function renderChannel(c: Channel, prefix: string) {
+  function renderTextChannel(c: Channel) {
     if (renaming?.id === c.id) {
       return (
         <form key={c.id} onSubmit={submitRename} className={styles.renameForm}>
@@ -89,10 +99,55 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
         onClick={() => onSelectChannel(c)}
         onContextMenu={e => handleContextMenu(e, c)}
       >
-        {prefix} {c.name}
+        # {c.name}
       </button>
     )
   }
+
+  function renderVoiceChannel(c: Channel) {
+    if (renaming?.id === c.id) {
+      return (
+        <div key={c.id} className={styles.voiceGroup}>
+          <form onSubmit={submitRename} className={styles.renameForm}>
+            <input
+              ref={renameRef}
+              autoFocus
+              value={renameValue}
+              onChange={e => setRenameValue(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
+              onBlur={() => setRenaming(null)}
+              onKeyDown={e => e.key === 'Escape' && setRenaming(null)}
+            />
+          </form>
+        </div>
+      )
+    }
+
+    const isActive = c.id === voiceChannelId
+    const participants = voiceParticipants[c.id] ?? []
+
+    return (
+      <div key={c.id} className={styles.voiceGroup}>
+        <button
+          type="button"
+          className={`${styles.channel} ${isActive ? styles.active : ''}`}
+          onClick={() => { if (!isActive) onJoinVoice(c) }}
+          onContextMenu={e => handleContextMenu(e, c)}
+        >
+          ▸ {c.name}
+        </button>
+        {participants.map(uid => {
+          const user = users.find(u => u.id === uid)
+          return (
+            <div key={uid} className={styles.voiceParticipant}>
+              {user?.displayName ?? uid}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  const voiceChannel = voiceChannelId ? channels.find(c => c.id === voiceChannelId) : null
 
   return (
     <>
@@ -105,7 +160,7 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
               <span>text channels</span>
               <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)}>[+]</button>
             </div>
-            {visibleText.map(c => renderChannel(c, '#'))}
+            {visibleText.map(c => renderTextChannel(c))}
           </div>
 
           <div className={styles.section}>
@@ -113,9 +168,20 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
               <span>voice channels</span>
               <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)}>[+]</button>
             </div>
-            {visibleVoice.map(c => renderChannel(c, '▸'))}
+            {visibleVoice.map(c => renderVoiceChannel(c))}
           </div>
         </div>
+
+        {voiceChannel && (
+          <VoiceControls
+            channelName={voiceChannel.name}
+            isMuted={isMuted}
+            isDeafened={isDeafened}
+            onToggleMute={onToggleMute}
+            onToggleDeafen={onToggleDeafen}
+            onLeave={onLeaveVoice}
+          />
+        )}
 
         <div className={styles.userBar}>
           <span className={styles.username}>{displayName}</span>

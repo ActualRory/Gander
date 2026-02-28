@@ -86,6 +86,25 @@
   color: var(--accent);
 }
 
+.voiceGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.voiceParticipant {
+  padding: 1px 16px 1px 28px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.voiceParticipant::before {
+  content: '└ ';
+  color: var(--accent-dim);
+}
+
 .renameForm {
   padding: 2px 10px;
 }

@@ -1,0 +1,68 @@
+.root {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+
+.status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.channel {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.controls {
+  display: flex;
+  gap: 4px;
+}
+
+.btn {
+  flex: 1;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 2px 4px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  text-align: center;
+}
+
+.btn:hover {
+  color: var(--text-primary);
+  background: var(--border);
+}
+
+.btnActive {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border-color: var(--accent-dim);
+}
+
+.leaveBtn {
+  flex: 0;
+  padding: 2px 8px;
+  color: #c87060;
+  border-color: #5a3030;
+}
+
+.leaveBtn:hover {
+  background: #5a3030;
+  color: #c87060;
+}

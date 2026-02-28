@@ -1,0 +1,8 @@
+keys:
+  devkey: gander_dev_livekit_secret_0000000
+
+rtc:
+  use_external_ip: false
+  node_ip: 127.0.0.1
+  port_range_start: 50000
+  port_range_end: 50100

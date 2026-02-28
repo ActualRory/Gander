@@ -12,7 +12,7 @@ export const voiceRoutes: FastifyPluginAsync = async (app) => {
     const { channelId } = req.params as { channelId: string }
 
     const apiKey = process.env.LIVEKIT_API_KEY ?? 'devkey'
-    const apiSecret = process.env.LIVEKIT_API_SECRET ?? 'devsecret'
+    const apiSecret = process.env.LIVEKIT_API_SECRET ?? 'gander_dev_livekit_secret_0000000'
 
     const token = new AccessToken(apiKey, apiSecret, { identity: userId })
     token.addGrant({ roomJoin: true, room: channelId, canPublish: true, canSubscribe: true })

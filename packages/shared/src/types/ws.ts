@@ -12,9 +12,12 @@ export type ServerEvent =
   | { type: 'users:init'; payload: { onlineUserIds: string[] } }
   | { type: 'user:online'; payload: { userId: string } }
   | { type: 'user:offline'; payload: { userId: string } }
+  | { type: 'voice:init'; payload: { voiceRooms: Record<string, string[]> } }
 
 // Events sent from client → server
 export type ClientEvent =
   | { type: 'message:send'; payload: { channelId: string; content: string } }
   | { type: 'channel:join'; payload: { channelId: string } }
   | { type: 'channel:leave'; payload: { channelId: string } }
+  | { type: 'voice:join'; payload: { channelId: string } }
+  | { type: 'voice:leave'; payload: { channelId: string } }

@@ -107,7 +107,7 @@ export default function Login({ onAuth }: Props) {
           {mode === 'login' ? 'no account? register' : 'have an account? login'}
         </button>
       </div>
-      <p className={styles.credit}>developed by rory</p>
+      <p className={styles.credit}>direct all feedback to rory</p>
     </div>
   )
 }

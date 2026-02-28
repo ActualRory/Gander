@@ -10,5 +10,16 @@ services:
     volumes:
       - gander_dev_db:/var/lib/postgresql/data
 
+  livekit:
+    image: livekit/livekit-server:latest
+    entrypoint: ["/livekit-server"]
+    command: ["--config", "/etc/livekit.yaml", "--bind", "0.0.0.0"]
+    volumes:
+      - ./livekit.dev.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880"              # HTTP/WebSocket signaling
+      - "7881:7881/tcp"          # TCP RTC fallback
+      - "50000-50100:50000-50100/udp"  # ICE UDP media
+
 volumes:
   gander_dev_db:
