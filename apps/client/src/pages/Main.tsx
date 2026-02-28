@@ -13,11 +13,23 @@ interface Props {
   onLogout: () => void
 }
 
+function loadHidden(userId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(`gander:hidden:${userId}`)
+    return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+  } catch { return new Set() }
+}
+
+function saveHidden(userId: string, hidden: Set<string>) {
+  localStorage.setItem(`gander:hidden:${userId}`, JSON.stringify([...hidden]))
+}
+
 export default function Main({ auth, onLogout }: Props) {
   const [channels, setChannels] = useState<Channel[]>([])
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set())
+  const [hiddenChannelIds, setHiddenChannelIds] = useState<Set<string>>(() => loadHidden(auth.userId))
   const wsRef = useRef<GanderWS | null>(null)
 
   useEffect(() => {
@@ -63,6 +75,31 @@ export default function Main({ auth, onLogout }: Props) {
     await api.deleteChannel(auth.token, channelId)
     setChannels(prev => prev.filter(c => c.id !== channelId))
     if (activeChannel?.id === channelId) setActiveChannel(null)
+    setHiddenChannelIds(prev => {
+      const next = new Set(prev)
+      next.delete(channelId)
+      saveHidden(auth.userId, next)
+      return next
+    })
+  }
+
+  function handleHideChannel(channelId: string) {
+    setHiddenChannelIds(prev => {
+      const next = new Set(prev)
+      next.add(channelId)
+      saveHidden(auth.userId, next)
+      return next
+    })
+  }
+
+  function handleToggleChannelVisibility(channelId: string) {
+    setHiddenChannelIds(prev => {
+      const next = new Set(prev)
+      if (next.has(channelId)) next.delete(channelId)
+      else next.add(channelId)
+      saveHidden(auth.userId, next)
+      return next
+    })
   }
 
   return (
@@ -70,10 +107,14 @@ export default function Main({ auth, onLogout }: Props) {
       <Sidebar
         channels={channels}
         activeChannelId={activeChannel?.id ?? null}
+        currentUserId={auth.userId}
+        hiddenChannelIds={hiddenChannelIds}
         onSelectChannel={setActiveChannel}
         onCreateChannel={handleCreateChannel}
         onRenameChannel={handleRenameChannel}
         onDeleteChannel={handleDeleteChannel}
+        onHideChannel={handleHideChannel}
+        onToggleChannelVisibility={handleToggleChannelVisibility}
         displayName={auth.displayName}
         onLogout={onLogout}
       />

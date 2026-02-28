@@ -5,4 +5,5 @@ export interface Channel {
   name: string
   type: ChannelType
   createdAt: string
+  creatorId: string | null
 }

@@ -14,8 +14,9 @@ model User {
   passwordHash String
   createdAt   DateTime  @default(now())
 
-  memberships ChannelMember[]
-  messages    Message[]
+  memberships     ChannelMember[]
+  messages        Message[]
+  createdChannels Channel[]       @relation("ChannelCreator")
 }
 
 model Channel {
@@ -23,9 +24,11 @@ model Channel {
   name      String
   type      ChannelType @default(TEXT)
   createdAt DateTime    @default(now())
+  creatorId String?
 
-  members   ChannelMember[]
-  messages  Message[]
+  creator  User?          @relation("ChannelCreator", fields: [creatorId], references: [id])
+  members  ChannelMember[]
+  messages Message[]
 }
 
 enum ChannelType {

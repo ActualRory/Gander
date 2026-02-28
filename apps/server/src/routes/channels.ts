@@ -6,13 +6,8 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     try { await req.jwtVerify() } catch { reply.status(401).send({ error: 'Unauthorized' }) }
   })
 
-  app.get('/', async (req) => {
-    const { userId } = req.user as { userId: string }
-    const memberships = await prisma.channelMember.findMany({
-      where: { userId },
-      include: { channel: true },
-    })
-    return memberships.map((m) => m.channel)
+  app.get('/', async () => {
+    return prisma.channel.findMany({ orderBy: { createdAt: 'asc' } })
   })
 
   app.post('/', async (req, reply) => {
@@ -23,6 +18,7 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
       data: {
         name,
         type,
+        creatorId: userId,
         members: { create: { userId } },
       },
     })
@@ -46,26 +42,24 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     const { channelId } = req.params as { channelId: string }
     const { name } = req.body as { name: string }
 
-    const membership = await prisma.channelMember.findUnique({
-      where: { userId_channelId: { userId, channelId } },
-    })
-    if (!membership) return reply.status(403).send({ error: 'Forbidden' })
+    const channel = await prisma.channel.findUnique({ where: { id: channelId } })
+    if (!channel) return reply.status(404).send({ error: 'Not found' })
+    if (channel.creatorId !== userId) return reply.status(403).send({ error: 'Forbidden' })
 
-    const channel = await prisma.channel.update({
+    const updated = await prisma.channel.update({
       where: { id: channelId },
       data: { name },
     })
-    return channel
+    return updated
   })
 
   app.delete('/:channelId', async (req, reply) => {
     const { userId } = req.user as { userId: string }
     const { channelId } = req.params as { channelId: string }
 
-    const membership = await prisma.channelMember.findUnique({
-      where: { userId_channelId: { userId, channelId } },
-    })
-    if (!membership) return reply.status(403).send({ error: 'Forbidden' })
+    const channel = await prisma.channel.findUnique({ where: { id: channelId } })
+    if (!channel) return reply.status(404).send({ error: 'Not found' })
+    if (channel.creatorId !== userId) return reply.status(403).send({ error: 'Forbidden' })
 
     await prisma.channel.delete({ where: { id: channelId } })
     return reply.status(204).send()

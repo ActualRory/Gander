@@ -1,17 +1,21 @@
 import { useRef, useState } from 'react'
 import type { Channel } from '@gander/shared'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
-import CreateChannelModal from './CreateChannelModal.tsx'
+import ChannelIndexModal from './ChannelIndexModal.tsx'
 import ConfirmDeleteModal from './ConfirmDeleteModal.tsx'
 import styles from './Sidebar.module.css'
 
 interface Props {
   channels: Channel[]
   activeChannelId: string | null
+  currentUserId: string
+  hiddenChannelIds: Set<string>
   onSelectChannel: (channel: Channel) => void
   onCreateChannel: (name: string, type: 'TEXT' | 'VOICE') => void
   onRenameChannel: (channelId: string, name: string) => void
   onDeleteChannel: (channelId: string) => void
+  onHideChannel: (channelId: string) => void
+  onToggleChannelVisibility: (channelId: string) => void
   displayName: string
   onLogout: () => void
 }
@@ -22,16 +26,16 @@ interface ContextState {
   channel: Channel
 }
 
-export default function Sidebar({ channels, activeChannelId, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, displayName, onLogout }: Props) {
-  const [createOpen, setCreateOpen] = useState(false)
+export default function Sidebar({ channels, activeChannelId, currentUserId, hiddenChannelIds, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, displayName, onLogout }: Props) {
+  const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [renaming, setRenaming] = useState<Channel | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [deleting, setDeleting] = useState<Channel | null>(null)
   const renameRef = useRef<HTMLInputElement>(null)
 
-  const text = channels.filter(c => c.type === 'TEXT')
-  const voice = channels.filter(c => c.type === 'VOICE')
+  const visibleText = channels.filter(c => c.type === 'TEXT' && !hiddenChannelIds.has(c.id))
+  const visibleVoice = channels.filter(c => c.type === 'VOICE' && !hiddenChannelIds.has(c.id))
 
   function handleContextMenu(e: React.MouseEvent, channel: Channel) {
     e.preventDefault()
@@ -51,10 +55,14 @@ export default function Sidebar({ channels, activeChannelId, onSelectChannel, on
   }
 
   function contextItems(channel: Channel): ContextMenuItem[] {
-    return [
-      { label: 'rename', action: () => startRename(channel) },
-      { label: 'delete', danger: true, action: () => setDeleting(channel) },
+    const items: ContextMenuItem[] = [
+      { label: 'hide', action: () => onHideChannel(channel.id) },
     ]
+    if (channel.creatorId === currentUserId) {
+      items.push({ label: 'rename', action: () => startRename(channel) })
+      items.push({ label: 'delete', danger: true, action: () => setDeleting(channel) })
+    }
+    return items
   }
 
   function renderChannel(c: Channel, prefix: string) {
@@ -95,17 +103,17 @@ export default function Sidebar({ channels, activeChannelId, onSelectChannel, on
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span>text channels</span>
-              <button type="button" className={styles.addBtn} onClick={() => setCreateOpen(true)}>[+]</button>
+              <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)}>[+]</button>
             </div>
-            {text.map(c => renderChannel(c, '#'))}
+            {visibleText.map(c => renderChannel(c, '#'))}
           </div>
 
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span>voice channels</span>
-              <button type="button" className={styles.addBtn} onClick={() => setCreateOpen(true)}>[+]</button>
+              <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)}>[+]</button>
             </div>
-            {voice.map(c => renderChannel(c, '▸'))}
+            {visibleVoice.map(c => renderChannel(c, '▸'))}
           </div>
         </div>
 
@@ -124,10 +132,15 @@ export default function Sidebar({ channels, activeChannelId, onSelectChannel, on
         />
       )}
 
-      {createOpen && (
-        <CreateChannelModal
-          onConfirm={(name, type) => { onCreateChannel(name, type); setCreateOpen(false) }}
-          onClose={() => setCreateOpen(false)}
+      {indexOpen && (
+        <ChannelIndexModal
+          channels={channels}
+          hiddenChannelIds={hiddenChannelIds}
+          currentUserId={currentUserId}
+          onToggleVisibility={onToggleChannelVisibility}
+          onCreateChannel={(name, type) => { onCreateChannel(name, type) }}
+          onDeleteChannel={(id) => { onDeleteChannel(id); setIndexOpen(false) }}
+          onClose={() => setIndexOpen(false)}
         />
       )}
 
