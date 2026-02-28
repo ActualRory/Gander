@@ -1,0 +1,14 @@
+{
+  "name": "gander",
+  "version": "0.1.0",
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": ["@prisma/client", "@prisma/engines", "esbuild", "prisma"]
+  },
+  "scripts": {
+    "dev:server": "pnpm --filter server dev",
+    "dev:client": "pnpm --filter client dev",
+    "build:server": "pnpm --filter server build",
+    "build:client": "pnpm --filter client build"
+  }
+}

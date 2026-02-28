@@ -1,0 +1,69 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 5, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid #5a3030;
+  width: 340px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title {
+  color: #c87060;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  border-bottom: 1px solid #5a3030;
+  padding-bottom: 12px;
+}
+
+.warning {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.channelName {
+  color: var(--text-secondary);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form input {
+  width: 100%;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.deleteBtn {
+  border-color: #5a3030;
+  color: #c87060;
+}
+
+.deleteBtn:not(:disabled):hover {
+  background: #5a3030;
+  color: #e08878;
+}
+
+.deleteBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

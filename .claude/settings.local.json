@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --version)",
+      "Bash(node --version)",
+      "Bash(rustc --version)",
+      "Bash(cargo --version)",
+      "Bash(cmd.exe /c \"pnpm --filter server build\")",
+      "Bash(cmd.exe /c \"pnpm --filter client build\")",
+      "Bash(cmd.exe /c \"docker --version && docker compose version\")",
+      "Bash(\"/c/Users/Rory/.rd/bin/docker.exe\" --version)",
+      "Bash(\"/c/Users/Rory/.rd/bin/docker.exe\" compose version)",
+      "Bash(powershell.exe -Command \"$env:PATH = $env:PATH + '';C:\\\\Users\\\\Rory\\\\.rd\\\\bin''; & ''C:\\\\Program Files\\\\Rancher Desktop\\\\resources\\\\resources\\\\win32\\\\bin\\\\docker.exe'' compose -f J:\\\\GitHub\\\\Gander\\\\docker-compose.dev.yml up -d\")",
+      "Bash(cmd.exe /c \"type C:\\\\Users\\\\Rory\\\\.docker\\\\config.json\")",
+      "Bash(cmd.exe /c \"pnpm db:migrate\")"
+    ]
+  }
+}

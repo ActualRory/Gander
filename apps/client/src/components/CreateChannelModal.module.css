@@ -1,0 +1,81 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 5, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  width: 340px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title {
+  color: var(--text-secondary);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: lowercase;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.typeToggle {
+  display: flex;
+  gap: 8px;
+}
+
+.typeBtn {
+  flex: 1;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.typeBtn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.typeActive {
+  border-color: var(--accent-dim);
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form input {
+  width: 100%;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirmBtn {
+  border-color: var(--accent-dim);
+  color: var(--text-secondary);
+}
+
+.confirmBtn:hover {
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}

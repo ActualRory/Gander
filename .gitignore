@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.local
+*.tsbuildinfo
+
+# Tauri
+apps/client/src-tauri/target/
+
+# Prisma - keep migrations in git, ignore local dev db

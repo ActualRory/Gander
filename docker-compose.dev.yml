@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: gander
+      POSTGRES_PASSWORD: gander
+      POSTGRES_DB: gander
+    ports:
+      - "5432:5432"
+    volumes:
+      - gander_dev_db:/var/lib/postgresql/data
+
+volumes:
+  gander_dev_db:

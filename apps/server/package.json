@@ -1,0 +1,29 @@
+{
+  "name": "server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.2",
+    "@fastify/jwt": "^9.1.0",
+    "@fastify/websocket": "^11.0.2",
+    "@gander/shared": "workspace:*",
+    "@prisma/client": "^6.5.0",
+    "fastify": "^5.3.2",
+    "livekit-server-sdk": "^2.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "prisma": "^6.5.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.0"
+  }
+}
