@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Room, RoomEvent, Track, ParticipantEvent } from 'livekit-client'
+import { Room, RoomEvent, Track, ParticipantEvent, AudioPresets, LocalAudioTrack } from 'livekit-client'
 import type { Channel, User } from '@gander/shared'
 import type { AuthState } from '../App.tsx'
 import { api } from '../lib/api.ts'
@@ -9,6 +9,7 @@ import ChannelView from '../components/ChannelView.tsx'
 import SocialPanel from '../components/SocialPanel.tsx'
 import ErrorModal from '../components/ErrorModal.tsx'
 import VoiceSettingsModal from '../components/VoiceSettingsModal.tsx'
+import { RNNoiseProcessor, rnnoiseSupported } from '../lib/rnnoiseProcessor.ts'
 import styles from './Main.module.css'
 
 interface Props {
@@ -51,11 +52,20 @@ export default function Main({ auth, onLogout }: Props) {
   const [pttMode, setPttMode] = useState(false)
   const [pttKey, setPttKey] = useState('Space')
   const [outputVolume, setOutputVolume] = useState(1)
+  const [noiseSuppression, setNoiseSuppression] = useState(true)
+  const [echoCancellation, setEchoCancellation] = useState(true)
+  const [autoGainControl, setAutoGainControl] = useState(true)
+  const [selectedInputDevice, setSelectedInputDevice] = useState('')
+  const [selectedOutputDevice, setSelectedOutputDevice] = useState('')
+  const [rnnoiseEnabled, setRnnoiseEnabled] = useState(false)
   const outputVolumeRef = useRef(1)
+  const rnnoiseEnabledRef = useRef(false)
+  const rnnoiseProcessorRef = useRef<RNNoiseProcessor | null>(null)
 
   // Keep refs in sync for use inside LiveKit event callbacks
   useEffect(() => { isDeafenedRef.current = isDeafened }, [isDeafened])
   useEffect(() => { outputVolumeRef.current = outputVolume }, [outputVolume])
+  useEffect(() => { rnnoiseEnabledRef.current = rnnoiseEnabled }, [rnnoiseEnabled])
 
   useEffect(() => {
     api.getChannels(auth.token).then(setChannels)
@@ -108,7 +118,19 @@ export default function Main({ auth, onLogout }: Props) {
     if (!pttMode || !voiceChannelId) return
     const down = async (e: KeyboardEvent) => {
       if (e.code !== pttKey || e.repeat) return
-      await voiceRoomRef.current?.localParticipant.setMicrophoneEnabled(true)
+      const room = voiceRoomRef.current
+      if (!room) return
+      await room.localParticipant.setMicrophoneEnabled(true, { noiseSuppression, echoCancellation, autoGainControl }, { audioPreset: AudioPresets.musicHighQuality })
+      // Apply RNNoise on first PTT press if enabled and not yet applied
+      if (rnnoiseEnabledRef.current && !rnnoiseProcessorRef.current) {
+        const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone)
+        const track = pub?.track
+        if (track instanceof LocalAudioTrack) {
+          const proc = new RNNoiseProcessor()
+          rnnoiseProcessorRef.current = proc
+          await track.setProcessor(proc as never)
+        }
+      }
       setIsMuted(false)
     }
     const up = async (e: KeyboardEvent) => {
@@ -122,7 +144,7 @@ export default function Main({ auth, onLogout }: Props) {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
     }
-  }, [pttMode, voiceChannelId, pttKey])
+  }, [pttMode, voiceChannelId, pttKey, noiseSuppression, echoCancellation, autoGainControl])
 
   async function handleJoinVoice(channel: Channel) {
     // Leave existing room first (if any)
@@ -136,7 +158,10 @@ export default function Main({ auth, onLogout }: Props) {
 
     try {
       const { token, url } = await api.getVoiceToken(auth.token, channel.id)
-      const room = new Room({ disconnectOnPageLeave: false })
+      const room = new Room({
+        disconnectOnPageLeave: false,
+        audioCaptureDefaults: { echoCancellation, noiseSuppression, autoGainControl },
+      })
       voiceRoomRef.current = room
 
       // Surface unexpected disconnects (after successful connect) via error modal
@@ -144,6 +169,7 @@ export default function Main({ auth, onLogout }: Props) {
         if (reason !== undefined) {
           setErrorMessage(`voice disconnected: ${reason}`)
         }
+        rnnoiseProcessorRef.current = null
         voiceRoomRef.current = null
         setVoiceChannelId(null)
         setIsMuted(false)
@@ -174,8 +200,18 @@ export default function Main({ auth, onLogout }: Props) {
         await room.localParticipant.setMicrophoneEnabled(false)
         setIsMuted(true)
       } else {
-        await room.localParticipant.setMicrophoneEnabled(true)
+        await room.localParticipant.setMicrophoneEnabled(true, { noiseSuppression, echoCancellation, autoGainControl }, { audioPreset: AudioPresets.musicHighQuality })
         setIsMuted(false)
+        // Apply RNNoise if enabled
+        if (rnnoiseEnabled) {
+          const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone)
+          const track = pub?.track
+          if (track instanceof LocalAudioTrack) {
+            const proc = new RNNoiseProcessor()
+            rnnoiseProcessorRef.current = proc
+            await track.setProcessor(proc as never)
+          }
+        }
       }
 
       wsRef.current?.send({ type: 'voice:join', payload: { channelId: channel.id } })
@@ -193,6 +229,7 @@ export default function Main({ auth, onLogout }: Props) {
     if (!voiceRoomRef.current || !voiceChannelId) return
     wsRef.current?.send({ type: 'voice:leave', payload: { channelId: voiceChannelId } })
     await voiceRoomRef.current.disconnect()
+    rnnoiseProcessorRef.current = null
     voiceRoomRef.current = null
     setVoiceChannelId(null)
     setIsMuted(false)
@@ -252,11 +289,43 @@ export default function Main({ auth, onLogout }: Props) {
   }
 
   async function handleSwitchInputDevice(deviceId: string) {
+    setSelectedInputDevice(deviceId)
     await voiceRoomRef.current?.switchActiveDevice('audioinput', deviceId)
   }
 
   async function handleSwitchOutputDevice(deviceId: string) {
+    setSelectedOutputDevice(deviceId)
     await voiceRoomRef.current?.switchActiveDevice('audiooutput', deviceId)
+  }
+
+  async function handleToggleRnnoise(enabled: boolean) {
+    setRnnoiseEnabled(enabled)
+    const room = voiceRoomRef.current
+    if (!room) return
+    const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone)
+    const track = pub?.track
+    if (!(track instanceof LocalAudioTrack)) return
+    if (enabled) {
+      const proc = new RNNoiseProcessor()
+      rnnoiseProcessorRef.current = proc
+      await track.setProcessor(proc as never)
+    } else {
+      await track.setProcessor(null as never)
+      rnnoiseProcessorRef.current = null
+    }
+  }
+
+  async function handleChangeAudioProcessing(ns: boolean, ec: boolean, agc: boolean) {
+    setNoiseSuppression(ns)
+    setEchoCancellation(ec)
+    setAutoGainControl(agc)
+    if (!voiceRoomRef.current || isMuted) return
+    await voiceRoomRef.current.localParticipant.setMicrophoneEnabled(false)
+    await voiceRoomRef.current.localParticipant.setMicrophoneEnabled(
+      true,
+      { noiseSuppression: ns, echoCancellation: ec, autoGainControl: agc },
+      { audioPreset: AudioPresets.musicHighQuality }
+    )
   }
 
   async function handleCreateChannel(name: string, type: 'TEXT' | 'VOICE') {
@@ -312,12 +381,21 @@ export default function Main({ auth, onLogout }: Props) {
           pttMode={pttMode}
           pttKey={pttKey}
           outputVolume={outputVolume}
+          selectedInput={selectedInputDevice}
+          selectedOutput={selectedOutputDevice}
           onToggleMute={handleToggleMute}
           onChangePttMode={handleChangePttMode}
           onChangePttKey={handleChangePttKey}
           onChangeOutputVolume={handleChangeOutputVolume}
           onSwitchInputDevice={handleSwitchInputDevice}
           onSwitchOutputDevice={handleSwitchOutputDevice}
+          noiseSuppression={noiseSuppression}
+          echoCancellation={echoCancellation}
+          autoGainControl={autoGainControl}
+          onChangeAudioProcessing={handleChangeAudioProcessing}
+          rnnoiseEnabled={rnnoiseEnabled}
+          rnnoiseSupported={rnnoiseSupported}
+          onChangeRnnoise={handleToggleRnnoise}
           onClose={() => setSettingsOpen(false)}
         />
       )}

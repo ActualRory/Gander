@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@gander/shared": "workspace:*",
+    "@shiguredo/noise-suppression": "^2025.1.0",
     "@tauri-apps/api": "^2.5.0",
     "livekit-client": "^2.13.0",
     "react": "^19.0.0",

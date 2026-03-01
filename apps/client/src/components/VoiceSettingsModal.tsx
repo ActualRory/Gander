@@ -7,30 +7,46 @@ interface Props {
   pttMode: boolean
   pttKey: string
   outputVolume: number
+  selectedInput: string
+  selectedOutput: string
+  noiseSuppression: boolean
+  echoCancellation: boolean
+  autoGainControl: boolean
+  rnnoiseEnabled: boolean
+  rnnoiseSupported: boolean
   onToggleMute: () => void
   onChangePttMode: (ptt: boolean) => void
   onChangePttKey: (code: string) => void
   onChangeOutputVolume: (vol: number) => void
   onSwitchInputDevice: (deviceId: string) => Promise<void>
   onSwitchOutputDevice: (deviceId: string) => Promise<void>
+  onChangeAudioProcessing: (ns: boolean, ec: boolean, agc: boolean) => void
+  onChangeRnnoise: (enabled: boolean) => void
   onClose: () => void
 }
 
+const HISTORY_SAMPLES = 300 // ~5s at 60fps
+
 export default function VoiceSettingsModal({
   isMuted, pttMode, pttKey, outputVolume,
+  selectedInput, selectedOutput,
+  noiseSuppression, echoCancellation, autoGainControl,
+  rnnoiseEnabled, rnnoiseSupported,
   onToggleMute, onChangePttMode, onChangePttKey,
   onChangeOutputVolume, onSwitchInputDevice, onSwitchOutputDevice,
-  onClose,
+  onChangeAudioProcessing, onChangeRnnoise, onClose,
 }: Props) {
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([])
   const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([])
-  const [selectedInput, setSelectedInput] = useState('')
-  const [selectedOutput, setSelectedOutput] = useState('')
   const [capturingKey, setCapturingKey] = useState(false)
   const [micTestActive, setMicTestActive] = useState(false)
   const [micLevel, setMicLevel] = useState(0)
+  const [micLevelAvg, setMicLevelAvg] = useState(0)
+  const [testPlaybackVolume, setTestPlaybackVolume] = useState(0.5)
   const autoMutedRef = useRef(false)
   const stopMicTestRef = useRef<(() => void) | null>(null)
+  const gainNodeRef = useRef<GainNode | null>(null)
+  const levelHistoryRef = useRef<number[]>([])
 
   useEffect(() => {
     navigator.mediaDevices.enumerateDevices().then(devices => {
@@ -53,16 +69,6 @@ export default function VoiceSettingsModal({
     return () => { stopMicTestRef.current?.() }
   }, [])
 
-  function handleInputChange(deviceId: string) {
-    setSelectedInput(deviceId)
-    onSwitchInputDevice(deviceId)
-  }
-
-  function handleOutputChange(deviceId: string) {
-    setSelectedOutput(deviceId)
-    onSwitchOutputDevice(deviceId)
-  }
-
   function startKeyCapture() {
     setCapturingKey(true)
     function capture(e: KeyboardEvent) {
@@ -84,23 +90,42 @@ export default function VoiceSettingsModal({
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: selectedInput ? { deviceId: { exact: selectedInput } } : true,
+        audio: {
+          ...(selectedInput ? { deviceId: { exact: selectedInput } } : {}),
+          noiseSuppression,
+          echoCancellation,
+          autoGainControl,
+        },
       })
       const ctx = new AudioContext()
       const source = ctx.createMediaStreamSource(stream)
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 512
-      analyser.smoothingTimeConstant = 0.3
+      analyser.smoothingTimeConstant = 0.05
       source.connect(analyser)
-      source.connect(ctx.destination)
+
+      const gainNode = ctx.createGain()
+      gainNode.gain.value = testPlaybackVolume
+      gainNodeRef.current = gainNode
+      source.connect(gainNode)
+      gainNode.connect(ctx.destination)
 
       const data = new Uint8Array(analyser.frequencyBinCount)
+      levelHistoryRef.current = []
       let rafId: number
 
       function animate() {
         analyser.getByteFrequencyData(data)
         const avg = data.reduce((sum, v) => sum + v, 0) / data.length
-        setMicLevel(Math.min(avg / 80, 1))
+        const level = Math.min(avg / 80, 1)
+
+        setMicLevel(level)
+
+        levelHistoryRef.current.push(level)
+        if (levelHistoryRef.current.length > HISTORY_SAMPLES) levelHistoryRef.current.shift()
+        const histAvg = levelHistoryRef.current.reduce((s, v) => s + v, 0) / levelHistoryRef.current.length
+        setMicLevelAvg(histAvg)
+
         rafId = requestAnimationFrame(animate)
       }
       rafId = requestAnimationFrame(animate)
@@ -109,6 +134,7 @@ export default function VoiceSettingsModal({
         cancelAnimationFrame(rafId)
         stream.getTracks().forEach(t => t.stop())
         ctx.close()
+        gainNodeRef.current = null
       }
       setMicTestActive(true)
     } catch {
@@ -125,10 +151,17 @@ export default function VoiceSettingsModal({
     stopMicTestRef.current = null
     setMicTestActive(false)
     setMicLevel(0)
+    setMicLevelAvg(0)
+    levelHistoryRef.current = []
     if (autoMutedRef.current) {
       onToggleMute()
       autoMutedRef.current = false
     }
+  }
+
+  function handleTestVolumeChange(vol: number) {
+    setTestPlaybackVolume(vol)
+    if (gainNodeRef.current) gainNodeRef.current.gain.value = vol
   }
 
   function formatKeyCode(code: string) {
@@ -164,7 +197,7 @@ export default function VoiceSettingsModal({
             <select
               className={styles.select}
               value={selectedInput}
-              onChange={e => handleInputChange(e.target.value)}
+              onChange={e => onSwitchInputDevice(e.target.value)}
             >
               <option value="">system default</option>
               {inputDevices.map(d => (
@@ -179,7 +212,7 @@ export default function VoiceSettingsModal({
             <select
               className={styles.select}
               value={selectedOutput}
-              onChange={e => handleOutputChange(e.target.value)}
+              onChange={e => onSwitchOutputDevice(e.target.value)}
             >
               <option value="">system default</option>
               {outputDevices.map(d => (
@@ -242,6 +275,32 @@ export default function VoiceSettingsModal({
         </section>
 
         <section className={styles.section}>
+          <div className={styles.sectionLabel}>audio processing</div>
+          <label className={styles.toggleRow}>
+            <input type="checkbox" checked={noiseSuppression}
+              onChange={e => onChangeAudioProcessing(e.target.checked, echoCancellation, autoGainControl)} />
+            <span>noise suppression</span>
+          </label>
+          <label className={styles.toggleRow}>
+            <input type="checkbox" checked={echoCancellation}
+              onChange={e => onChangeAudioProcessing(noiseSuppression, e.target.checked, autoGainControl)} />
+            <span>echo cancellation</span>
+          </label>
+          <label className={styles.toggleRow}>
+            <input type="checkbox" checked={autoGainControl}
+              onChange={e => onChangeAudioProcessing(noiseSuppression, echoCancellation, e.target.checked)} />
+            <span>auto gain control</span>
+          </label>
+          {rnnoiseSupported && (
+            <label className={styles.toggleRow}>
+              <input type="checkbox" checked={rnnoiseEnabled}
+                onChange={e => onChangeRnnoise(e.target.checked)} />
+              <span>rnnoise suppression</span>
+            </label>
+          )}
+        </section>
+
+        <section className={styles.section}>
           <div className={styles.sectionLabel}>mic test</div>
           <div className={styles.micTest}>
             <button
@@ -253,7 +312,19 @@ export default function VoiceSettingsModal({
             </button>
             <div className={styles.levelMeter}>
               <div className={styles.levelBar} style={{ width: `${micLevel * 100}%` }} />
+              <div className={styles.levelBarAvg} style={{ width: `${micLevelAvg * 100}%` }} />
             </div>
+          </div>
+          <div className={styles.sliderRow}>
+            <span className={styles.fieldLabel}>playback</span>
+            <input
+              type="range"
+              min={0} max={1} step={0.01}
+              value={testPlaybackVolume}
+              onChange={e => handleTestVolumeChange(parseFloat(e.target.value))}
+              className={styles.slider}
+            />
+            <span className={styles.sliderValue}>{Math.round(testPlaybackVolume * 100)}%</span>
           </div>
           {micTestActive && (
             <span className={styles.testNote}>muted in channel while testing</span>

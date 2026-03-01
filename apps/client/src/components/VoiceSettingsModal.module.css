@@ -11,7 +11,7 @@
 .modal {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  width: 380px;
+  width: 480px;
   display: flex;
   flex-direction: column;
 }
@@ -183,16 +183,40 @@
 
 .levelMeter {
   flex: 1;
-  height: 10px;
+  height: 18px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  padding: 2px 0;
 }
 
 .levelBar {
-  height: 100%;
+  height: 5px;
   background: #5aaa5a;
-  transition: width 60ms ease-out;
+  transition: width 25ms linear;
+}
+
+.levelBarAvg {
+  height: 5px;
+  background: var(--accent);
+  transition: width 120ms ease-out;
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.toggleRow input[type="checkbox"] {
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .testNote {
