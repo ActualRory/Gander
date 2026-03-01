@@ -58,7 +58,10 @@ interface Props {
   onUserRightClick: (userId: string, x: number, y: number) => void
 }
 
-export default function ChannelView({ channel, token, ws, onUserRightClick, lastReadAt, onMarkRead }: Props) {
+export default function ChannelView({ channel, token, ws, users, onUserRightClick, lastReadAt, onMarkRead }: Props) {
+  const channelLabel = channel.type === 'DM'
+    ? (users.find(u => u.id === channel.otherUserId)?.displayName ?? channel.name)
+    : `# ${channel.name}`
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -188,7 +191,7 @@ export default function ChannelView({ channel, token, ws, onUserRightClick, last
       </div>
 
       <header className={styles.header}>
-        <span className={styles.channelName}># {channel.name}</span>
+        <span className={styles.channelName}>{channelLabel}</span>
       </header>
 
       <div
@@ -278,7 +281,7 @@ export default function ChannelView({ channel, token, ws, onUserRightClick, last
         <textarea
           ref={textareaRef}
           className={styles.input}
-          placeholder={`message #${channel.name}`}
+          placeholder={`message ${channelLabel}`}
           value={input}
           rows={1}
           onChange={e => { setInput(e.target.value); resize() }}
