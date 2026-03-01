@@ -1,6 +1,7 @@
 # An Idiot's Guide to Hosting Gander
 
-This guide gets your Gander server running on a local Ubuntu machine and your friends connected to it. No prior server experience needed.
+This guide gets your Gander server running on a local Ubuntu machine and your friends connected to it.
+Written mainly for my own reference, as an idiot.
 
 ---
 
