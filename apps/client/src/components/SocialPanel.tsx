@@ -5,9 +5,10 @@ import styles from './SocialPanel.module.css'
 interface Props {
   users: User[]
   onlineUserIds: Set<string>
+  onUserRightClick: (userId: string, x: number, y: number) => void
 }
 
-export default function SocialPanel({ users, onlineUserIds }: Props) {
+export default function SocialPanel({ users, onlineUserIds, onUserRightClick }: Props) {
   const [panelOpen, setPanelOpen] = useState(true)
   const [onlineOpen, setOnlineOpen] = useState(true)
   const [offlineOpen, setOfflineOpen] = useState(true)
@@ -59,7 +60,11 @@ export default function SocialPanel({ users, onlineUserIds }: Props) {
           {onlineOpen && (
             <ul className={styles.userList}>
               {online.map(u => (
-                <li key={u.id} className={styles.user}>
+                <li
+                  key={u.id}
+                  className={styles.user}
+                  onContextMenu={e => { e.preventDefault(); onUserRightClick(u.id, e.clientX, e.clientY) }}
+                >
                   <span className={styles.dot}>·</span>
                   {u.displayName}
                 </li>
@@ -83,7 +88,11 @@ export default function SocialPanel({ users, onlineUserIds }: Props) {
           {offlineOpen && (
             <ul className={styles.userList}>
               {offline.map(u => (
-                <li key={u.id} className={`${styles.user} ${styles.offline}`}>
+                <li
+                  key={u.id}
+                  className={`${styles.user} ${styles.offline}`}
+                  onContextMenu={e => { e.preventDefault(); onUserRightClick(u.id, e.clientX, e.clientY) }}
+                >
                   <span className={styles.dot}>·</span>
                   {u.displayName}
                 </li>

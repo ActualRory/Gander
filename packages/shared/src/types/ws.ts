@@ -11,7 +11,7 @@ export type ServerEvent =
   | { type: 'voice:leave'; payload: { userId: string; channelId: string } }
   | { type: 'users:init'; payload: { onlineUserIds: string[] } }
   | { type: 'user:online'; payload: { userId: string } }
-  | { type: 'user:offline'; payload: { userId: string } }
+  | { type: 'user:offline'; payload: { userId: string; lastSeenAt: string } }
   | { type: 'voice:init'; payload: { voiceRooms: Record<string, string[]> } }
 
 // Events sent from client → server

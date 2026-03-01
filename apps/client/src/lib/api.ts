@@ -51,4 +51,7 @@ export const api = {
 
   getUsers: (token: string) =>
     request<User[]>('/api/users', authed(token)),
+
+  updateSubtitle: (token: string, subtitle: string | null) =>
+    request<User>('/api/users/me', { method: 'PATCH', body: JSON.stringify({ subtitle }), ...authed(token) }),
 }

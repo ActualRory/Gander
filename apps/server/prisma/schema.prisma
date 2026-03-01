@@ -8,11 +8,13 @@ datasource db {
 }
 
 model User {
-  id          String    @id @default(cuid())
-  username    String    @unique
-  displayName String
+  id           String    @id @default(cuid())
+  username     String    @unique
+  displayName  String
+  subtitle     String?
   passwordHash String
-  createdAt   DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  lastSeenAt   DateTime?
 
   memberships     ChannelMember[]
   messages        Message[]

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Channel, Message } from '@gander/shared'
+import type { Channel, Message, User } from '@gander/shared'
 import type { GanderWS } from '../lib/ws.ts'
 import { api } from '../lib/api.ts'
 import styles from './ChannelView.module.css'
@@ -51,9 +51,11 @@ interface Props {
   channel: Channel
   token: string
   ws: GanderWS
+  users: User[]
+  onUserRightClick: (userId: string, x: number, y: number) => void
 }
 
-export default function ChannelView({ channel, token, ws }: Props) {
+export default function ChannelView({ channel, token, ws, onUserRightClick }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -142,7 +144,10 @@ export default function ChannelView({ channel, token, ws }: Props) {
             <div key={msg.id} className={`${styles.message} ${grouped ? styles.grouped : ''}`}>
               {!grouped && (
                 <div className={styles.meta}>
-                  <span className={styles.author}>{msg.authorName}</span>
+                  <span
+                    className={styles.author}
+                    onContextMenu={e => { e.preventDefault(); onUserRightClick(msg.authorId, e.clientX, e.clientY) }}
+                  >{msg.authorName}</span>
                   <span className={styles.time}>{formatTime(msg.createdAt)}</span>
                 </div>
               )}

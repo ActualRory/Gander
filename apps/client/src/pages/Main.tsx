@@ -9,6 +9,7 @@ import ChannelView from '../components/ChannelView.tsx'
 import SocialPanel from '../components/SocialPanel.tsx'
 import ErrorModal from '../components/ErrorModal.tsx'
 import VoiceSettingsModal from '../components/VoiceSettingsModal.tsx'
+import UserProfilePopup from '../components/UserProfilePopup.tsx'
 import { RNNoiseProcessor, rnnoiseSupported } from '../lib/rnnoiseProcessor.ts'
 import styles from './Main.module.css'
 
@@ -34,6 +35,7 @@ export default function Main({ auth, onLogout }: Props) {
   const [users, setUsers] = useState<User[]>([])
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set())
   const [hiddenChannelIds, setHiddenChannelIds] = useState<Set<string>>(() => loadHidden(auth.userId))
+  const [profileTarget, setProfileTarget] = useState<{ user: User; x: number; y: number } | null>(null)
   const wsRef = useRef<GanderWS | null>(null)
 
   // Voice state
@@ -80,11 +82,13 @@ export default function Main({ auth, onLogout }: Props) {
       } else if (event.type === 'user:online') {
         setOnlineUserIds(prev => new Set([...prev, event.payload.userId]))
       } else if (event.type === 'user:offline') {
+        const { userId, lastSeenAt } = event.payload
         setOnlineUserIds(prev => {
           const next = new Set(prev)
-          next.delete(event.payload.userId)
+          next.delete(userId)
           return next
         })
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, lastSeenAt } : u))
       } else if (event.type === 'voice:init') {
         setVoiceParticipants(event.payload.voiceRooms)
       } else if (event.type === 'voice:join') {
@@ -372,6 +376,17 @@ export default function Main({ auth, onLogout }: Props) {
     })
   }
 
+  function handleUserRightClick(userId: string, x: number, y: number) {
+    const user = users.find(u => u.id === userId)
+    if (!user) return
+    setProfileTarget({ user, x, y })
+  }
+
+  function handleSubtitleUpdate(updated: User) {
+    setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))
+    setProfileTarget(prev => prev?.user.id === updated.id ? { ...prev, user: updated } : prev)
+  }
+
   return (
     <div className={styles.root}>
       {errorMessage && <ErrorModal message={errorMessage} onClose={() => setErrorMessage(null)} />}
@@ -432,12 +447,30 @@ export default function Main({ auth, onLogout }: Props) {
             channel={activeChannel}
             token={auth.token}
             ws={wsRef.current}
+            users={users}
+            onUserRightClick={handleUserRightClick}
           />
         ) : (
           <p className={styles.placeholder}>select a channel</p>
         )}
       </main>
-      <SocialPanel users={users} onlineUserIds={onlineUserIds} />
+      <SocialPanel
+        users={users}
+        onlineUserIds={onlineUserIds}
+        onUserRightClick={handleUserRightClick}
+      />
+      {profileTarget && (
+        <UserProfilePopup
+          user={profileTarget.user}
+          x={profileTarget.x}
+          y={profileTarget.y}
+          isOnline={onlineUserIds.has(profileTarget.user.id)}
+          isOwnProfile={profileTarget.user.id === auth.userId}
+          token={auth.token}
+          onSubtitleUpdate={handleSubtitleUpdate}
+          onClose={() => setProfileTarget(null)}
+        />
+      )}
     </div>
   )
 }

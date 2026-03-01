@@ -145,10 +145,12 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
     }
   })
 
-  socket.on('close', () => {
+  socket.on('close', async () => {
     if (userId) {
       connectedUsers.delete(userId)
-      broadcastAll({ type: 'user:offline', payload: { userId } })
+      const now = new Date()
+      await prisma.user.update({ where: { id: userId }, data: { lastSeenAt: now } }).catch(() => {})
+      broadcastAll({ type: 'user:offline', payload: { userId, lastSeenAt: now.toISOString() } })
       // Auto-leave voice channel on disconnect
       const voiceChannelId = userVoiceChannel.get(userId)
       if (voiceChannelId) {
