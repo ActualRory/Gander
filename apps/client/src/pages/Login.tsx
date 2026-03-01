@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { AuthState } from '../App.tsx'
 import { api } from '../lib/api.ts'
+import { getServerUrl } from '../lib/config.ts'
 import styles from './Login.module.css'
 
 const LOGO = `⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣶⣶⣾⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀
@@ -48,9 +49,11 @@ const LOGO = `⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 
 interface Props {
   onAuth: (auth: AuthState) => void
+  onChangeServer: () => void
 }
 
-export default function Login({ onAuth }: Props) {
+export default function Login({ onAuth, onChangeServer }: Props) {
+  const serverUrl = getServerUrl()!
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -72,9 +75,17 @@ export default function Login({ onAuth }: Props) {
 
   return (
     <div className={styles.root}>
+      <button type="button" className={styles.serverUrl} onClick={onChangeServer}>
+        {serverUrl.replace(/^https?:\/\//, '')}
+      </button>
       <div className={styles.box}>
         <pre className={styles.logo} aria-hidden="true">{LOGO}</pre>
-        <h1 className={styles.title}>GANDER</h1>
+        <h1 className={styles.title}>
+          <span className={styles.titleInner}>
+            GANDER
+            <span className={styles.version}>v{__APP_VERSION__}</span>
+          </span>
+        </h1>
         <p className={styles.subtitle}>self-hosted voice &amp; chat</p>
         <form onSubmit={submit} className={styles.form}>
           <input

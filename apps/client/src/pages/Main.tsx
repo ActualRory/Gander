@@ -17,7 +17,6 @@ import styles from './Main.module.css'
 interface Props {
   auth: AuthState
   onLogout: () => void
-  onChangeServer: () => void
 }
 
 function loadHidden(userId: string): Set<string> {
@@ -50,7 +49,7 @@ function saveLastRead(userId: string, channelId: string) {
   localStorage.setItem(`gander:lastread:${userId}:${channelId}`, new Date().toISOString())
 }
 
-export default function Main({ auth, onLogout, onChangeServer }: Props) {
+export default function Main({ auth, onLogout }: Props) {
   const [channels, setChannels] = useState<Channel[]>([])
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null)
   const [users, setUsers] = useState<User[]>([])
@@ -515,7 +514,6 @@ export default function Main({ auth, onLogout, onChangeServer }: Props) {
         onOpenVoiceSettings={() => setSettingsOpen(true)}
         displayName={auth.displayName}
         onLogout={onLogout}
-        onChangeServer={onChangeServer}
       />
       <main className={styles.content}>
         {activeChannel && wsRef.current ? (

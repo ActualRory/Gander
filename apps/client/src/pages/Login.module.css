@@ -34,6 +34,43 @@
   text-align: center;
 }
 
+.titleInner {
+  position: relative;
+  display: inline-block;
+}
+
+.version {
+  position: absolute;
+  top: 1px;
+  left: calc(100% + 6px);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
+.serverUrl {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.6;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.serverUrl:hover {
+  opacity: 1;
+  background: none;
+  text-decoration: underline;
+}
+
 .subtitle {
   color: var(--text-muted);
   font-size: 12px;
