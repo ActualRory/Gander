@@ -6,4 +6,5 @@ export interface Channel {
   type: ChannelType
   createdAt: string
   creatorId: string | null
+  otherUserId?: string
 }

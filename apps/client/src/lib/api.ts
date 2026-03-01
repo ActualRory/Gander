@@ -61,4 +61,10 @@ export const api = {
 
   updateSubtitle: (token: string, subtitle: string | null) =>
     request<User>('/api/users/me', { method: 'PATCH', body: JSON.stringify({ subtitle }), ...authed(token) }),
+
+  getDMs: (token: string) =>
+    request<Channel[]>('/api/dm', authed(token)),
+
+  startDM: (token: string, targetUserId: string) =>
+    request<Channel>('/api/dm', { method: 'POST', body: JSON.stringify({ targetUserId }), ...authed(token) }),
 }

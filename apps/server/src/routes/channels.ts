@@ -7,7 +7,7 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.get('/', async () => {
-    return prisma.channel.findMany({ orderBy: { createdAt: 'asc' } })
+    return prisma.channel.findMany({ where: { type: { not: 'DM' } }, orderBy: { createdAt: 'asc' } })
   })
 
   app.post('/', async (req, reply) => {

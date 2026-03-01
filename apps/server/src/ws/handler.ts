@@ -35,6 +35,13 @@ function broadcastAll(event: ServerEvent, exclude?: WebSocket) {
   }
 }
 
+export function broadcastToUser(userId: string, event: ServerEvent) {
+  const socket = connectedUsers.get(userId)
+  if (socket && socket.readyState === socket.OPEN) {
+    socket.send(JSON.stringify(event))
+  }
+}
+
 export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
   let userId: string | null = null
   const joinedChannels = new Set<string>()

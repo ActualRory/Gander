@@ -5,10 +5,19 @@ import styles from './SocialPanel.module.css'
 interface Props {
   users: User[]
   onlineUserIds: Set<string>
+  voiceParticipants: Record<string, string[]>
+  onUserClick: (userId: string, x: number, y: number) => void
   onUserRightClick: (userId: string, x: number, y: number) => void
 }
 
-export default function SocialPanel({ users, onlineUserIds, onUserRightClick }: Props) {
+function getStatus(userId: string, onlineUserIds: Set<string>, voiceParticipants: Record<string, string[]>): string {
+  const inVoice = Object.values(voiceParticipants).some(ids => ids.includes(userId))
+  if (inVoice) return 'Chatting'
+  if (onlineUserIds.has(userId)) return 'Online'
+  return 'Offline'
+}
+
+export default function SocialPanel({ users, onlineUserIds, voiceParticipants, onUserClick, onUserRightClick }: Props) {
   const [panelOpen, setPanelOpen] = useState(true)
   const [onlineOpen, setOnlineOpen] = useState(true)
   const [offlineOpen, setOfflineOpen] = useState(true)
@@ -30,6 +39,24 @@ export default function SocialPanel({ users, onlineUserIds, onUserRightClick }: 
           </button>
         </div>
       </div>
+    )
+  }
+
+  function renderUser(u: User, isOffline: boolean) {
+    const status = getStatus(u.id, onlineUserIds, voiceParticipants)
+    return (
+      <li
+        key={u.id}
+        className={`${styles.user} ${isOffline ? styles.offline : ''}`}
+        onClick={e => onUserClick(u.id, e.clientX, e.clientY)}
+        onContextMenu={e => { e.preventDefault(); onUserRightClick(u.id, e.clientX, e.clientY) }}
+      >
+        <span className={styles.dot}>·</span>
+        <span className={styles.userInfo}>
+          <span className={styles.userName}>{u.displayName}</span>
+          <span className={styles.status}>{status}</span>
+        </span>
+      </li>
     )
   }
 
@@ -59,16 +86,7 @@ export default function SocialPanel({ users, onlineUserIds, onUserRightClick }: 
           </button>
           {onlineOpen && (
             <ul className={styles.userList}>
-              {online.map(u => (
-                <li
-                  key={u.id}
-                  className={styles.user}
-                  onContextMenu={e => { e.preventDefault(); onUserRightClick(u.id, e.clientX, e.clientY) }}
-                >
-                  <span className={styles.dot}>·</span>
-                  {u.displayName}
-                </li>
-              ))}
+              {online.map(u => renderUser(u, false))}
               {online.length === 0 && (
                 <li className={styles.empty}>none</li>
               )}
@@ -87,16 +105,7 @@ export default function SocialPanel({ users, onlineUserIds, onUserRightClick }: 
           </button>
           {offlineOpen && (
             <ul className={styles.userList}>
-              {offline.map(u => (
-                <li
-                  key={u.id}
-                  className={`${styles.user} ${styles.offline}`}
-                  onContextMenu={e => { e.preventDefault(); onUserRightClick(u.id, e.clientX, e.clientY) }}
-                >
-                  <span className={styles.dot}>·</span>
-                  {u.displayName}
-                </li>
-              ))}
+              {offline.map(u => renderUser(u, true))}
               {offline.length === 0 && (
                 <li className={`${styles.empty} ${styles.offline}`}>none</li>
               )}

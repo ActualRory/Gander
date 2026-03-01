@@ -8,12 +8,14 @@ import styles from './Sidebar.module.css'
 
 interface Props {
   channels: Channel[]
+  dmChannels: Channel[]
   activeChannelId: string | null
   currentUserId: string
   hiddenChannelIds: Set<string>
   unreadCounts: Record<string, number>
   mutedChannelIds: Set<string>
   users: User[]
+  onlineUserIds: Set<string>
   voiceChannelId: string | null
   voiceParticipants: Record<string, string[]>
   isMuted: boolean
@@ -33,6 +35,8 @@ interface Props {
   onToggleMute: () => void
   onToggleDeafen: () => void
   onOpenVoiceSettings: () => void
+  onOpenDM: (channel: Channel) => void
+  onHideDM: (channelId: string) => void
   displayName: string
   onLogout: () => void
 }
@@ -43,7 +47,7 @@ interface ContextState {
   channel: Channel
 }
 
-export default function Sidebar({ channels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mutedChannelIds, users, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, displayName, onLogout }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, displayName, onLogout }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [renaming, setRenaming] = useState<Channel | null>(null)
@@ -53,6 +57,7 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
 
   const visibleText = channels.filter(c => c.type === 'TEXT' && !hiddenChannelIds.has(c.id))
   const visibleVoice = channels.filter(c => c.type === 'VOICE' && !hiddenChannelIds.has(c.id))
+  const visibleDMs = dmChannels.filter(c => !hiddenChannelIds.has(c.id))
 
   function handleContextMenu(e: React.MouseEvent, channel: Channel) {
     e.preventDefault()
@@ -72,6 +77,16 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
   }
 
   function contextItems(channel: Channel): ContextMenuItem[] {
+    if (channel.type === 'DM') {
+      return [
+        { label: 'hide', action: () => onHideDM(channel.id) },
+        { label: 'mark as read', action: () => onMarkRead(channel.id) },
+        {
+          label: mutedChannelIds.has(channel.id) ? 'unmute notifications' : 'mute notifications',
+          action: () => onToggleMuted(channel.id),
+        },
+      ]
+    }
     const items: ContextMenuItem[] = [
       { label: 'hide', action: () => onHideChannel(channel.id) },
       { label: 'mark as read', action: () => onMarkRead(channel.id) },
@@ -85,6 +100,15 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
       items.push({ label: 'delete', danger: true, action: () => setDeleting(channel) })
     }
     return items
+  }
+
+  function getDMStatus(channel: Channel): 'chatting' | 'online' | 'offline' {
+    const otherId = channel.otherUserId
+    if (!otherId) return 'offline'
+    const inVoice = Object.values(voiceParticipants).some(ids => ids.includes(otherId))
+    if (inVoice) return 'chatting'
+    if (onlineUserIds.has(otherId)) return 'online'
+    return 'offline'
   }
 
   function renderTextChannel(c: Channel) {
@@ -167,6 +191,34 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
     )
   }
 
+  function renderDMChannel(c: Channel) {
+    const otherId = c.otherUserId
+    const otherUser = users.find(u => u.id === otherId)
+    const label = otherUser?.displayName ?? otherId ?? c.name
+    const count = unreadCounts[c.id] ?? 0
+    const muted = mutedChannelIds.has(c.id)
+    const status = getDMStatus(c)
+    const dotClass = status === 'chatting' ? styles.dotChatting : status === 'online' ? styles.dotOnline : ''
+
+    return (
+      <button
+        type="button"
+        key={c.id}
+        className={`${styles.dmChannel} ${c.id === activeChannelId ? styles.active : ''}`}
+        onClick={() => onOpenDM(c)}
+        onContextMenu={e => handleContextMenu(e, c)}
+      >
+        <span className={`${styles.dmDot} ${dotClass}`}>·</span>
+        <span className={styles.dmLabel}>{label}</span>
+        {count > 0 && (
+          <span className={`${styles.unreadCount} ${muted ? styles.unreadMuted : ''}`}>
+            [{count}]
+          </span>
+        )}
+      </button>
+    )
+  }
+
   const voiceChannel = voiceChannelId ? channels.find(c => c.id === voiceChannelId) : null
 
   return (
@@ -175,6 +227,15 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
         <div className={styles.serverName}>GANDER</div>
 
         <div className={styles.channelList}>
+          {visibleDMs.length > 0 && (
+            <div className={styles.section}>
+              <div className={styles.sectionHeader}>
+                <span>direct messages</span>
+              </div>
+              {visibleDMs.map(c => renderDMChannel(c))}
+            </div>
+          )}
+
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span>text channels</span>

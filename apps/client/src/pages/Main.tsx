@@ -13,6 +13,8 @@ import SocialPanel from '../components/SocialPanel.tsx'
 import ErrorModal from '../components/ErrorModal.tsx'
 import VoiceSettingsModal from '../components/VoiceSettingsModal.tsx'
 import UserProfilePopup from '../components/UserProfilePopup.tsx'
+import UserProfileModal from '../components/UserProfileModal.tsx'
+import ContextMenu from '../components/ContextMenu.tsx'
 import { RNNoiseProcessor, rnnoiseSupported } from '../lib/rnnoiseProcessor.ts'
 import styles from './Main.module.css'
 
@@ -99,6 +101,7 @@ function saveVoiceSettings(userId: string, settings: VoiceSettings) {
 
 export default function Main({ auth, onLogout }: Props) {
   const [channels, setChannels] = useState<Channel[]>([])
+  const [dmChannels, setDmChannels] = useState<Channel[]>([])
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set())
@@ -106,6 +109,8 @@ export default function Main({ auth, onLogout }: Props) {
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [mutedChannelIds, setMutedChannelIds] = useState<Set<string>>(() => loadMuted(auth.userId))
   const [profileTarget, setProfileTarget] = useState<{ user: User; x: number; y: number } | null>(null)
+  const [fullProfileTarget, setFullProfileTarget] = useState<User | null>(null)
+  const [userContextMenu, setUserContextMenu] = useState<{ userId: string; x: number; y: number } | null>(null)
   const wsRef = useRef<GanderWS | null>(null)
   const activeChannelRef = useRef<Channel | null>(null)
 
@@ -165,12 +170,11 @@ export default function Main({ auth, onLogout }: Props) {
   }, [unreadCounts, mutedChannelIds])
 
   useEffect(() => {
-    api.getChannels(auth.token).then(async channels => {
-      setChannels(channels)
-      // Bootstrap unread counts from server for channels we have a read timestamp for.
-      // Channels with no lastReadAt (never visited) always start at 0.
+    api.getChannels(auth.token).then(async fetchedChannels => {
+      setChannels(fetchedChannels)
+      // Bootstrap unread counts for text channels
       const channelLastReadAt: Record<string, string> = {}
-      for (const c of channels) {
+      for (const c of fetchedChannels) {
         if (c.type !== 'TEXT') continue
         const lastRead = loadLastRead(auth.userId, c.id)
         if (lastRead) channelLastReadAt[c.id] = lastRead
@@ -184,6 +188,27 @@ export default function Main({ auth, onLogout }: Props) {
         setUnreadCounts(counts)
       }
     })
+
+    api.getDMs(auth.token).then(async dms => {
+      setDmChannels(dms)
+      // Bootstrap unread counts for DM channels
+      const dmLastReadAt: Record<string, string> = {}
+      for (const c of dms) {
+        const lastRead = loadLastRead(auth.userId, c.id)
+        if (lastRead) dmLastReadAt[c.id] = lastRead
+      }
+      if (Object.keys(dmLastReadAt).length > 0) {
+        const results = await api.getUnreadCounts(auth.token, dmLastReadAt)
+        setUnreadCounts(prev => {
+          const counts = { ...prev }
+          for (const { channelId, count } of results) {
+            if (count > 0) counts[channelId] = count
+          }
+          return counts
+        })
+      }
+    })
+
     api.getUsers(auth.token).then(setUsers)
 
     const ws = new GanderWS(auth.token)
@@ -225,6 +250,9 @@ export default function Main({ auth, onLogout }: Props) {
           ...prev,
           [channelId]: (prev[channelId] ?? []).filter(id => id !== userId),
         }))
+      } else if (event.type === 'dm:new') {
+        const channel = event.payload
+        setDmChannels(prev => prev.some(c => c.id === channel.id) ? prev : [...prev, channel])
       }
     })
 
@@ -476,6 +504,7 @@ export default function Main({ auth, onLogout }: Props) {
   async function handleDeleteChannel(channelId: string) {
     await api.deleteChannel(auth.token, channelId)
     setChannels(prev => prev.filter(c => c.id !== channelId))
+    setDmChannels(prev => prev.filter(c => c.id !== channelId))
     if (activeChannel?.id === channelId) setActiveChannel(null)
     if (voiceChannelId === channelId) await handleLeaveVoice()
     setHiddenChannelIds(prev => {
@@ -521,16 +550,63 @@ export default function Main({ auth, onLogout }: Props) {
     })
   }
 
-  function handleUserRightClick(userId: string, x: number, y: number) {
+  // Left-click: open profile popup at cursor position
+  function handleUserLeftClick(userId: string, x: number, y: number) {
     const user = users.find(u => u.id === userId)
     if (!user) return
     setProfileTarget({ user, x, y })
   }
 
+  // Right-click: open context menu
+  function handleUserRightClick(userId: string, x: number, y: number) {
+    setUserContextMenu({ userId, x, y })
+  }
+
+  function handleOpenFullProfile(userId: string) {
+    const user = users.find(u => u.id === userId)
+    if (!user) return
+    setFullProfileTarget(user)
+  }
+
+  async function handleStartDM(userId: string) {
+    try {
+      const channel = await api.startDM(auth.token, userId)
+      setDmChannels(prev => {
+        if (prev.some(c => c.id === channel.id)) return prev
+        return [...prev, channel]
+      })
+      // Unhide if previously hidden
+      setHiddenChannelIds(prev => {
+        if (!prev.has(channel.id)) return prev
+        const next = new Set(prev)
+        next.delete(channel.id)
+        saveHidden(auth.userId, next)
+        return next
+      })
+      setActiveChannel(channel)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setErrorMessage(`failed to open DM: ${msg}`)
+    }
+  }
+
+  function handleHideDM(channelId: string) {
+    setHiddenChannelIds(prev => {
+      const next = new Set(prev)
+      next.add(channelId)
+      saveHidden(auth.userId, next)
+      return next
+    })
+    if (activeChannel?.id === channelId) setActiveChannel(null)
+  }
+
   function handleSubtitleUpdate(updated: User) {
     setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))
     setProfileTarget(prev => prev?.user.id === updated.id ? { ...prev, user: updated } : prev)
+    setFullProfileTarget(prev => prev?.id === updated.id ? updated : prev)
   }
+
+  const userContextMenuUser = userContextMenu ? users.find(u => u.id === userContextMenu.userId) : null
 
   return (
     <div className={styles.root}>
@@ -561,12 +637,14 @@ export default function Main({ auth, onLogout }: Props) {
       )}
       <Sidebar
         channels={channels}
+        dmChannels={dmChannels}
         activeChannelId={activeChannel?.id ?? null}
         currentUserId={auth.userId}
         hiddenChannelIds={hiddenChannelIds}
         unreadCounts={unreadCounts}
         mutedChannelIds={mutedChannelIds}
         users={users}
+        onlineUserIds={onlineUserIds}
         voiceChannelId={voiceChannelId}
         voiceParticipants={voiceParticipants}
         isMuted={isMuted}
@@ -586,6 +664,8 @@ export default function Main({ auth, onLogout }: Props) {
         onToggleMute={handleToggleMute}
         onToggleDeafen={handleToggleDeafen}
         onOpenVoiceSettings={() => setSettingsOpen(true)}
+        onOpenDM={setActiveChannel}
+        onHideDM={handleHideDM}
         displayName={auth.displayName}
         onLogout={onLogout}
       />
@@ -608,6 +688,8 @@ export default function Main({ auth, onLogout }: Props) {
       <SocialPanel
         users={users}
         onlineUserIds={onlineUserIds}
+        voiceParticipants={voiceParticipants}
+        onUserClick={handleUserLeftClick}
         onUserRightClick={handleUserRightClick}
       />
       {profileTarget && (
@@ -620,6 +702,30 @@ export default function Main({ auth, onLogout }: Props) {
           token={auth.token}
           onSubtitleUpdate={handleSubtitleUpdate}
           onClose={() => setProfileTarget(null)}
+        />
+      )}
+      {fullProfileTarget && (
+        <UserProfileModal
+          user={fullProfileTarget}
+          isOnline={onlineUserIds.has(fullProfileTarget.id)}
+          isOwnProfile={fullProfileTarget.id === auth.userId}
+          token={auth.token}
+          onSubtitleUpdate={handleSubtitleUpdate}
+          onClose={() => setFullProfileTarget(null)}
+        />
+      )}
+      {userContextMenu && userContextMenuUser && (
+        <ContextMenu
+          x={userContextMenu.x}
+          y={userContextMenu.y}
+          items={[
+            { label: 'open full profile', action: () => { handleOpenFullProfile(userContextMenu.userId); setUserContextMenu(null) } },
+            ...(userContextMenu.userId !== auth.userId ? [{
+              label: 'direct message',
+              action: () => { handleStartDM(userContextMenu.userId); setUserContextMenu(null) },
+            }] : []),
+          ]}
+          onClose={() => setUserContextMenu(null)}
         />
       )}
     </div>

@@ -4,6 +4,7 @@ import fastifyJwt from '@fastify/jwt'
 import fastifyWebsocket from '@fastify/websocket'
 import { authRoutes } from './routes/auth.js'
 import { channelRoutes } from './routes/channels.js'
+import { dmRoutes } from './routes/dm.js'
 import { messageRoutes } from './routes/messages.js'
 import { voiceRoutes } from './routes/voice.js'
 import { userRoutes } from './routes/users.js'
@@ -17,6 +18,7 @@ await server.register(fastifyWebsocket)
 
 await server.register(authRoutes, { prefix: '/api/auth' })
 await server.register(channelRoutes, { prefix: '/api/channels' })
+await server.register(dmRoutes, { prefix: '/api/dm' })
 await server.register(messageRoutes, { prefix: '/api/messages' })
 await server.register(voiceRoutes, { prefix: '/api/voice' })
 await server.register(userRoutes, { prefix: '/api/users' })

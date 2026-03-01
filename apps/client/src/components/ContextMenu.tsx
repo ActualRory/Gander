@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import styles from './ContextMenu.module.css'
 
@@ -17,6 +17,16 @@ interface Props {
 
 export default function ContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ x, y })
+
+  useLayoutEffect(() => {
+    if (!ref.current) return
+    const rect = ref.current.getBoundingClientRect()
+    setPos({
+      x: rect.right > window.innerWidth ? x - rect.width : x,
+      y: rect.bottom > window.innerHeight ? y - rect.height : y,
+    })
+  }, [x, y])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -33,10 +43,9 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
     }
   }, [onClose])
 
-  // Keep menu on screen
   const style: React.CSSProperties = {
-    top: y,
-    left: x,
+    top: pos.y,
+    left: pos.x,
   }
 
   return createPortal(
