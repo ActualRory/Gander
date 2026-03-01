@@ -1,0 +1,10 @@
+.git
+.github
+node_modules
+apps/client
+apps/server/node_modules
+apps/server/dist
+**/.env
+**/.env.*
+**/dist
+apps/client/src-tauri/target

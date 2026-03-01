@@ -4,7 +4,7 @@
   z-index: 9999;
   pointer-events: none;
   opacity: 1;
-  transition: opacity 1.5s ease-out;
+  transition: opacity 0.8s ease-out;
   background: rgba(200, 169, 110, 0.07);
 }
 

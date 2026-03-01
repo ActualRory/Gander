@@ -57,8 +57,13 @@ gander/
 │           ├── channel.ts
 │           ├── message.ts
 │           └── ws.ts            # ServerEvent and ClientEvent union types
-├── docker-compose.dev.yml       # PostgreSQL for local development
-├── docker-compose.yml           # Full production stack (TODO)
+├── apps/server/Dockerfile       # Production server container
+├── apps/server/entrypoint.sh   # Runs migrations then starts server
+├── docker-compose.dev.yml       # PostgreSQL + LiveKit for local development
+├── docker-compose.yml           # Full production stack
+├── livekit.prod.yaml            # LiveKit config for production
+├── .env.production.example      # Required secrets for production
+├── .github/workflows/release.yml # Builds Windows installer on version tag
 ├── pnpm-workspace.yaml
 └── tsconfig.base.json
 ```
@@ -306,6 +311,45 @@ Message
 
 ---
 
+## Deployment (Production)
+
+### Server (Ubuntu)
+
+```sh
+git clone https://github.com/you/gander
+cd gander
+cp .env.production.example .env
+# Fill in POSTGRES_PASSWORD, JWT_SECRET, LIVEKIT_API_SECRET
+# Update livekit.prod.yaml with the same LIVEKIT_API_SECRET value
+docker compose up -d --build
+```
+
+Migrations run automatically on startup. Check with:
+
+```sh
+curl http://<server-ip>:3000/health   # → {"ok":true}
+```
+
+### Updating the server
+
+```sh
+git pull
+docker compose build server && docker compose up -d
+```
+
+### Releasing a new client build
+
+```sh
+# Bump version in apps/client/package.json + apps/client/src-tauri/tauri.conf.json
+git commit -am "v0.x.0"
+git tag v0.x.0
+git push && git push --tags
+```
+
+GitHub Actions builds a Windows `.exe` and `.msi` installer and publishes them as a GitHub Release (~10 min). Friends download from the Releases page.
+
+---
+
 ## V1 Roadmap
 
 - [x] Auth (register/login)
@@ -313,14 +357,16 @@ Message
 - [x] Voice channels (create, rename, delete)
 - [x] Real-time messaging via WebSocket
 - [x] Message history
+- [x] Production Docker Compose + Dockerfile
+- [x] GitHub Actions release pipeline (Windows installer)
 - [ ] DMs
-- [ ] Voice (LiveKit integration in client)
+- [x] Voice (LiveKit integration in client)
 - [ ] Presence indicators (who is online / in which voice channel)
 - [ ] Font bundling for distribution
-- [ ] Production Docker Compose
-- [ ] Tauri build + installer
 
 ## Post-V1
 
+- [ ] HTTPS/WSS (when a domain is available — add nginx + Certbot)
+- [ ] Client auto-updater (Tauri updater plugin + GitHub Releases as source)
 - [ ] Screen sharing (LiveKit supports this natively)
 - [ ] Mobile client (Tauri v2 mobile / React Native + LiveKit RN SDK)

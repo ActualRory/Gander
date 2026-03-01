@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import goosehonkUrl from '../../sounds/goosehonk1.mp3?url'
+import hangupUrl from '../../sounds/goosebell_hangup1.mp3?url'
 import { Room, RoomEvent, Track, ParticipantEvent, AudioPresets, LocalAudioTrack } from 'livekit-client'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { Channel, User } from '@gander/shared'
@@ -17,6 +19,17 @@ import styles from './Main.module.css'
 interface Props {
   auth: AuthState
   onLogout: () => void
+}
+
+function playHonks(count: number) {
+  for (let i = 0; i < count; i++) {
+    const delay = i * 140 + Math.random() * 60
+    setTimeout(() => {
+      const audio = new Audio(goosehonkUrl)
+      audio.volume = 0.7 + Math.random() * 0.3
+      audio.play().catch(() => {})
+    }, delay)
+  }
 }
 
 function loadHidden(userId: string): Set<string> {
@@ -71,6 +84,7 @@ export default function Main({ auth, onLogout }: Props) {
   const [isReceiving, setIsReceiving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const isDeafenedRef = useRef(false)
+  const intentionalDisconnectRef = useRef(false)
 
   // Voice settings state
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -86,12 +100,16 @@ export default function Main({ auth, onLogout }: Props) {
   const outputVolumeRef = useRef(1)
   const rnnoiseEnabledRef = useRef(false)
   const rnnoiseProcessorRef = useRef<RNNoiseProcessor | null>(null)
+  const voiceChannelIdRef = useRef<string | null>(null)
+  const voiceParticipantsRef = useRef<Record<string, string[]>>({})
 
   // Keep refs in sync for use inside LiveKit event callbacks
   useEffect(() => { isDeafenedRef.current = isDeafened }, [isDeafened])
   useEffect(() => { outputVolumeRef.current = outputVolume }, [outputVolume])
   useEffect(() => { rnnoiseEnabledRef.current = rnnoiseEnabled }, [rnnoiseEnabled])
   useEffect(() => { activeChannelRef.current = activeChannel }, [activeChannel])
+  useEffect(() => { voiceChannelIdRef.current = voiceChannelId }, [voiceChannelId])
+  useEffect(() => { voiceParticipantsRef.current = voiceParticipants }, [voiceParticipants])
 
   // Update taskbar badge
   useEffect(() => {
@@ -152,6 +170,10 @@ export default function Main({ auth, onLogout }: Props) {
           ...prev,
           [channelId]: [...(prev[channelId] ?? []).filter(id => id !== userId), userId],
         }))
+        // Honk when someone else joins the voice channel you're in
+        if (userId !== auth.userId && channelId === voiceChannelIdRef.current) {
+          playHonks((voiceParticipantsRef.current[channelId]?.length ?? 0) + 1)
+        }
       } else if (event.type === 'voice:leave') {
         const { userId, channelId } = event.payload
         setVoiceParticipants(prev => ({
@@ -211,6 +233,7 @@ export default function Main({ auth, onLogout }: Props) {
       if (voiceChannelId) {
         wsRef.current?.send({ type: 'voice:leave', payload: { channelId: voiceChannelId } })
       }
+      intentionalDisconnectRef.current = true
       await voiceRoomRef.current.disconnect()
       voiceRoomRef.current = null
     }
@@ -225,9 +248,10 @@ export default function Main({ auth, onLogout }: Props) {
 
       // Surface unexpected disconnects (after successful connect) via error modal
       room.on(RoomEvent.Disconnected, (reason) => {
-        if (reason !== undefined) {
+        if (!intentionalDisconnectRef.current && reason !== undefined) {
           setErrorMessage(`voice disconnected: ${reason}`)
         }
+        intentionalDisconnectRef.current = false
         rnnoiseProcessorRef.current = null
         voiceRoomRef.current = null
         setVoiceChannelId(null)
@@ -254,6 +278,9 @@ export default function Main({ auth, onLogout }: Props) {
       })
 
       await room.connect(url, token)
+
+      // Staggered honks: one for each person already in the channel, plus one for yourself
+      playHonks((voiceParticipants[channel.id]?.length ?? 0) + 1)
 
       if (pttMode) {
         await room.localParticipant.setMicrophoneEnabled(false)
@@ -287,7 +314,9 @@ export default function Main({ auth, onLogout }: Props) {
   async function handleLeaveVoice() {
     if (!voiceRoomRef.current || !voiceChannelId) return
     wsRef.current?.send({ type: 'voice:leave', payload: { channelId: voiceChannelId } })
+    intentionalDisconnectRef.current = true
     await voiceRoomRef.current.disconnect()
+    new Audio(hangupUrl).play().catch(() => {})
     rnnoiseProcessorRef.current = null
     voiceRoomRef.current = null
     setVoiceChannelId(null)

@@ -34,6 +34,14 @@
   text-align: center;
 }
 
+.booting {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 0.12em;
+  transition: opacity 0.4s ease-out;
+}
+
 .titleInner {
   position: relative;
   display: inline-block;

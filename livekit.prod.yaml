@@ -1,0 +1,11 @@
+keys:
+  # Key name must match LIVEKIT_API_KEY in your .env
+  # Value must match LIVEKIT_API_SECRET in your .env
+  prodkey: replace-with-your-livekit-secret
+
+rtc:
+  # Detects the host's public IP automatically for WebRTC ICE candidates.
+  # Required for voice to work when clients are not on the same LAN.
+  use_external_ip: true
+  port_range_start: 50000
+  port_range_end: 50100

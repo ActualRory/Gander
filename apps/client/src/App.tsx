@@ -5,7 +5,7 @@ import ServerSetup from './pages/ServerSetup.tsx'
 import { getServerUrl, clearServerUrl } from './lib/config.ts'
 import BootOverlay from './components/BootOverlay.tsx'
 import bootSoundUrl from '../sounds/lovelyboot1.mp3?url'
-import poweronSoundUrl from '../sounds/poweron1.mp3?url'
+import poweronSoundUrl from '../sounds/firsttimelaunch2q.mp3?url'
 
 export interface AuthState {
   token: string
@@ -18,6 +18,7 @@ export default function App() {
   const [serverConfigured, setServerConfigured] = useState(() => getServerUrl() !== null)
   const [auth, setAuth] = useState<AuthState | null>(null)
   const [bootDone, setBootDone] = useState(false)
+  const [bootClearing, setBootClearing] = useState(false)
 
   useEffect(() => {
     if (serverConfigured) {
@@ -36,10 +37,11 @@ export default function App() {
     clearServerUrl()
     setAuth(null)
     setServerConfigured(false)
+    setBootClearing(true)
   }
 
   function renderPage() {
-    if (!serverConfigured) return <ServerSetup onConfigured={handleConfigured} />
+    if (!serverConfigured) return <ServerSetup onConfigured={handleConfigured} bootClearing={bootClearing} />
     if (!auth) return <Login onAuth={setAuth} onChangeServer={handleChangeServer} />
     return <Main auth={auth} onLogout={() => setAuth(null)} />
   }
@@ -47,7 +49,12 @@ export default function App() {
   return (
     <>
       {renderPage()}
-      {!bootDone && <BootOverlay onDone={() => setBootDone(true)} />}
+      {!bootDone && (
+        <BootOverlay
+          onDone={() => setBootDone(true)}
+          onClearing={() => setBootClearing(true)}
+        />
+      )}
     </>
   )
 }
