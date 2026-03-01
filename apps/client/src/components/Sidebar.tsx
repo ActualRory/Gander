@@ -77,10 +77,11 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
   }
 
   function contextItems(channel: Channel): ContextMenuItem[] {
+    const hasUnread = (unreadCounts[channel.id] ?? 0) > 0
     if (channel.type === 'DM') {
       return [
         { label: 'hide', action: () => onHideDM(channel.id) },
-        { label: 'mark as read', action: () => onMarkRead(channel.id) },
+        { label: 'mark as read', disabled: !hasUnread, action: () => onMarkRead(channel.id) },
         {
           label: mutedChannelIds.has(channel.id) ? 'unmute notifications' : 'mute notifications',
           action: () => onToggleMuted(channel.id),
@@ -89,7 +90,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
     }
     const items: ContextMenuItem[] = [
       { label: 'hide', action: () => onHideChannel(channel.id) },
-      { label: 'mark as read', action: () => onMarkRead(channel.id) },
+      { label: 'mark as read', disabled: !hasUnread, action: () => onMarkRead(channel.id) },
       {
         label: mutedChannelIds.has(channel.id) ? 'unmute notifications' : 'mute notifications',
         action: () => onToggleMuted(channel.id),

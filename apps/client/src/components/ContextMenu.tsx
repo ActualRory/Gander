@@ -5,6 +5,7 @@ import styles from './ContextMenu.module.css'
 export interface ContextMenuItem {
   label: string
   danger?: boolean
+  disabled?: boolean
   action: () => void
 }
 
@@ -54,8 +55,9 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
         <button
           key={item.label}
           type="button"
-          className={`${styles.item} ${item.danger ? styles.danger : ''}`}
-          onClick={() => { item.action(); onClose() }}
+          className={`${styles.item} ${item.danger ? styles.danger : ''} ${item.disabled ? styles.disabled : ''}`}
+          disabled={item.disabled}
+          onClick={() => { if (!item.disabled) { item.action(); onClose() } }}
         >
           &gt; {item.label}
         </button>

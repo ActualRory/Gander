@@ -32,3 +32,13 @@
   color: #e08878;
   background: var(--bg-surface);
 }
+
+.disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.disabled:hover {
+  background: none;
+  color: var(--text-muted);
+}
