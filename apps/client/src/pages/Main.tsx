@@ -62,6 +62,41 @@ function saveLastRead(userId: string, channelId: string) {
   localStorage.setItem(`gander:lastread:${userId}:${channelId}`, new Date().toISOString())
 }
 
+interface VoiceSettings {
+  pttMode: boolean
+  pttKey: string
+  outputVolume: number
+  noiseSuppression: boolean
+  echoCancellation: boolean
+  autoGainControl: boolean
+  selectedInputDevice: string
+  selectedOutputDevice: string
+  rnnoiseEnabled: boolean
+}
+
+const VOICE_SETTINGS_DEFAULTS: VoiceSettings = {
+  pttMode: false,
+  pttKey: 'Space',
+  outputVolume: 1,
+  noiseSuppression: true,
+  echoCancellation: true,
+  autoGainControl: true,
+  selectedInputDevice: '',
+  selectedOutputDevice: '',
+  rnnoiseEnabled: false,
+}
+
+function loadVoiceSettings(userId: string): VoiceSettings {
+  try {
+    const raw = localStorage.getItem(`gander:voice-settings:${userId}`)
+    return raw ? { ...VOICE_SETTINGS_DEFAULTS, ...JSON.parse(raw) } : VOICE_SETTINGS_DEFAULTS
+  } catch { return VOICE_SETTINGS_DEFAULTS }
+}
+
+function saveVoiceSettings(userId: string, settings: VoiceSettings) {
+  localStorage.setItem(`gander:voice-settings:${userId}`, JSON.stringify(settings))
+}
+
 export default function Main({ auth, onLogout }: Props) {
   const [channels, setChannels] = useState<Channel[]>([])
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null)
@@ -86,22 +121,32 @@ export default function Main({ auth, onLogout }: Props) {
   const isDeafenedRef = useRef(false)
   const intentionalDisconnectRef = useRef(false)
 
-  // Voice settings state
+  // Voice settings state - persisted to localStorage keyed by userId
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [pttMode, setPttMode] = useState(false)
-  const [pttKey, setPttKey] = useState('Space')
-  const [outputVolume, setOutputVolume] = useState(1)
-  const [noiseSuppression, setNoiseSuppression] = useState(true)
-  const [echoCancellation, setEchoCancellation] = useState(true)
-  const [autoGainControl, setAutoGainControl] = useState(true)
-  const [selectedInputDevice, setSelectedInputDevice] = useState('')
-  const [selectedOutputDevice, setSelectedOutputDevice] = useState('')
-  const [rnnoiseEnabled, setRnnoiseEnabled] = useState(false)
+  const [pttMode, setPttMode] = useState(() => loadVoiceSettings(auth.userId).pttMode)
+  const [pttKey, setPttKey] = useState(() => loadVoiceSettings(auth.userId).pttKey)
+  const [outputVolume, setOutputVolume] = useState(() => loadVoiceSettings(auth.userId).outputVolume)
+  const [noiseSuppression, setNoiseSuppression] = useState(() => loadVoiceSettings(auth.userId).noiseSuppression)
+  const [echoCancellation, setEchoCancellation] = useState(() => loadVoiceSettings(auth.userId).echoCancellation)
+  const [autoGainControl, setAutoGainControl] = useState(() => loadVoiceSettings(auth.userId).autoGainControl)
+  const [selectedInputDevice, setSelectedInputDevice] = useState(() => loadVoiceSettings(auth.userId).selectedInputDevice)
+  const [selectedOutputDevice, setSelectedOutputDevice] = useState(() => loadVoiceSettings(auth.userId).selectedOutputDevice)
+  const [rnnoiseEnabled, setRnnoiseEnabled] = useState(() => loadVoiceSettings(auth.userId).rnnoiseEnabled)
   const outputVolumeRef = useRef(1)
   const rnnoiseEnabledRef = useRef(false)
   const rnnoiseProcessorRef = useRef<RNNoiseProcessor | null>(null)
   const voiceChannelIdRef = useRef<string | null>(null)
   const voiceParticipantsRef = useRef<Record<string, string[]>>({})
+
+  // Persist voice settings to localStorage whenever they change
+  useEffect(() => {
+    saveVoiceSettings(auth.userId, {
+      pttMode, pttKey, outputVolume,
+      noiseSuppression, echoCancellation, autoGainControl,
+      selectedInputDevice, selectedOutputDevice, rnnoiseEnabled,
+    })
+  }, [pttMode, pttKey, outputVolume, noiseSuppression, echoCancellation, autoGainControl,
+    selectedInputDevice, selectedOutputDevice, rnnoiseEnabled, auth.userId])
 
   // Keep refs in sync for use inside LiveKit event callbacks
   useEffect(() => { isDeafenedRef.current = isDeafened }, [isDeafened])
