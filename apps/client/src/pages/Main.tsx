@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import goosehonkUrl from '../../sounds/goosehonk1.mp3?url'
 import hangupUrl from '../../sounds/goosebell_hangup1.mp3?url'
-import { Room, RoomEvent, Track, ParticipantEvent, AudioPresets, LocalAudioTrack } from 'livekit-client'
+import { Room, RoomEvent, Track, ParticipantEvent, AudioPresets, LocalAudioTrack, ConnectionQuality } from 'livekit-client'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { Channel, User } from '@gander/shared'
 import type { AuthState } from '../App.tsx'
@@ -12,6 +12,7 @@ import ChannelView from '../components/ChannelView.tsx'
 import SocialPanel from '../components/SocialPanel.tsx'
 import ErrorModal from '../components/ErrorModal.tsx'
 import VoiceSettingsModal from '../components/VoiceSettingsModal.tsx'
+import type { VoiceStats } from '../components/VoiceControls.tsx'
 import UserProfilePopup from '../components/UserProfilePopup.tsx'
 import UserProfileModal from '../components/UserProfileModal.tsx'
 import ContextMenu from '../components/ContextMenu.tsx'
@@ -124,8 +125,10 @@ export default function Main({ auth, onLogout }: Props) {
   const [isDeafened, setIsDeafened] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [isReceiving, setIsReceiving] = useState(false)
+  const [voiceStats, setVoiceStats] = useState<VoiceStats | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const isDeafenedRef = useRef(false)
+  const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const intentionalDisconnectRef = useRef(false)
 
   // Voice settings state - persisted to localStorage keyed by userId
@@ -352,11 +355,13 @@ export default function Main({ auth, onLogout }: Props) {
         intentionalDisconnectRef.current = false
         rnnoiseProcessorRef.current = null
         voiceRoomRef.current = null
+        if (statsIntervalRef.current) { clearInterval(statsIntervalRef.current); statsIntervalRef.current = null }
         setVoiceChannelId(null)
         setIsMuted(false)
         setIsDeafened(false)
         setIsSpeaking(false)
         setIsReceiving(false)
+        setVoiceStats(null)
         setSettingsOpen(false)
       })
 
@@ -376,6 +381,40 @@ export default function Main({ auth, onLogout }: Props) {
       })
 
       await room.connect(url, token)
+
+      setVoiceStats({ quality: 'unknown', ping: null, jitter: null, packetsLost: null })
+
+      room.on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+        if (participant.identity !== room.localParticipant.identity) return
+        const q = quality === ConnectionQuality.Excellent ? 'excellent'
+          : quality === ConnectionQuality.Good ? 'good'
+          : quality === ConnectionQuality.Poor ? 'poor'
+          : 'unknown'
+        setVoiceStats(prev => prev ? { ...prev, quality: q } : null)
+      })
+
+      const pollStats = async () => {
+        const r = voiceRoomRef.current
+        if (!r) return
+        const pub = r.localParticipant.getTrackPublication(Track.Source.Microphone)
+        const sender = (pub?.track as LocalAudioTrack | undefined)?.sender
+        if (!sender) return
+        try {
+          const stats = await sender.getStats()
+          stats.forEach(report => {
+            if (report.type === 'remote-inbound-rtp') {
+              const s = report as { roundTripTime?: number; jitter?: number; fractionLost?: number }
+              setVoiceStats(prev => prev ? {
+                ...prev,
+                ping: s.roundTripTime != null ? Math.round(s.roundTripTime * 1000) : prev.ping,
+                jitter: s.jitter != null ? Math.round(s.jitter * 1000) : prev.jitter,
+                packetsLost: s.fractionLost != null ? +(s.fractionLost * 100).toFixed(1) : prev.packetsLost,
+              } : null)
+            }
+          })
+        } catch { /* ignore */ }
+      }
+      statsIntervalRef.current = setInterval(() => { pollStats().catch(() => {}) }, 3000)
 
       // Staggered honks: one for each person already in the channel, plus one for yourself
       playHonks((voiceParticipants[channel.id]?.length ?? 0) + 1)
@@ -693,6 +732,7 @@ export default function Main({ auth, onLogout }: Props) {
         onLeaveVoice={handleLeaveVoice}
         onToggleMute={handleToggleMute}
         onToggleDeafen={handleToggleDeafen}
+        voiceStats={voiceStats}
         onOpenVoiceSettings={() => setSettingsOpen(true)}
         onOpenDM={openChannel}
         onHideDM={handleHideDM}

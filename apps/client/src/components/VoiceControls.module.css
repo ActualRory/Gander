@@ -12,12 +12,47 @@
   margin-bottom: 6px;
 }
 
+.labelRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .label {
   font-size: 10px;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
+
+.statsIcon {
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: default;
+  position: relative;
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.statsTooltip {
+  position: fixed;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  font-size: 10px;
+  white-space: pre;
+  z-index: 1000;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  pointer-events: none;
+  font-family: var(--font-mono);
+}
+
+.quality_excellent { color: #5aaa5a; }
+.quality_good { color: var(--text-secondary); }
+.quality_poor { color: #c87060; }
+.quality_unknown { color: var(--text-muted); }
 
 .channel {
   color: var(--text-secondary);

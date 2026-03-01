@@ -3,7 +3,7 @@ import type { Channel, User } from '@gander/shared'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import ChannelIndexModal from './ChannelIndexModal.tsx'
 import ConfirmDeleteModal from './ConfirmDeleteModal.tsx'
-import VoiceControls from './VoiceControls.tsx'
+import VoiceControls, { type VoiceStats } from './VoiceControls.tsx'
 import styles from './Sidebar.module.css'
 
 interface Props {
@@ -34,6 +34,7 @@ interface Props {
   onLeaveVoice: () => void
   onToggleMute: () => void
   onToggleDeafen: () => void
+  voiceStats: VoiceStats | null
   onOpenVoiceSettings: () => void
   onOpenDM: (channel: Channel) => void
   onHideDM: (channelId: string) => void
@@ -47,7 +48,7 @@ interface ContextState {
   channel: Channel
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, displayName, onLogout }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, displayName, onLogout }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [renaming, setRenaming] = useState<Channel | null>(null)
@@ -261,6 +262,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
             isDeafened={isDeafened}
             isSpeaking={isSpeaking}
             isReceiving={isReceiving}
+            voiceStats={voiceStats}
             onToggleMute={onToggleMute}
             onToggleDeafen={onToggleDeafen}
             onOpenSettings={onOpenVoiceSettings}
