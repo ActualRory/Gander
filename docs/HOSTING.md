@@ -56,6 +56,7 @@ cd gander
 ```
 
 Replace `YOUR_USERNAME` with your actual GitHub username.
+Make sure you have added your SSH public key to your GitHub account.
 
 ---
 
