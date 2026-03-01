@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Room, RoomEvent, Track } from 'livekit-client'
+import { Room, RoomEvent, Track, ParticipantEvent } from 'livekit-client'
 import type { Channel, User } from '@gander/shared'
 import type { AuthState } from '../App.tsx'
 import { api } from '../lib/api.ts'
@@ -8,6 +8,7 @@ import Sidebar from '../components/Sidebar.tsx'
 import ChannelView from '../components/ChannelView.tsx'
 import SocialPanel from '../components/SocialPanel.tsx'
 import ErrorModal from '../components/ErrorModal.tsx'
+import VoiceSettingsModal from '../components/VoiceSettingsModal.tsx'
 import styles from './Main.module.css'
 
 interface Props {
@@ -40,11 +41,21 @@ export default function Main({ auth, onLogout }: Props) {
   const [voiceParticipants, setVoiceParticipants] = useState<Record<string, string[]>>({})
   const [isMuted, setIsMuted] = useState(false)
   const [isDeafened, setIsDeafened] = useState(false)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [isReceiving, setIsReceiving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const isDeafenedRef = useRef(false)
 
-  // Keep ref in sync for use inside LiveKit event callbacks
+  // Voice settings state
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [pttMode, setPttMode] = useState(false)
+  const [pttKey, setPttKey] = useState('Space')
+  const [outputVolume, setOutputVolume] = useState(1)
+  const outputVolumeRef = useRef(1)
+
+  // Keep refs in sync for use inside LiveKit event callbacks
   useEffect(() => { isDeafenedRef.current = isDeafened }, [isDeafened])
+  useEffect(() => { outputVolumeRef.current = outputVolume }, [outputVolume])
 
   useEffect(() => {
     api.getChannels(auth.token).then(setChannels)
@@ -92,6 +103,27 @@ export default function Main({ auth, onLogout }: Props) {
     return () => { voiceRoomRef.current?.disconnect() }
   }, [])
 
+  // Push-to-talk keyboard handler
+  useEffect(() => {
+    if (!pttMode || !voiceChannelId) return
+    const down = async (e: KeyboardEvent) => {
+      if (e.code !== pttKey || e.repeat) return
+      await voiceRoomRef.current?.localParticipant.setMicrophoneEnabled(true)
+      setIsMuted(false)
+    }
+    const up = async (e: KeyboardEvent) => {
+      if (e.code !== pttKey) return
+      await voiceRoomRef.current?.localParticipant.setMicrophoneEnabled(false)
+      setIsMuted(true)
+    }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+    }
+  }, [pttMode, voiceChannelId, pttKey])
+
   async function handleJoinVoice(channel: Channel) {
     // Leave existing room first (if any)
     if (voiceRoomRef.current) {
@@ -116,21 +148,38 @@ export default function Main({ auth, onLogout }: Props) {
         setVoiceChannelId(null)
         setIsMuted(false)
         setIsDeafened(false)
+        setIsSpeaking(false)
+        setIsReceiving(false)
+        setSettingsOpen(false)
       })
 
-      // Mute new remote participants if deafened
+      // Apply volume and deafen state to newly subscribed tracks
       room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
-        if (track.kind === Track.Kind.Audio && isDeafenedRef.current) {
-          participant.setVolume(0)
+        if (track.kind === Track.Kind.Audio) {
+          participant.setVolume(isDeafenedRef.current ? 0 : outputVolumeRef.current)
         }
       })
 
+      // Speaking indicators
+      room.localParticipant.on(ParticipantEvent.IsSpeakingChanged, (speaking: boolean) => {
+        setIsSpeaking(speaking)
+      })
+      room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+        setIsReceiving(speakers.some(p => p.identity !== room.localParticipant.identity))
+      })
+
       await room.connect(url, token)
-      await room.localParticipant.setMicrophoneEnabled(true)
+
+      if (pttMode) {
+        await room.localParticipant.setMicrophoneEnabled(false)
+        setIsMuted(true)
+      } else {
+        await room.localParticipant.setMicrophoneEnabled(true)
+        setIsMuted(false)
+      }
 
       wsRef.current?.send({ type: 'voice:join', payload: { channelId: channel.id } })
       setVoiceChannelId(channel.id)
-      setIsMuted(false)
       setIsDeafened(false)
     } catch (err) {
       console.error('Failed to join voice channel:', err)
@@ -148,6 +197,9 @@ export default function Main({ auth, onLogout }: Props) {
     setVoiceChannelId(null)
     setIsMuted(false)
     setIsDeafened(false)
+    setIsSpeaking(false)
+    setIsReceiving(false)
+    setSettingsOpen(false)
   }
 
   async function handleToggleMute() {
@@ -159,7 +211,7 @@ export default function Main({ auth, onLogout }: Props) {
     // Unmuting while deafened also undeafens (Discord behaviour)
     if (!next && isDeafened) {
       setIsDeafened(false)
-      for (const p of room.remoteParticipants.values()) p.setVolume(1)
+      for (const p of room.remoteParticipants.values()) p.setVolume(outputVolumeRef.current)
     }
   }
 
@@ -174,8 +226,37 @@ export default function Main({ auth, onLogout }: Props) {
       setIsMuted(true)
     }
     for (const p of room.remoteParticipants.values()) {
-      p.setVolume(next ? 0 : 1)
+      p.setVolume(next ? 0 : outputVolumeRef.current)
     }
+  }
+
+  async function handleChangePttMode(ptt: boolean) {
+    setPttMode(ptt)
+    // Auto-mute when switching into PTT mode
+    if (ptt && !isMuted && voiceRoomRef.current) {
+      await voiceRoomRef.current.localParticipant.setMicrophoneEnabled(false)
+      setIsMuted(true)
+    }
+  }
+
+  function handleChangePttKey(code: string) {
+    setPttKey(code)
+  }
+
+  function handleChangeOutputVolume(vol: number) {
+    setOutputVolume(vol)
+    outputVolumeRef.current = vol
+    if (!isDeafened && voiceRoomRef.current) {
+      for (const p of voiceRoomRef.current.remoteParticipants.values()) p.setVolume(vol)
+    }
+  }
+
+  async function handleSwitchInputDevice(deviceId: string) {
+    await voiceRoomRef.current?.switchActiveDevice('audioinput', deviceId)
+  }
+
+  async function handleSwitchOutputDevice(deviceId: string) {
+    await voiceRoomRef.current?.switchActiveDevice('audiooutput', deviceId)
   }
 
   async function handleCreateChannel(name: string, type: 'TEXT' | 'VOICE') {
@@ -225,6 +306,21 @@ export default function Main({ auth, onLogout }: Props) {
   return (
     <div className={styles.root}>
       {errorMessage && <ErrorModal message={errorMessage} onClose={() => setErrorMessage(null)} />}
+      {settingsOpen && voiceRoomRef.current && (
+        <VoiceSettingsModal
+          isMuted={isMuted}
+          pttMode={pttMode}
+          pttKey={pttKey}
+          outputVolume={outputVolume}
+          onToggleMute={handleToggleMute}
+          onChangePttMode={handleChangePttMode}
+          onChangePttKey={handleChangePttKey}
+          onChangeOutputVolume={handleChangeOutputVolume}
+          onSwitchInputDevice={handleSwitchInputDevice}
+          onSwitchOutputDevice={handleSwitchOutputDevice}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
       <Sidebar
         channels={channels}
         activeChannelId={activeChannel?.id ?? null}
@@ -235,6 +331,8 @@ export default function Main({ auth, onLogout }: Props) {
         voiceParticipants={voiceParticipants}
         isMuted={isMuted}
         isDeafened={isDeafened}
+        isSpeaking={isSpeaking}
+        isReceiving={isReceiving}
         onSelectChannel={setActiveChannel}
         onCreateChannel={handleCreateChannel}
         onRenameChannel={handleRenameChannel}
@@ -245,6 +343,7 @@ export default function Main({ auth, onLogout }: Props) {
         onLeaveVoice={handleLeaveVoice}
         onToggleMute={handleToggleMute}
         onToggleDeafen={handleToggleDeafen}
+        onOpenVoiceSettings={() => setSettingsOpen(true)}
         displayName={auth.displayName}
         onLogout={onLogout}
       />

@@ -16,6 +16,8 @@ interface Props {
   voiceParticipants: Record<string, string[]>
   isMuted: boolean
   isDeafened: boolean
+  isSpeaking: boolean
+  isReceiving: boolean
   onSelectChannel: (channel: Channel) => void
   onCreateChannel: (name: string, type: 'TEXT' | 'VOICE') => void
   onRenameChannel: (channelId: string, name: string) => void
@@ -26,6 +28,7 @@ interface Props {
   onLeaveVoice: () => void
   onToggleMute: () => void
   onToggleDeafen: () => void
+  onOpenVoiceSettings: () => void
   displayName: string
   onLogout: () => void
 }
@@ -36,7 +39,7 @@ interface ContextState {
   channel: Channel
 }
 
-export default function Sidebar({ channels, activeChannelId, currentUserId, hiddenChannelIds, users, voiceChannelId, voiceParticipants, isMuted, isDeafened, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, displayName, onLogout }: Props) {
+export default function Sidebar({ channels, activeChannelId, currentUserId, hiddenChannelIds, users, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, displayName, onLogout }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [renaming, setRenaming] = useState<Channel | null>(null)
@@ -177,8 +180,11 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
             channelName={voiceChannel.name}
             isMuted={isMuted}
             isDeafened={isDeafened}
+            isSpeaking={isSpeaking}
+            isReceiving={isReceiving}
             onToggleMute={onToggleMute}
             onToggleDeafen={onToggleDeafen}
+            onOpenSettings={onOpenVoiceSettings}
             onLeave={onLeaveVoice}
           />
         )}

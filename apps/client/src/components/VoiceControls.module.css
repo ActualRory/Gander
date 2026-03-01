@@ -55,6 +55,27 @@
   border-color: var(--accent-dim);
 }
 
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.speaking {
+  color: #5aaa5a;
+  border-color: #2a5a2a;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.receiving {
+  color: #5aaa5a;
+  border-color: #2a5a2a;
+}
+
+.settingsBtn {
+  flex: 0;
+  padding: 2px 6px;
+}
+
 .leaveBtn {
   flex: 0;
   padding: 2px 8px;
