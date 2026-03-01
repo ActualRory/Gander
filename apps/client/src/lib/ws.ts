@@ -1,4 +1,5 @@
 import type { ServerEvent, ClientEvent } from '@gander/shared'
+import { getServerUrl } from './config.ts'
 
 type EventHandler = (event: ServerEvent) => void
 
@@ -9,7 +10,7 @@ export class GanderWS {
   private queue: ClientEvent[] = []
 
   constructor(token: string) {
-    const base = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+    const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
     const wsUrl = base.replace(/^http/, 'ws') + '/ws'
 
     this.ws = new WebSocket(wsUrl)

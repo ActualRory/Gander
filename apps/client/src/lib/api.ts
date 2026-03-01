@@ -1,10 +1,10 @@
 import type { Channel, Message, AuthResponse, User } from '@gander/shared'
-
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+import { getServerUrl } from './config.ts'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
   const hasBody = options?.body !== undefined
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${base}${path}`, {
     ...options,
     headers: {
       ...(hasBody ? { 'Content-Type': 'application/json' } : {}),

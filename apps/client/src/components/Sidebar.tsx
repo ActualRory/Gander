@@ -35,6 +35,7 @@ interface Props {
   onOpenVoiceSettings: () => void
   displayName: string
   onLogout: () => void
+  onChangeServer: () => void
 }
 
 interface ContextState {
@@ -43,7 +44,7 @@ interface ContextState {
   channel: Channel
 }
 
-export default function Sidebar({ channels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mutedChannelIds, users, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, displayName, onLogout }: Props) {
+export default function Sidebar({ channels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mutedChannelIds, users, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, displayName, onLogout, onChangeServer }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [renaming, setRenaming] = useState<Channel | null>(null)
@@ -208,6 +209,7 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
 
         <div className={styles.userBar}>
           <span className={styles.username}>{displayName}</span>
+          <button type="button" className={styles.logoutBtn} onClick={onChangeServer}>server</button>
           <button type="button" className={styles.logoutBtn} onClick={onLogout}>logout</button>
         </div>
       </nav>
