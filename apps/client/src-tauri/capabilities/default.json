@@ -5,6 +5,6 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "window:allow-set-badge-count"
+    "core:window:allow-set-badge-count"
   ]
 }
