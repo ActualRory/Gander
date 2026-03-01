@@ -16,7 +16,7 @@ export type ServerEvent =
 
 // Events sent from client → server
 export type ClientEvent =
-  | { type: 'message:send'; payload: { channelId: string; content: string } }
+  | { type: 'message:send'; payload: { channelId: string; content: string; replyToId?: string } }
   | { type: 'channel:join'; payload: { channelId: string } }
   | { type: 'channel:leave'; payload: { channelId: string } }
   | { type: 'voice:join'; payload: { channelId: string } }

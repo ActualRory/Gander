@@ -59,7 +59,10 @@ model Message {
 
   authorId  String
   channelId String
+  replyToId String?
 
-  author  User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author  User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  channel Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  replyTo Message? @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies Message[] @relation("MessageReplies")
 }

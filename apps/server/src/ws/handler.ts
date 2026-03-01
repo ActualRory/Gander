@@ -120,12 +120,23 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
       }
 
       case 'message:send': {
-        const { channelId, content } = event.payload
+        const { channelId, content, replyToId } = event.payload
         const author = await prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } })
         if (!author) return
 
+        let replyTo: { id: string; authorName: string; content: string } | null = null
+        if (replyToId) {
+          const original = await prisma.message.findUnique({
+            where: { id: replyToId },
+            select: { id: true, content: true, author: { select: { displayName: true } } },
+          })
+          if (original) {
+            replyTo = { id: original.id, authorName: original.author.displayName, content: original.content.slice(0, 100) }
+          }
+        }
+
         const message = await prisma.message.create({
-          data: { content, channelId, authorId: userId },
+          data: { content, channelId, authorId: userId, ...(replyToId ? { replyToId } : {}) },
         })
 
         broadcast(channelId, {
@@ -138,6 +149,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
             content: message.content,
             createdAt: message.createdAt.toISOString(),
             editedAt: null,
+            replyTo,
           },
         })
         break

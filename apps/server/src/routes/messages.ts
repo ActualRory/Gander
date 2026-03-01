@@ -30,7 +30,10 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         channelId,
         ...(before ? { createdAt: { lt: new Date(before) } } : {}),
       },
-      include: { author: { select: { id: true, displayName: true } } },
+      include: {
+        author: { select: { id: true, displayName: true } },
+        replyTo: { select: { id: true, content: true, author: { select: { displayName: true } } } },
+      },
       orderBy: { createdAt: 'desc' },
       take: Number(limit),
     })
@@ -43,6 +46,9 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
       content: m.content,
       createdAt: m.createdAt.toISOString(),
       editedAt: m.editedAt?.toISOString() ?? null,
+      replyTo: m.replyTo
+        ? { id: m.replyTo.id, authorName: m.replyTo.author.displayName, content: m.replyTo.content.slice(0, 100) }
+        : null,
     }))
   })
 }

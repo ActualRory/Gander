@@ -1,3 +1,9 @@
+export interface MessageReplyPreview {
+  id: string
+  authorName: string
+  content: string
+}
+
 export interface Message {
   id: string
   channelId: string
@@ -6,4 +12,5 @@ export interface Message {
   content: string
   createdAt: string
   editedAt: string | null
+  replyTo: MessageReplyPreview | null
 }

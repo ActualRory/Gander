@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Channel, Message, User } from '@gander/shared'
 import type { GanderWS } from '../lib/ws.ts'
 import { api } from '../lib/api.ts'
+import ContextMenu from './ContextMenu.tsx'
 import styles from './ChannelView.module.css'
 
 const LOGO = `⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣶⣶⣾⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀
@@ -25,7 +26,7 @@ const LOGO = `⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣤⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣠⣤⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣠⣴⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣴⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣤⣴⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄⠀⠀⠀⠀⠀
@@ -61,6 +62,8 @@ export default function ChannelView({ channel, token, ws, onUserRightClick, last
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null)
+  const [msgMenu, setMsgMenu] = useState<{ msgId: string; x: number; y: number } | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -79,6 +82,7 @@ export default function ChannelView({ channel, token, ws, onUserRightClick, last
   useEffect(() => {
     setLoading(true)
     setMessages([])
+    setReplyingTo(null)
     initialScrollDoneRef.current = false
     isAtBottomRef.current = true
 
@@ -136,10 +140,22 @@ export default function ChannelView({ channel, token, ws, onUserRightClick, last
     if (atBottom) onMarkRead()
   }
 
+  function jumpToMessage(id: string) {
+    const el = messagesContainerRef.current?.querySelector(`[data-msg-id="${id}"]`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add(styles.messageHighlight)
+    setTimeout(() => el.classList.remove(styles.messageHighlight), 1200)
+  }
+
   function send() {
     if (!input.trim()) return
-    ws.send({ type: 'message:send', payload: { channelId: channel.id, content: input.trim() } })
+    ws.send({
+      type: 'message:send',
+      payload: { channelId: channel.id, content: input.trim(), ...(replyingTo ? { replyToId: replyingTo.id } : {}) },
+    })
     setInput('')
+    setReplyingTo(null)
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
@@ -147,6 +163,9 @@ export default function ChannelView({ channel, token, ws, onUserRightClick, last
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       send()
+    }
+    if (e.key === 'Escape' && replyingTo) {
+      setReplyingTo(null)
     }
   }
 
@@ -184,14 +203,17 @@ export default function ChannelView({ channel, token, ws, onUserRightClick, last
         {messages.map((msg, i) => {
           const prev = messages[i - 1]
           const grouped = prev && prev.authorId === msg.authorId &&
+            !msg.replyTo &&
             (new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime()) < 5 * 60 * 1000
           const isFirstUnread = msg.id === firstUnreadId
 
           return (
             <div
               key={msg.id}
+              data-msg-id={msg.id}
               ref={isFirstUnread ? el => { firstUnreadRef.current = el } : undefined}
               className={`${styles.message} ${grouped ? styles.grouped : ''}`}
+              onContextMenu={e => { e.preventDefault(); setMsgMenu({ msgId: msg.id, x: e.clientX, y: e.clientY }) }}
             >
               {isFirstUnread && (
                 <div className={styles.unreadDivider}>
@@ -202,9 +224,21 @@ export default function ChannelView({ channel, token, ws, onUserRightClick, last
                 <div className={styles.meta}>
                   <span
                     className={styles.author}
-                    onContextMenu={e => { e.preventDefault(); onUserRightClick(msg.authorId, e.clientX, e.clientY) }}
+                    onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onUserRightClick(msg.authorId, e.clientX, e.clientY) }}
                   >{msg.authorName}</span>
                   <span className={styles.time}>{formatTime(msg.createdAt)}</span>
+                </div>
+              )}
+              {msg.replyTo && (
+                <div
+                  className={styles.replyQuote}
+                  onClick={() => jumpToMessage(msg.replyTo!.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter') jumpToMessage(msg.replyTo!.id) }}
+                >
+                  <span className={styles.replyQuoteAuthor}>↩ @{msg.replyTo.authorName}</span>
+                  <span className={styles.replyQuoteContent}>{msg.replyTo.content}</span>
                 </div>
               )}
               <p className={styles.content}>{msg.content}</p>
@@ -213,6 +247,31 @@ export default function ChannelView({ channel, token, ws, onUserRightClick, last
         })}
         <div ref={bottomRef} />
       </div>
+
+      {msgMenu && (
+        <ContextMenu
+          x={msgMenu.x}
+          y={msgMenu.y}
+          items={[{
+            label: 'Reply',
+            action: () => {
+              const msg = messages.find(m => m.id === msgMenu.msgId)
+              if (msg) setReplyingTo(msg)
+              textareaRef.current?.focus()
+            },
+          }]}
+          onClose={() => setMsgMenu(null)}
+        />
+      )}
+
+      {replyingTo && (
+        <div className={styles.replyBanner}>
+          <span className={styles.replyBannerText}>
+            ↩ replying to <span className={styles.replyBannerAuthor}>@{replyingTo.authorName}</span>
+          </span>
+          <button type="button" className={styles.replyBannerCancel} onClick={() => setReplyingTo(null)}>×</button>
+        </div>
+      )}
 
       <form className={styles.inputBar} onSubmit={e => { e.preventDefault(); send() }}>
         <span className={styles.prompt}>&gt;</span>
