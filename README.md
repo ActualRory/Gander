@@ -1,6 +1,7 @@
 # Gander
 
-Self-hosted, non-federated voice and chat application. Run your own server; users connect to it for DMs, group text channels, and voice channels.
+A self-hosted and non-federated Discord alternative. Run your own server; users connect to it for DMs, group text channels, and voice channels.
+Still early pre-relase, use at your peril.
 
 ---
 
