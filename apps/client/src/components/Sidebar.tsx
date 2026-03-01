@@ -11,6 +11,8 @@ interface Props {
   activeChannelId: string | null
   currentUserId: string
   hiddenChannelIds: Set<string>
+  unreadCounts: Record<string, number>
+  mutedChannelIds: Set<string>
   users: User[]
   voiceChannelId: string | null
   voiceParticipants: Record<string, string[]>
@@ -24,6 +26,8 @@ interface Props {
   onDeleteChannel: (channelId: string) => void
   onHideChannel: (channelId: string) => void
   onToggleChannelVisibility: (channelId: string) => void
+  onMarkRead: (channelId: string) => void
+  onToggleMuted: (channelId: string) => void
   onJoinVoice: (channel: Channel) => void
   onLeaveVoice: () => void
   onToggleMute: () => void
@@ -39,7 +43,7 @@ interface ContextState {
   channel: Channel
 }
 
-export default function Sidebar({ channels, activeChannelId, currentUserId, hiddenChannelIds, users, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, displayName, onLogout }: Props) {
+export default function Sidebar({ channels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mutedChannelIds, users, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, displayName, onLogout }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [renaming, setRenaming] = useState<Channel | null>(null)
@@ -70,6 +74,11 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
   function contextItems(channel: Channel): ContextMenuItem[] {
     const items: ContextMenuItem[] = [
       { label: 'hide', action: () => onHideChannel(channel.id) },
+      { label: 'mark as read', action: () => onMarkRead(channel.id) },
+      {
+        label: mutedChannelIds.has(channel.id) ? 'unmute notifications' : 'mute notifications',
+        action: () => onToggleMuted(channel.id),
+      },
     ]
     if (channel.creatorId === currentUserId) {
       items.push({ label: 'rename', action: () => startRename(channel) })
@@ -94,6 +103,9 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
       )
     }
 
+    const count = unreadCounts[c.id] ?? 0
+    const muted = mutedChannelIds.has(c.id)
+
     return (
       <button
         type="button"
@@ -102,7 +114,12 @@ export default function Sidebar({ channels, activeChannelId, currentUserId, hidd
         onClick={() => onSelectChannel(c)}
         onContextMenu={e => handleContextMenu(e, c)}
       >
-        # {c.name}
+        <span className={styles.channelLabel}># {c.name}</span>
+        {count > 0 && (
+          <span className={`${styles.unreadCount} ${muted ? styles.unreadMuted : ''}`}>
+            [{count}]
+          </span>
+        )}
       </button>
     )
   }

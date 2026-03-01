@@ -6,6 +6,21 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
     try { await req.jwtVerify() } catch { reply.status(401).send({ error: 'Unauthorized' }) }
   })
 
+  // Batch unread counts for multiple channels since given timestamps.
+  // Body: { channelLastReadAt: Record<channelId, isoTimestamp> }
+  // Returns: { channelId: string, count: number }[]
+  app.post('/unread', async (req) => {
+    const { channelLastReadAt } = req.body as { channelLastReadAt: Record<string, string> }
+    return Promise.all(
+      Object.entries(channelLastReadAt).map(async ([channelId, lastReadAt]) => ({
+        channelId,
+        count: await prisma.message.count({
+          where: { channelId, createdAt: { gt: new Date(lastReadAt) } },
+        }),
+      }))
+    )
+  })
+
   app.get('/:channelId', async (req) => {
     const { channelId } = req.params as { channelId: string }
     const { before, limit = '50' } = req.query as { before?: string; limit?: string }

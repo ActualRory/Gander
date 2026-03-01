@@ -52,15 +52,21 @@ interface Props {
   token: string
   ws: GanderWS
   users: User[]
+  lastReadAt: string | null
+  onMarkRead: () => void
   onUserRightClick: (userId: string, x: number, y: number) => void
 }
 
-export default function ChannelView({ channel, token, ws, onUserRightClick }: Props) {
+export default function ChannelView({ channel, token, ws, onUserRightClick, lastReadAt, onMarkRead }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const firstUnreadRef = useRef<HTMLDivElement | null>(null)
+  const isAtBottomRef = useRef(true)
+  const initialScrollDoneRef = useRef(false)
 
   function resize() {
     const el = textareaRef.current
@@ -69,10 +75,12 @@ export default function ChannelView({ channel, token, ws, onUserRightClick }: Pr
     el.style.height = `${el.scrollHeight}px`
   }
 
-  // Load history and join channel whenever the active channel changes
+  // Load history and join channel
   useEffect(() => {
     setLoading(true)
     setMessages([])
+    initialScrollDoneRef.current = false
+    isAtBottomRef.current = true
 
     api.getMessages(token, channel.id).then(msgs => {
       setMessages(msgs)
@@ -101,10 +109,32 @@ export default function ChannelView({ channel, token, ws, onUserRightClick }: Pr
     })
   }, [channel.id, ws])
 
-  // Scroll to bottom when new messages arrive
+  // Initial scroll: to first unread (centred) or to bottom
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (loading) return
+    if (firstUnreadRef.current) {
+      firstUnreadRef.current.scrollIntoView({ block: 'center' })
+    } else {
+      bottomRef.current?.scrollIntoView()
+    }
+    initialScrollDoneRef.current = true
+  }, [loading])
+
+  // Auto-scroll on new messages only when already at bottom
+  useEffect(() => {
+    if (!initialScrollDoneRef.current) return
+    if (isAtBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
+
+  function handleMessagesScroll() {
+    const el = messagesContainerRef.current
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
+    isAtBottomRef.current = atBottom
+    if (atBottom) onMarkRead()
+  }
 
   function send() {
     if (!input.trim()) return
@@ -120,6 +150,18 @@ export default function ChannelView({ channel, token, ws, onUserRightClick }: Pr
     }
   }
 
+  // Find first unread message ID (stable per mount since lastReadAt is fixed)
+  const lastReadTime = lastReadAt ? new Date(lastReadAt).getTime() : null
+  let firstUnreadId: string | null = null
+  if (lastReadTime !== null) {
+    for (const msg of messages) {
+      if (new Date(msg.createdAt).getTime() > lastReadTime) {
+        firstUnreadId = msg.id
+        break
+      }
+    }
+  }
+
   return (
     <div className={styles.root}>
       <div className={styles.watermark} aria-hidden="true">
@@ -130,7 +172,11 @@ export default function ChannelView({ channel, token, ws, onUserRightClick }: Pr
         <span className={styles.channelName}># {channel.name}</span>
       </header>
 
-      <div className={styles.messages}>
+      <div
+        ref={messagesContainerRef}
+        className={styles.messages}
+        onScroll={handleMessagesScroll}
+      >
         {loading && <p className={styles.status}>loading...</p>}
         {!loading && messages.length === 0 && (
           <p className={styles.status}>no messages yet — say something</p>
@@ -139,9 +185,19 @@ export default function ChannelView({ channel, token, ws, onUserRightClick }: Pr
           const prev = messages[i - 1]
           const grouped = prev && prev.authorId === msg.authorId &&
             (new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime()) < 5 * 60 * 1000
+          const isFirstUnread = msg.id === firstUnreadId
 
           return (
-            <div key={msg.id} className={`${styles.message} ${grouped ? styles.grouped : ''}`}>
+            <div
+              key={msg.id}
+              ref={isFirstUnread ? el => { firstUnreadRef.current = el } : undefined}
+              className={`${styles.message} ${grouped ? styles.grouped : ''}`}
+            >
+              {isFirstUnread && (
+                <div className={styles.unreadDivider}>
+                  <span>new messages</span>
+                </div>
+              )}
               {!grouped && (
                 <div className={styles.meta}>
                   <span

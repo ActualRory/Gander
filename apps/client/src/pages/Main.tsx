@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Room, RoomEvent, Track, ParticipantEvent, AudioPresets, LocalAudioTrack } from 'livekit-client'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { Channel, User } from '@gander/shared'
 import type { AuthState } from '../App.tsx'
 import { api } from '../lib/api.ts'
@@ -29,14 +30,36 @@ function saveHidden(userId: string, hidden: Set<string>) {
   localStorage.setItem(`gander:hidden:${userId}`, JSON.stringify([...hidden]))
 }
 
+function loadMuted(userId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(`gander:muted:${userId}`)
+    return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+  } catch { return new Set() }
+}
+
+function saveMuted(userId: string, muted: Set<string>) {
+  localStorage.setItem(`gander:muted:${userId}`, JSON.stringify([...muted]))
+}
+
+function loadLastRead(userId: string, channelId: string): string | null {
+  return localStorage.getItem(`gander:lastread:${userId}:${channelId}`)
+}
+
+function saveLastRead(userId: string, channelId: string) {
+  localStorage.setItem(`gander:lastread:${userId}:${channelId}`, new Date().toISOString())
+}
+
 export default function Main({ auth, onLogout }: Props) {
   const [channels, setChannels] = useState<Channel[]>([])
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set())
   const [hiddenChannelIds, setHiddenChannelIds] = useState<Set<string>>(() => loadHidden(auth.userId))
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
+  const [mutedChannelIds, setMutedChannelIds] = useState<Set<string>>(() => loadMuted(auth.userId))
   const [profileTarget, setProfileTarget] = useState<{ user: User; x: number; y: number } | null>(null)
   const wsRef = useRef<GanderWS | null>(null)
+  const activeChannelRef = useRef<Channel | null>(null)
 
   // Voice state
   const voiceRoomRef = useRef<Room | null>(null)
@@ -68,9 +91,36 @@ export default function Main({ auth, onLogout }: Props) {
   useEffect(() => { isDeafenedRef.current = isDeafened }, [isDeafened])
   useEffect(() => { outputVolumeRef.current = outputVolume }, [outputVolume])
   useEffect(() => { rnnoiseEnabledRef.current = rnnoiseEnabled }, [rnnoiseEnabled])
+  useEffect(() => { activeChannelRef.current = activeChannel }, [activeChannel])
+
+  // Update taskbar badge
+  useEffect(() => {
+    const total = Object.entries(unreadCounts)
+      .filter(([id]) => !mutedChannelIds.has(id))
+      .reduce((sum, [, n]) => sum + n, 0)
+    getCurrentWindow().setBadgeCount(total > 0 ? total : undefined).catch(() => {})
+  }, [unreadCounts, mutedChannelIds])
 
   useEffect(() => {
-    api.getChannels(auth.token).then(setChannels)
+    api.getChannels(auth.token).then(async channels => {
+      setChannels(channels)
+      // Bootstrap unread counts from server for channels we have a read timestamp for.
+      // Channels with no lastReadAt (never visited) always start at 0.
+      const channelLastReadAt: Record<string, string> = {}
+      for (const c of channels) {
+        if (c.type !== 'TEXT') continue
+        const lastRead = loadLastRead(auth.userId, c.id)
+        if (lastRead) channelLastReadAt[c.id] = lastRead
+      }
+      if (Object.keys(channelLastReadAt).length > 0) {
+        const results = await api.getUnreadCounts(auth.token, channelLastReadAt)
+        const counts: Record<string, number> = {}
+        for (const { channelId, count } of results) {
+          if (count > 0) counts[channelId] = count
+        }
+        setUnreadCounts(counts)
+      }
+    })
     api.getUsers(auth.token).then(setUsers)
 
     const ws = new GanderWS(auth.token)
@@ -89,6 +139,11 @@ export default function Main({ auth, onLogout }: Props) {
           return next
         })
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, lastSeenAt } : u))
+      } else if (event.type === 'message:new') {
+        const { channelId } = event.payload
+        if (channelId !== activeChannelRef.current?.id) {
+          setUnreadCounts(prev => ({ ...prev, [channelId]: (prev[channelId] ?? 0) + 1 }))
+        }
       } else if (event.type === 'voice:init') {
         setVoiceParticipants(event.payload.voiceRooms)
       } else if (event.type === 'voice:join') {
@@ -355,6 +410,22 @@ export default function Main({ auth, onLogout }: Props) {
       saveHidden(auth.userId, next)
       return next
     })
+    setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+  }
+
+  function markChannelRead(channelId: string) {
+    setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+    saveLastRead(auth.userId, channelId)
+  }
+
+  function handleToggleMuted(channelId: string) {
+    setMutedChannelIds(prev => {
+      const next = new Set(prev)
+      if (next.has(channelId)) next.delete(channelId)
+      else next.add(channelId)
+      saveMuted(auth.userId, next)
+      return next
+    })
   }
 
   function handleHideChannel(channelId: string) {
@@ -419,6 +490,8 @@ export default function Main({ auth, onLogout }: Props) {
         activeChannelId={activeChannel?.id ?? null}
         currentUserId={auth.userId}
         hiddenChannelIds={hiddenChannelIds}
+        unreadCounts={unreadCounts}
+        mutedChannelIds={mutedChannelIds}
         users={users}
         voiceChannelId={voiceChannelId}
         voiceParticipants={voiceParticipants}
@@ -432,6 +505,8 @@ export default function Main({ auth, onLogout }: Props) {
         onDeleteChannel={handleDeleteChannel}
         onHideChannel={handleHideChannel}
         onToggleChannelVisibility={handleToggleChannelVisibility}
+        onMarkRead={markChannelRead}
+        onToggleMuted={handleToggleMuted}
         onJoinVoice={handleJoinVoice}
         onLeaveVoice={handleLeaveVoice}
         onToggleMute={handleToggleMute}
@@ -449,6 +524,8 @@ export default function Main({ auth, onLogout }: Props) {
             ws={wsRef.current}
             users={users}
             onUserRightClick={handleUserRightClick}
+            lastReadAt={loadLastRead(auth.userId, activeChannel.id)}
+            onMarkRead={() => markChannelRead(activeChannel.id)}
           />
         ) : (
           <p className={styles.placeholder}>select a channel</p>

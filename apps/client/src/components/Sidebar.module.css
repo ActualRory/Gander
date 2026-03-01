@@ -57,7 +57,8 @@
 }
 
 .channel {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   text-align: left;
   background: none;
@@ -66,9 +67,24 @@
   color: var(--text-muted);
   font-size: 13px;
   cursor: pointer;
-  white-space: nowrap;
+  gap: 4px;
+}
+
+.channelLabel {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unreadCount {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.unreadMuted {
+  color: var(--text-muted);
 }
 
 .channel:hover {

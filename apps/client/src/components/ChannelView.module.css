@@ -65,6 +65,25 @@
   margin-top: 14px;
 }
 
+.unreadDivider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--accent-dim);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.unreadDivider::before,
+.unreadDivider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--accent-dim);
+  opacity: 0.4;
+}
+
 .grouped {
   margin-top: 2px;
 }

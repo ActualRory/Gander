@@ -43,6 +43,13 @@ export const api = {
   getMessages: (token: string, channelId: string) =>
     request<Message[]>(`/api/messages/${channelId}`, authed(token)),
 
+  getUnreadCounts: (token: string, channelLastReadAt: Record<string, string>) =>
+    request<{ channelId: string; count: number }[]>('/api/messages/unread', {
+      method: 'POST',
+      body: JSON.stringify({ channelLastReadAt }),
+      ...authed(token),
+    }),
+
   getVoiceToken: (token: string, channelId: string) =>
     request<{ token: string; url: string }>(
       `/api/voice/${channelId}/token`,
