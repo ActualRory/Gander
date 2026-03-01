@@ -92,6 +92,11 @@ export default function ToastPage() {
             <span className={styles.channel}>{toast.channelName}</span>
             <span className={styles.dot}>·</span>
             <span className={styles.author}>{toast.authorName}</span>
+            <button
+              className={styles.close}
+              onClick={e => { e.stopPropagation(); dismiss(toast.id) }}
+              aria-label="dismiss"
+            >✕</button>
           </div>
           <div className={styles.content}>{toast.content}</div>
         </div>
