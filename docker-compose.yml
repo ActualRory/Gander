@@ -35,6 +35,7 @@ services:
       DATABASE_URL: postgresql://gander:${POSTGRES_PASSWORD}@postgres:5432/gander
       JWT_SECRET: ${JWT_SECRET}
       LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL}
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
       PORT: 3000

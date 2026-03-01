@@ -74,6 +74,7 @@ POSTGRES_PASSWORD=change-me
 JWT_SECRET=change-me-long-random-string
 LIVEKIT_API_KEY=prodkey
 LIVEKIT_API_SECRET=change-me-livekit-secret
+LIVEKIT_PUBLIC_URL=ws://your-server-ip:7880
 ```
 
 Replace the `change-me` values with real secrets. To generate secure random strings, run:
@@ -83,6 +84,14 @@ openssl rand -hex 32
 ```
 
 Run that command **twice** — once for `POSTGRES_PASSWORD` and once for `JWT_SECRET`. Pick any long random string you like for `LIVEKIT_API_SECRET`.
+
+For `LIVEKIT_PUBLIC_URL`, use the same public IP you found with `curl ifconfig.me`, on port 7880:
+
+```
+LIVEKIT_PUBLIC_URL=ws://81.152.44.201:7880
+```
+
+This is the address the client app uses to connect to the voice server. It must be reachable from outside your network, so use your public IP (not `192.168.x.x`).
 
 **Important:** `LIVEKIT_API_KEY` must stay as `prodkey` (it matches the key name in `livekit.prod.yaml`). Only change the secret, not the key name.
 
@@ -316,8 +325,10 @@ docker compose logs server
 ```
 Look for error messages. Most common causes: wrong `DATABASE_URL`, migration failure on startup.
 
-**Voice doesn't work**
-Check that UDP ports 50000–50100 are actually forwarded. UDP is easy to miss — make sure you set the protocol to UDP (not TCP) for that range.
+**Voice doesn't work / "could not establish signal connection"**
+- Check that `LIVEKIT_PUBLIC_URL` in your `.env` is set to your public IP on port 7880 (e.g. `ws://81.152.44.201:7880`), not `localhost` or an internal Docker hostname.
+- Check that TCP port 7880 is forwarded and the firewall allows it (see `sudo ufw allow 7880/tcp`).
+- Check that UDP ports 50000–50100 are actually forwarded. UDP is easy to miss — make sure you set the protocol to UDP (not TCP) for that range.
 
 **Friends can't connect at all**
 - Confirm port 3000 TCP is forwarded

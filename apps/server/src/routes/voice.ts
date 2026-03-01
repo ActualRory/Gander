@@ -17,6 +17,7 @@ export const voiceRoutes: FastifyPluginAsync = async (app) => {
     const token = new AccessToken(apiKey, apiSecret, { identity: userId })
     token.addGrant({ roomJoin: true, room: channelId, canPublish: true, canSubscribe: true })
 
-    return { token: await token.toJwt(), url: process.env.LIVEKIT_URL ?? 'ws://localhost:7880' }
+    const livekitUrl = process.env.LIVEKIT_PUBLIC_URL ?? process.env.LIVEKIT_URL ?? 'ws://localhost:7880'
+    return { token: await token.toJwt(), url: livekitUrl }
   })
 }
