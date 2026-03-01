@@ -3,6 +3,8 @@ import goosehonkUrl from '../../sounds/goosehonk1.mp3?url'
 import hangupUrl from '../../sounds/goosebell_hangup1.mp3?url'
 import { Room, RoomEvent, Track, ParticipantEvent, AudioPresets, LocalAudioTrack, ConnectionQuality } from 'livekit-client'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { emitTo } from '@tauri-apps/api/event'
 import type { Channel, User } from '@gander/shared'
 import type { AuthState } from '../App.tsx'
 import { api } from '../lib/api.ts'
@@ -114,6 +116,7 @@ export default function Main({ auth, onLogout }: Props) {
   const [userContextMenu, setUserContextMenu] = useState<{ userId: string; x: number; y: number } | null>(null)
   const wsRef = useRef<GanderWS | null>(null)
   const activeChannelRef = useRef<Channel | null>(null)
+  const channelsRef = useRef<Channel[]>([])
   const dmChannelsRef = useRef<Channel[]>([])
   const mutedChannelIdsRef = useRef<Set<string>>(new Set())
 
@@ -165,14 +168,27 @@ export default function Main({ auth, onLogout }: Props) {
   useEffect(() => { activeChannelRef.current = activeChannel }, [activeChannel])
   useEffect(() => { voiceChannelIdRef.current = voiceChannelId }, [voiceChannelId])
   useEffect(() => { voiceParticipantsRef.current = voiceParticipants }, [voiceParticipants])
+  useEffect(() => { channelsRef.current = channels }, [channels])
   useEffect(() => { dmChannelsRef.current = dmChannels }, [dmChannels])
   useEffect(() => { mutedChannelIdsRef.current = mutedChannelIds }, [mutedChannelIds])
 
-  // Request desktop notification permission
+  // Create the persistent toast window once on mount
   useEffect(() => {
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {})
-    }
+    WebviewWindow.getByLabel('toast').then(existing => {
+      if (existing) return
+      new WebviewWindow('toast', {
+        url: '/?page=toast',
+        width: 340,
+        height: 250,
+        decorations: false,
+        transparent: true,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        visible: false,
+        resizable: false,
+        shadow: false,
+      })
+    }).catch(() => {})
   }, [])
 
   // Update taskbar badge
@@ -243,12 +259,17 @@ export default function Main({ auth, onLogout }: Props) {
         })
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, lastSeenAt } : u))
       } else if (event.type === 'message:new') {
-        const { channelId, authorName, content } = event.payload
+        const { channelId, authorName, content, authorId } = event.payload
         if (channelId !== activeChannelRef.current?.id) {
           setUnreadCounts(prev => ({ ...prev, [channelId]: (prev[channelId] ?? 0) + 1 }))
-          const isDM = dmChannelsRef.current.some(c => c.id === channelId)
-          if (isDM && !mutedChannelIdsRef.current.has(channelId) && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-            new Notification(authorName, { body: content, silent: true })
+          if (authorId !== auth.userId && !mutedChannelIdsRef.current.has(channelId)) {
+            getCurrentWindow().isMinimized().then(minimized => {
+              if (!minimized) return
+              const ch = [...channelsRef.current, ...dmChannelsRef.current].find(c => c.id === channelId)
+              const channelName = ch?.type === 'DM' ? `@${authorName}` : `#${ch?.name ?? channelId}`
+              const truncated = content.length > 120 ? content.slice(0, 120) + '…' : content
+              emitTo('toast', 'toast:new', { authorName, channelName, content: truncated }).catch(() => {})
+            }).catch(() => {})
           }
         }
       } else if (event.type === 'voice:init') {
