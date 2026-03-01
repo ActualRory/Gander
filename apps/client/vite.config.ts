@@ -10,7 +10,7 @@ export default defineConfig({
     strictPort: true,
   },
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(process.env.APP_VERSION ?? pkg.version),
   },
   envPrefix: ['VITE_', 'TAURI_'],
   build: {
