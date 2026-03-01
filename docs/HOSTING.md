@@ -219,9 +219,11 @@ This file is read by Vite (the build tool) when it compiles the app. It's in `.g
 Open a terminal in your Gander repo folder and run:
 
 ```sh
-git add apps/client/.env.local
+git add -f apps/client/.env.local
 git commit -m "set server URL for release"
 ```
+
+The `-f` flag is required because `.env.local` is listed in `.gitignore` by default (to stop secrets being committed by accident). Here you're deliberately committing it so GitHub Actions can read it during the build.
 
 This saves the server address into git so the build can use it.
 
