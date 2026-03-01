@@ -288,7 +288,7 @@ Message
 ## UI Conventions
 
 - **Theme:** CSS custom properties defined in `apps/client/src/styles/global.css`
-- **Font:** Fira Code (must be installed; will be bundled before release)
+- **Font:** Fira Code (bundled — woff2 files in `apps/client/src/assets/fonts/`, `@font-face` declarations in `global.css`)
 - **Naming:** channel names are auto-lowercased and spaces converted to hyphens
 - **Modals:** overlay + centered box, Escape to close, click outside to close
 - **Context menus:** right-click on channels, rendered via `createPortal` to avoid clipping
@@ -362,7 +362,7 @@ GitHub Actions builds a Windows `.exe` and `.msi` installer and publishes them a
 - [ ] DMs
 - [x] Voice (LiveKit integration in client)
 - [ ] Presence indicators (who is online / in which voice channel)
-- [ ] Font bundling for distribution
+- [x] Font bundling for distribution
 
 ## Post-V1
 

@@ -6,7 +6,7 @@
   border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  font-family: 'Fira Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .status {
