@@ -49,7 +49,7 @@ export default function SocialPanel({ users, onlineUserIds, voiceParticipants, o
         key={u.id}
         className={`${styles.user} ${isOffline ? styles.offline : ''}`}
         onClick={e => onUserClick(u.id, e.clientX, e.clientY)}
-        onContextMenu={e => { e.preventDefault(); onUserRightClick(u.id, e.clientX, e.clientY) }}
+        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onUserRightClick(u.id, e.clientX, e.clientY) }}
       >
         <span className={styles.dot}>·</span>
         <span className={styles.userInfo}>

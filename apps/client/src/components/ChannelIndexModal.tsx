@@ -42,6 +42,7 @@ export default function ChannelIndexModal({
 
   function handleContextMenu(e: React.MouseEvent, channel: Channel) {
     e.preventDefault()
+    e.stopPropagation()
     if (channel.creatorId !== currentUserId) return
     setContext({ x: e.clientX, y: e.clientY, channel })
   }

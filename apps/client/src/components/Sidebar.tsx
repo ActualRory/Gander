@@ -62,6 +62,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
 
   function handleContextMenu(e: React.MouseEvent, channel: Channel) {
     e.preventDefault()
+    e.stopPropagation()
     setContext({ x: e.clientX, y: e.clientY, channel })
   }
 
