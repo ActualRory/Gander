@@ -1,7 +1,8 @@
 # An Idiot's Guide to Hosting Gander
 
 This guide gets your Gander server running on a local Ubuntu machine and your friends connected to it.
-Written mainly for my own reference, as an idiot.
+As an idiot, I had this written to keep me on-track during initial deployment. I'll likely only deploy a few more times before switching to automatic updates.
+As which point, I'll hopefully remember to revise this guide for a final time.
 
 ---
 
