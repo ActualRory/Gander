@@ -29,7 +29,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   app.patch('/me', async (req) => {
     const { subtitle } = req.body as { subtitle: string | null }
     return prisma.user.update({
-      where: { id: req.user.userId },
+      where: { id: (req.user as { userId: string }).userId },
       data: { subtitle: subtitle ?? null },
       select: USER_SELECT,
     })

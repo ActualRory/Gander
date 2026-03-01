@@ -7,8 +7,9 @@ RUN npm install -g pnpm
 COPY . .
 
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter server build
+RUN pnpm --filter @gander/shared build
 RUN pnpm --filter server exec prisma generate
+RUN pnpm --filter server build
 
 # --- runner stage ---
 FROM node:22-slim AS runner
