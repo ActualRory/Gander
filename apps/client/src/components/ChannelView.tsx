@@ -160,6 +160,7 @@ export default function ChannelView({ channel, token, ws, users, onUserRightClic
     setInput('')
     setReplyingTo(null)
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    onMarkRead()
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {

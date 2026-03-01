@@ -113,6 +113,8 @@ export default function Main({ auth, onLogout }: Props) {
   const [userContextMenu, setUserContextMenu] = useState<{ userId: string; x: number; y: number } | null>(null)
   const wsRef = useRef<GanderWS | null>(null)
   const activeChannelRef = useRef<Channel | null>(null)
+  const dmChannelsRef = useRef<Channel[]>([])
+  const mutedChannelIdsRef = useRef<Set<string>>(new Set())
 
   // Voice state
   const voiceRoomRef = useRef<Room | null>(null)
@@ -160,6 +162,15 @@ export default function Main({ auth, onLogout }: Props) {
   useEffect(() => { activeChannelRef.current = activeChannel }, [activeChannel])
   useEffect(() => { voiceChannelIdRef.current = voiceChannelId }, [voiceChannelId])
   useEffect(() => { voiceParticipantsRef.current = voiceParticipants }, [voiceParticipants])
+  useEffect(() => { dmChannelsRef.current = dmChannels }, [dmChannels])
+  useEffect(() => { mutedChannelIdsRef.current = mutedChannelIds }, [mutedChannelIds])
+
+  // Request desktop notification permission
+  useEffect(() => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
+  }, [])
 
   // Update taskbar badge
   useEffect(() => {
@@ -191,11 +202,12 @@ export default function Main({ auth, onLogout }: Props) {
 
     api.getDMs(auth.token).then(async dms => {
       setDmChannels(dms)
-      // Bootstrap unread counts for DM channels
+      // Bootstrap unread counts for DM channels — always include every DM.
+      // For channels with no lastRead (never opened), use epoch so all messages count.
       const dmLastReadAt: Record<string, string> = {}
       for (const c of dms) {
         const lastRead = loadLastRead(auth.userId, c.id)
-        if (lastRead) dmLastReadAt[c.id] = lastRead
+        dmLastReadAt[c.id] = lastRead ?? new Date(0).toISOString()
       }
       if (Object.keys(dmLastReadAt).length > 0) {
         const results = await api.getUnreadCounts(auth.token, dmLastReadAt)
@@ -228,9 +240,13 @@ export default function Main({ auth, onLogout }: Props) {
         })
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, lastSeenAt } : u))
       } else if (event.type === 'message:new') {
-        const { channelId } = event.payload
+        const { channelId, authorName, content } = event.payload
         if (channelId !== activeChannelRef.current?.id) {
           setUnreadCounts(prev => ({ ...prev, [channelId]: (prev[channelId] ?? 0) + 1 }))
+          const isDM = dmChannelsRef.current.some(c => c.id === channelId)
+          if (isDM && !mutedChannelIdsRef.current.has(channelId) && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification(authorName, { body: content, silent: true })
+          }
         }
       } else if (event.type === 'voice:init') {
         setVoiceParticipants(event.payload.voiceRooms)
@@ -252,7 +268,16 @@ export default function Main({ auth, onLogout }: Props) {
         }))
       } else if (event.type === 'dm:new') {
         const channel = event.payload
+        const isNew = !dmChannelsRef.current.some(c => c.id === channel.id)
         setDmChannels(prev => prev.some(c => c.id === channel.id) ? prev : [...prev, channel])
+        if (isNew) {
+          // Fetch unread count for this DM — catches messages sent while we were briefly disconnected
+          api.getUnreadCounts(auth.token, { [channel.id]: new Date(0).toISOString() }).then(results => {
+            for (const { channelId, count } of results) {
+              if (count > 0) setUnreadCounts(prev => ({ ...prev, [channelId]: count }))
+            }
+          })
+        }
       }
     })
 
@@ -521,6 +546,11 @@ export default function Main({ auth, onLogout }: Props) {
     saveLastRead(auth.userId, channelId)
   }
 
+  function openChannel(channel: Channel) {
+    setActiveChannel(channel)
+    markChannelRead(channel.id)
+  }
+
   function handleToggleMuted(channelId: string) {
     setMutedChannelIds(prev => {
       const next = new Set(prev)
@@ -583,7 +613,7 @@ export default function Main({ auth, onLogout }: Props) {
         saveHidden(auth.userId, next)
         return next
       })
-      setActiveChannel(channel)
+      openChannel(channel)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setErrorMessage(`failed to open DM: ${msg}`)
@@ -651,7 +681,7 @@ export default function Main({ auth, onLogout }: Props) {
         isDeafened={isDeafened}
         isSpeaking={isSpeaking}
         isReceiving={isReceiving}
-        onSelectChannel={setActiveChannel}
+        onSelectChannel={openChannel}
         onCreateChannel={handleCreateChannel}
         onRenameChannel={handleRenameChannel}
         onDeleteChannel={handleDeleteChannel}
@@ -664,7 +694,7 @@ export default function Main({ auth, onLogout }: Props) {
         onToggleMute={handleToggleMute}
         onToggleDeafen={handleToggleDeafen}
         onOpenVoiceSettings={() => setSettingsOpen(true)}
-        onOpenDM={setActiveChannel}
+        onOpenDM={openChannel}
         onHideDM={handleHideDM}
         displayName={auth.displayName}
         onLogout={onLogout}
