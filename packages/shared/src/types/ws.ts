@@ -1,5 +1,6 @@
 import type { Message } from './message.js'
 import type { Channel } from './channel.js'
+import type { User } from './user.js'
 
 // Events sent from server → client
 export type ServerEvent =
@@ -11,7 +12,7 @@ export type ServerEvent =
   | { type: 'voice:join'; payload: { userId: string; channelId: string } }
   | { type: 'voice:leave'; payload: { userId: string; channelId: string } }
   | { type: 'users:init'; payload: { onlineUserIds: string[] } }
-  | { type: 'user:online'; payload: { userId: string } }
+  | { type: 'user:online'; payload: { userId: string; user: User } }
   | { type: 'user:offline'; payload: { userId: string; lastSeenAt: string } }
   | { type: 'voice:init'; payload: { voiceRooms: Record<string, string[]> } }
   | { type: 'dm:new'; payload: Channel }

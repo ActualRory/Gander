@@ -250,6 +250,7 @@ export default function Main({ auth, onLogout }: Props) {
         setOnlineUserIds(new Set(event.payload.onlineUserIds))
       } else if (event.type === 'user:online') {
         setOnlineUserIds(prev => new Set([...prev, event.payload.userId]))
+        setUsers(prev => prev.some(u => u.id === event.payload.userId) ? prev : [...prev, event.payload.user])
       } else if (event.type === 'user:offline') {
         const { userId, lastSeenAt } = event.payload
         setOnlineUserIds(prev => {

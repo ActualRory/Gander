@@ -77,8 +77,20 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
           type: 'voice:init',
           payload: { voiceRooms: voiceRoomsSnapshot },
         }))
-        // Notify all other clients this user came online
-        broadcastAll({ type: 'user:online', payload: { userId } }, socket)
+        // Notify all other clients this user came online (include user data so new users are discoverable)
+        const connectedUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, username: true, displayName: true, subtitle: true, createdAt: true, lastSeenAt: true },
+        })
+        if (connectedUser) {
+          broadcastAll({
+            type: 'user:online',
+            payload: {
+              userId,
+              user: { ...connectedUser, createdAt: connectedUser.createdAt.toISOString(), lastSeenAt: connectedUser.lastSeenAt?.toISOString() ?? null },
+            },
+          }, socket)
+        }
       } catch {
         socket.close(4001, 'Unauthorized')
       }
