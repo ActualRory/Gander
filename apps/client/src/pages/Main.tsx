@@ -671,7 +671,7 @@ export default function Main({ auth, onLogout }: Props) {
 
   function handleSubtitleUpdate(updated: User) {
     setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))
-    setProfileTarget(prev => prev?.user.id === updated.id ? { ...prev, user: updated } : prev)
+    setProfileTarget(prev => prev && prev.user.id === updated.id ? { ...prev, user: updated } : prev)
     setFullProfileTarget(prev => prev?.id === updated.id ? updated : prev)
   }
 
