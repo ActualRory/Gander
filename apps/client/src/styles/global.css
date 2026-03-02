@@ -67,6 +67,12 @@ html, body, #root {
   overflow: hidden;
 }
 
+.toast-window,
+.toast-window body,
+.toast-window #root {
+  background: transparent !important;
+}
+
 body {
   background: var(--bg-base);
   color: var(--text-primary);
