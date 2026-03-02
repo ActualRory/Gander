@@ -414,6 +414,10 @@ export default function Main({ auth, onLogout }: Props) {
         }
       })
 
+      room.on(RoomEvent.ParticipantDisconnected, () => {
+        new Audio(hangupUrl).play().catch(() => {})
+      })
+
       // Speaking indicators
       room.localParticipant.on(ParticipantEvent.IsSpeakingChanged, (speaking: boolean) => {
         setIsSpeaking(speaking)
