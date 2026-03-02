@@ -96,22 +96,6 @@
   width: 100%;
 }
 
-.rememberToggle {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 11px;
-  text-align: center;
-  cursor: pointer;
-  padding: 0;
-  opacity: 0.7;
-}
-
-.rememberToggle:hover {
-  color: var(--text-secondary);
-  background: none;
-  opacity: 1;
-}
 
 .error {
   color: #c87060;

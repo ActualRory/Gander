@@ -58,7 +58,6 @@ export default function Login({ onAuth, onChangeServer }: Props) {
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   async function submit(e: React.FormEvent) {
@@ -69,11 +68,7 @@ export default function Login({ onAuth, onChangeServer }: Props) {
         ? await api.login(username, password)
         : await api.register(username, displayName, password)
       const authState = { token: res.token, userId: res.user.id, username: res.user.username, displayName: res.user.displayName }
-      if (rememberMe) {
-        localStorage.setItem('gander_auth', JSON.stringify(authState))
-      } else {
-        localStorage.removeItem('gander_auth')
-      }
+      localStorage.setItem('gander_auth', JSON.stringify(authState))
       onAuth(authState)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -120,9 +115,6 @@ export default function Login({ onAuth, onChangeServer }: Props) {
           />
           {error && <p className={styles.error}>{error}</p>}
           <button type="submit">{mode === 'login' ? 'login' : 'register'}</button>
-          <button type="button" className={styles.rememberToggle} onClick={() => setRememberMe(r => !r)}>
-            {rememberMe ? 'click here to forget login credentials' : 'click here to store login details'}
-          </button>
         </form>
         <button className={styles.toggle} onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
           {mode === 'login' ? 'click here to create an account' : 'have an account? login'}
