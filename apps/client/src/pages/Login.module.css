@@ -96,19 +96,21 @@
   width: 100%;
 }
 
-.remember {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
+.rememberToggle {
+  background: none;
+  border: none;
   color: var(--text-muted);
+  font-size: 11px;
+  text-align: center;
   cursor: pointer;
-  user-select: none;
+  padding: 0;
+  opacity: 0.7;
 }
 
-.remember input[type="checkbox"] {
-  cursor: pointer;
-  accent-color: var(--text-secondary);
+.rememberToggle:hover {
+  color: var(--text-secondary);
+  background: none;
+  opacity: 1;
 }
 
 .error {

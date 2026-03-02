@@ -118,19 +118,14 @@ export default function Login({ onAuth, onChangeServer }: Props) {
             required
             autoComplete="current-password"
           />
-          <label className={styles.remember}>
-            <input
-              type="checkbox"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-            />
-            remember me
-          </label>
           {error && <p className={styles.error}>{error}</p>}
           <button type="submit">{mode === 'login' ? 'login' : 'register'}</button>
+          <button type="button" className={styles.rememberToggle} onClick={() => setRememberMe(r => !r)}>
+            {rememberMe ? 'click here to forget login credentials' : 'click here to store login details'}
+          </button>
         </form>
         <button className={styles.toggle} onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
-          {mode === 'login' ? 'no account? register' : 'have an account? login'}
+          {mode === 'login' ? 'click here to create an account' : 'have an account? login'}
         </button>
       </div>
       <p className={styles.credit}>direct all feedback to rory</p>
