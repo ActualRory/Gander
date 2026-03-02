@@ -264,8 +264,8 @@ export default function Main({ auth, onLogout }: Props) {
         if (channelId !== activeChannelRef.current?.id) {
           setUnreadCounts(prev => ({ ...prev, [channelId]: (prev[channelId] ?? 0) + 1 }))
           if (authorId !== auth.userId && !mutedChannelIdsRef.current.has(channelId)) {
-            getCurrentWindow().isMinimized().then(minimized => {
-              if (!minimized) return
+            getCurrentWindow().isFocused().then(focused => {
+              if (focused) return
               const ch = [...channelsRef.current, ...dmChannelsRef.current].find(c => c.id === channelId)
               const channelName = ch?.type === 'DM' ? `@${authorName}` : `#${ch?.name ?? channelId}`
               const truncated = content.length > 120 ? content.slice(0, 120) + '…' : content
