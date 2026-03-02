@@ -366,6 +366,12 @@ export default function Main({ auth, onLogout }: Props) {
     }
 
     try {
+      // Reset deafen state synchronously before registering TrackSubscribed —
+      // the handler fires during room.connect() before React can re-render and
+      // run the isDeafenedRef sync effect, so the ref must be correct in advance.
+      isDeafenedRef.current = false
+      setIsDeafened(false)
+
       const { token, url } = await api.getVoiceToken(auth.token, channel.id)
       const room = new Room({
         disconnectOnPageLeave: false,
@@ -478,7 +484,6 @@ export default function Main({ auth, onLogout }: Props) {
 
       wsRef.current?.send({ type: 'voice:join', payload: { channelId: channel.id } })
       setVoiceChannelId(channel.id)
-      setIsDeafened(false)
     } catch (err) {
       console.error('Failed to join voice channel:', err)
       voiceRoomRef.current = null
