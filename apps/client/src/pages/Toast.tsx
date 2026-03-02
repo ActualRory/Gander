@@ -41,14 +41,15 @@ export default function ToastPage() {
     }
   }, [])
 
-  // Show/hide the window based on queue state
+  // On mount, make the window pass-through so it never blocks the desktop while empty.
+  // We keep the window visible at all times (hidden windows get JS throttled on Windows/WebView2).
   useEffect(() => {
-    const win = getCurrentWindow()
-    if (toasts.length > 0) {
-      win.show().catch(() => {})
-    } else {
-      win.hide().catch(() => {})
-    }
+    getCurrentWindow().setIgnoreCursorEvents(true).catch(() => {})
+  }, [])
+
+  // Toggle cursor pass-through based on whether there are active toasts.
+  useEffect(() => {
+    getCurrentWindow().setIgnoreCursorEvents(toasts.length === 0).catch(() => {})
   }, [toasts.length])
 
   function dismiss(id: string) {

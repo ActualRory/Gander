@@ -3,6 +3,7 @@ import goosehonkUrl from '../../sounds/goosehonk1.mp3?url'
 import hangupUrl from '../../sounds/goosebell_hangup1.mp3?url'
 import { Room, RoomEvent, Track, ParticipantEvent, AudioPresets, LocalAudioTrack, ConnectionQuality } from 'livekit-client'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { Image as TauriImage } from '@tauri-apps/api/image'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { emitTo } from '@tauri-apps/api/event'
 import type { Channel, User } from '@gander/shared'
@@ -35,6 +36,28 @@ function playHonks(count: number) {
       audio.play().catch(() => {})
     }, delay)
   }
+}
+
+async function makeBadgeOverlay(text: string): Promise<TauriImage> {
+  const size = 32
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#c8a96e'
+  ctx.beginPath()
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#1a1a0e'
+  ctx.font = `bold ${text.length > 1 ? 13 : 17}px monospace`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(text, size / 2, size / 2 + 1)
+  const base64 = canvas.toDataURL('image/png').split(',')[1]
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return TauriImage.fromBytes(bytes)
 }
 
 function loadHidden(userId: string): Set<string> {
@@ -199,7 +222,6 @@ export default function Main({ auth, onLogout }: Props) {
         transparent: true,
         alwaysOnTop: true,
         skipTaskbar: true,
-        visible: false,
         resizable: false,
       })
     }).catch(() => {})
@@ -210,7 +232,15 @@ export default function Main({ auth, onLogout }: Props) {
     const total = Object.entries(unreadCounts)
       .filter(([id]) => !mutedChannelIds.has(id))
       .reduce((sum, [, n]) => sum + n, 0)
-    getCurrentWindow().setBadgeCount(total > 0 ? total : undefined).catch(() => {})
+    const win = getCurrentWindow()
+    win.setBadgeCount(total > 0 ? total : undefined).catch(() => {})
+    const badge = total >= 10 ? '!!' : total >= 1 ? '!' : null
+    win.setTitle(badge ? `[${badge}] Gander` : 'Gander').catch(() => {})
+    if (badge) {
+      makeBadgeOverlay(badge).then(img => win.setOverlayIcon(img)).catch(() => {})
+    } else {
+      win.setOverlayIcon(undefined).catch(() => {})
+    }
   }, [unreadCounts, mutedChannelIds])
 
   useEffect(() => {
