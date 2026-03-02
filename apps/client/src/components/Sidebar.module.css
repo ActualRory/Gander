@@ -121,6 +121,14 @@
   color: var(--accent-dim);
 }
 
+.voiceParticipantInteractive {
+  cursor: context-menu;
+}
+
+.voiceParticipantInteractive:hover {
+  color: var(--text);
+}
+
 .dmChannel {
   display: flex;
   align-items: center;

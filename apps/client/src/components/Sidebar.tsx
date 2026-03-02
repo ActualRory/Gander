@@ -4,6 +4,7 @@ import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import ChannelIndexModal from './ChannelIndexModal.tsx'
 import ConfirmDeleteModal from './ConfirmDeleteModal.tsx'
 import VoiceControls, { type VoiceStats } from './VoiceControls.tsx'
+import ParticipantVolumeMenu from './ParticipantVolumeMenu.tsx'
 import styles from './Sidebar.module.css'
 
 interface Props {
@@ -40,6 +41,8 @@ interface Props {
   onHideDM: (channelId: string) => void
   displayName: string
   onLogout: () => void
+  participantVolumes: Record<string, number>
+  onSetParticipantVolume: (userId: string, vol: number) => void
 }
 
 interface ContextState {
@@ -48,9 +51,17 @@ interface ContextState {
   channel: Channel
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, displayName, onLogout }: Props) {
+interface ParticipantVolumeState {
+  x: number
+  y: number
+  userId: string
+  userName: string
+}
+
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, displayName, onLogout, participantVolumes, onSetParticipantVolume }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
+  const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
   const [renaming, setRenaming] = useState<Channel | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [deleting, setDeleting] = useState<Channel | null>(null)
@@ -184,9 +195,25 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
         </button>
         {participants.map(uid => {
           const user = users.find(u => u.id === uid)
+          const name = user?.displayName ?? uid
+          if (uid === currentUserId) {
+            return (
+              <div key={uid} className={styles.voiceParticipant}>
+                {name}
+              </div>
+            )
+          }
           return (
-            <div key={uid} className={styles.voiceParticipant}>
-              {user?.displayName ?? uid}
+            <div
+              key={uid}
+              className={`${styles.voiceParticipant} ${styles.voiceParticipantInteractive}`}
+              onContextMenu={e => {
+                e.preventDefault()
+                e.stopPropagation()
+                setParticipantVolumeMenu({ x: e.clientX, y: e.clientY, userId: uid, userName: name })
+              }}
+            >
+              {name}
             </div>
           )
         })}
@@ -283,6 +310,18 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           y={context.y}
           items={contextItems(context.channel)}
           onClose={() => setContext(null)}
+        />
+      )}
+
+      {participantVolumeMenu && (
+        <ParticipantVolumeMenu
+          x={participantVolumeMenu.x}
+          y={participantVolumeMenu.y}
+          userId={participantVolumeMenu.userId}
+          userName={participantVolumeMenu.userName}
+          volume={participantVolumes[participantVolumeMenu.userId] ?? 1.0}
+          onSetVolume={onSetParticipantVolume}
+          onClose={() => setParticipantVolumeMenu(null)}
         />
       )}
 

@@ -130,9 +130,11 @@ export default function Main({ auth, onLogout }: Props) {
   const [isReceiving, setIsReceiving] = useState(false)
   const [voiceStats, setVoiceStats] = useState<VoiceStats | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [participantVolumes, setParticipantVolumes] = useState<Record<string, number>>({})
   const isDeafenedRef = useRef(false)
   const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const intentionalDisconnectRef = useRef(false)
+  const participantVolumesRef = useRef<Record<string, number>>({})
 
   // Voice settings state - persisted to localStorage keyed by userId
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -168,6 +170,7 @@ export default function Main({ auth, onLogout }: Props) {
   useEffect(() => { activeChannelRef.current = activeChannel }, [activeChannel])
   useEffect(() => { voiceChannelIdRef.current = voiceChannelId }, [voiceChannelId])
   useEffect(() => { voiceParticipantsRef.current = voiceParticipants }, [voiceParticipants])
+  useEffect(() => { participantVolumesRef.current = participantVolumes }, [participantVolumes])
   useEffect(() => { channelsRef.current = channels }, [channels])
   useEffect(() => { dmChannelsRef.current = dmChannels }, [dmChannels])
   useEffect(() => { mutedChannelIdsRef.current = mutedChannelIds }, [mutedChannelIds])
@@ -392,7 +395,8 @@ export default function Main({ auth, onLogout }: Props) {
         if (track.kind === Track.Kind.Audio) {
           const el = track.attach()
           document.body.appendChild(el)
-          participant.setVolume(isDeafenedRef.current ? 0 : outputVolumeRef.current)
+          const multiplier = participantVolumesRef.current[participant.identity] ?? 1.0
+          participant.setVolume(isDeafenedRef.current ? 0 : Math.min(2, outputVolumeRef.current * multiplier))
         }
       })
 
@@ -503,7 +507,10 @@ export default function Main({ auth, onLogout }: Props) {
     // Unmuting while deafened also undeafens (Discord behaviour)
     if (!next && isDeafened) {
       setIsDeafened(false)
-      for (const p of room.remoteParticipants.values()) p.setVolume(outputVolumeRef.current)
+      for (const p of room.remoteParticipants.values()) {
+        const multiplier = participantVolumesRef.current[p.identity] ?? 1.0
+        p.setVolume(Math.min(2, outputVolumeRef.current * multiplier))
+      }
     }
   }
 
@@ -518,7 +525,8 @@ export default function Main({ auth, onLogout }: Props) {
       setIsMuted(true)
     }
     for (const p of room.remoteParticipants.values()) {
-      p.setVolume(next ? 0 : outputVolumeRef.current)
+      const multiplier = participantVolumesRef.current[p.identity] ?? 1.0
+      p.setVolume(next ? 0 : Math.min(2, outputVolumeRef.current * multiplier))
     }
   }
 
@@ -539,7 +547,19 @@ export default function Main({ auth, onLogout }: Props) {
     setOutputVolume(vol)
     outputVolumeRef.current = vol
     if (!isDeafened && voiceRoomRef.current) {
-      for (const p of voiceRoomRef.current.remoteParticipants.values()) p.setVolume(vol)
+      for (const p of voiceRoomRef.current.remoteParticipants.values()) {
+        const multiplier = participantVolumesRef.current[p.identity] ?? 1.0
+        p.setVolume(Math.min(2, vol * multiplier))
+      }
+    }
+  }
+
+  function handleSetParticipantVolume(userId: string, multiplier: number) {
+    setParticipantVolumes(prev => ({ ...prev, [userId]: multiplier }))
+    participantVolumesRef.current = { ...participantVolumesRef.current, [userId]: multiplier }
+    if (!isDeafened && voiceRoomRef.current) {
+      const p = [...voiceRoomRef.current.remoteParticipants.values()].find(p => p.identity === userId)
+      p?.setVolume(Math.min(2, outputVolumeRef.current * multiplier))
     }
   }
 
@@ -768,6 +788,8 @@ export default function Main({ auth, onLogout }: Props) {
         onHideDM={handleHideDM}
         displayName={auth.displayName}
         onLogout={onLogout}
+        participantVolumes={participantVolumes}
+        onSetParticipantVolume={handleSetParticipantVolume}
       />
       <main className={styles.content}>
         {activeChannel && wsRef.current ? (
