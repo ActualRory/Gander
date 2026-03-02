@@ -128,6 +128,7 @@ export default function Main({ auth, onLogout }: Props) {
   const [isDeafened, setIsDeafened] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [isReceiving, setIsReceiving] = useState(false)
+  const [speakingUserIds, setSpeakingUserIds] = useState<Set<string>>(new Set())
   const [voiceStats, setVoiceStats] = useState<VoiceStats | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [participantVolumes, setParticipantVolumes] = useState<Record<string, number>>({})
@@ -386,6 +387,7 @@ export default function Main({ auth, onLogout }: Props) {
         setIsDeafened(false)
         setIsSpeaking(false)
         setIsReceiving(false)
+        setSpeakingUserIds(new Set())
         setVoiceStats(null)
         setSettingsOpen(false)
       })
@@ -411,7 +413,9 @@ export default function Main({ auth, onLogout }: Props) {
         setIsSpeaking(speaking)
       })
       room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
-        setIsReceiving(speakers.some(p => p.identity !== room.localParticipant.identity))
+        const remotes = speakers.filter(p => p.identity !== room.localParticipant.identity)
+        setIsReceiving(remotes.length > 0)
+        setSpeakingUserIds(new Set(remotes.map(p => p.identity)))
       })
 
       await room.connect(url, token)
@@ -496,6 +500,7 @@ export default function Main({ auth, onLogout }: Props) {
     setIsDeafened(false)
     setIsSpeaking(false)
     setIsReceiving(false)
+    setSpeakingUserIds(new Set())
     setSettingsOpen(false)
   }
 
@@ -771,6 +776,7 @@ export default function Main({ auth, onLogout }: Props) {
         isDeafened={isDeafened}
         isSpeaking={isSpeaking}
         isReceiving={isReceiving}
+        speakingUserIds={speakingUserIds}
         onSelectChannel={openChannel}
         onCreateChannel={handleCreateChannel}
         onRenameChannel={handleRenameChannel}

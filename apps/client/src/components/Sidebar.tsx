@@ -23,6 +23,7 @@ interface Props {
   isDeafened: boolean
   isSpeaking: boolean
   isReceiving: boolean
+  speakingUserIds: Set<string>
   onSelectChannel: (channel: Channel) => void
   onCreateChannel: (name: string, type: 'TEXT' | 'VOICE') => void
   onRenameChannel: (channelId: string, name: string) => void
@@ -58,7 +59,7 @@ interface ParticipantVolumeState {
   userName: string
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, displayName, onLogout, participantVolumes, onSetParticipantVolume }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, displayName, onLogout, participantVolumes, onSetParticipantVolume }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -196,9 +197,10 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
         {participants.map(uid => {
           const user = users.find(u => u.id === uid)
           const name = user?.displayName ?? uid
+          const isTalking = uid === currentUserId ? isSpeaking : speakingUserIds.has(uid)
           if (uid === currentUserId) {
             return (
-              <div key={uid} className={styles.voiceParticipant}>
+              <div key={uid} className={`${styles.voiceParticipant} ${isTalking ? styles.voiceParticipantSpeaking : ''}`}>
                 {name}
               </div>
             )
@@ -206,7 +208,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           return (
             <div
               key={uid}
-              className={`${styles.voiceParticipant} ${styles.voiceParticipantInteractive}`}
+              className={`${styles.voiceParticipant} ${styles.voiceParticipantInteractive} ${isTalking ? styles.voiceParticipantSpeaking : ''}`}
               onContextMenu={e => {
                 e.preventDefault()
                 e.stopPropagation()

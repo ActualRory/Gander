@@ -129,6 +129,10 @@
   color: var(--text);
 }
 
+.voiceParticipantSpeaking {
+  color: var(--accent);
+}
+
 .dmChannel {
   display: flex;
   align-items: center;
