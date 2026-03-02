@@ -4,34 +4,51 @@ import { getServerUrl } from './config.ts'
 type EventHandler = (event: ServerEvent) => void
 
 export class GanderWS {
-  private ws: WebSocket
+  private ws: WebSocket | null = null
   private handlers = new Set<EventHandler>()
   private authed = false
   private queue: ClientEvent[] = []
+  private dead = false
+  private token: string
+  private wsUrl: string
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(token: string) {
     const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
-    const wsUrl = base.replace(/^http/, 'ws') + '/ws'
+    this.wsUrl = base.replace(/^http/, 'ws') + '/ws'
+    this.token = token
+    this.connect()
+  }
 
-    this.ws = new WebSocket(wsUrl)
+  private connect() {
+    const ws = new WebSocket(this.wsUrl)
+    this.ws = ws
 
-    this.ws.onopen = () => {
-      this.ws.send(JSON.stringify({ type: 'auth', token }))
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'auth', token: this.token }))
       this.authed = true
       for (const event of this.queue) {
-        this.ws.send(JSON.stringify(event))
+        ws.send(JSON.stringify(event))
       }
       this.queue = []
     }
 
-    this.ws.onmessage = (e: MessageEvent<string>) => {
+    ws.onmessage = (e: MessageEvent<string>) => {
       const event = JSON.parse(e.data) as ServerEvent
       for (const handler of this.handlers) handler(event)
+    }
+
+    ws.onclose = () => {
+      this.authed = false
+      this.ws = null
+      if (!this.dead) {
+        this.reconnectTimer = setTimeout(() => this.connect(), 3000)
+      }
     }
   }
 
   send(event: ClientEvent) {
-    if (this.authed) {
+    if (this.authed && this.ws) {
       this.ws.send(JSON.stringify(event))
     } else {
       this.queue.push(event)
@@ -44,6 +61,8 @@ export class GanderWS {
   }
 
   close() {
-    this.ws.close()
+    this.dead = true
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer)
+    this.ws?.close()
   }
 }
