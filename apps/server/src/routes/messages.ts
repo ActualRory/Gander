@@ -10,12 +10,13 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
   // Body: { channelLastReadAt: Record<channelId, isoTimestamp> }
   // Returns: { channelId: string, count: number }[]
   app.post('/unread', async (req) => {
+    const { userId } = req.user as { userId: string }
     const { channelLastReadAt } = req.body as { channelLastReadAt: Record<string, string> }
     return Promise.all(
       Object.entries(channelLastReadAt).map(async ([channelId, lastReadAt]) => ({
         channelId,
         count: await prisma.message.count({
-          where: { channelId, createdAt: { gt: new Date(lastReadAt) } },
+          where: { channelId, authorId: { not: userId }, createdAt: { gt: new Date(lastReadAt) } },
         }),
       }))
     )
