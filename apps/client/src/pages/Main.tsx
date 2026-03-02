@@ -324,7 +324,7 @@ export default function Main({ auth, onLogout }: Props) {
       if (e.code !== pttKey || e.repeat) return
       const room = voiceRoomRef.current
       if (!room) return
-      await room.localParticipant.setMicrophoneEnabled(true, { noiseSuppression, echoCancellation, autoGainControl }, { audioPreset: AudioPresets.musicHighQuality })
+      await room.localParticipant.setMicrophoneEnabled(true, { noiseSuppression, echoCancellation, autoGainControl }, { audioPreset: AudioPresets.musicHighQualityStereo })
       // Apply RNNoise on first PTT press if enabled and not yet applied
       if (rnnoiseEnabledRef.current && !rnnoiseProcessorRef.current) {
         const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone)
@@ -365,7 +365,7 @@ export default function Main({ auth, onLogout }: Props) {
       const { token, url } = await api.getVoiceToken(auth.token, channel.id)
       const room = new Room({
         disconnectOnPageLeave: false,
-        audioCaptureDefaults: { echoCancellation, noiseSuppression, autoGainControl },
+        audioCaptureDefaults: { echoCancellation, noiseSuppression, autoGainControl, channelCount: 2, sampleRate: 48000 },
       })
       voiceRoomRef.current = room
 
@@ -445,7 +445,7 @@ export default function Main({ auth, onLogout }: Props) {
         await room.localParticipant.setMicrophoneEnabled(false)
         setIsMuted(true)
       } else {
-        await room.localParticipant.setMicrophoneEnabled(true, { noiseSuppression, echoCancellation, autoGainControl }, { audioPreset: AudioPresets.musicHighQuality })
+        await room.localParticipant.setMicrophoneEnabled(true, { noiseSuppression, echoCancellation, autoGainControl }, { audioPreset: AudioPresets.musicHighQualityStereo })
         setIsMuted(false)
         // Apply RNNoise if enabled
         if (rnnoiseEnabled) {
@@ -571,7 +571,7 @@ export default function Main({ auth, onLogout }: Props) {
     await voiceRoomRef.current.localParticipant.setMicrophoneEnabled(
       true,
       { noiseSuppression: ns, echoCancellation: ec, autoGainControl: agc },
-      { audioPreset: AudioPresets.musicHighQuality }
+      { audioPreset: AudioPresets.musicHighQualityStereo }
     )
   }
 
