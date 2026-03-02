@@ -58,6 +58,7 @@ export default function Login({ onAuth, onChangeServer }: Props) {
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   async function submit(e: React.FormEvent) {
@@ -67,7 +68,13 @@ export default function Login({ onAuth, onChangeServer }: Props) {
       const res = mode === 'login'
         ? await api.login(username, password)
         : await api.register(username, displayName, password)
-      onAuth({ token: res.token, userId: res.user.id, username: res.user.username, displayName: res.user.displayName })
+      const authState = { token: res.token, userId: res.user.id, username: res.user.username, displayName: res.user.displayName }
+      if (rememberMe) {
+        localStorage.setItem('gander_auth', JSON.stringify(authState))
+      } else {
+        localStorage.removeItem('gander_auth')
+      }
+      onAuth(authState)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     }
@@ -111,6 +118,14 @@ export default function Login({ onAuth, onChangeServer }: Props) {
             required
             autoComplete="current-password"
           />
+          <label className={styles.remember}>
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+            />
+            remember me
+          </label>
           {error && <p className={styles.error}>{error}</p>}
           <button type="submit">{mode === 'login' ? 'login' : 'register'}</button>
         </form>

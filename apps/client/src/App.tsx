@@ -24,7 +24,14 @@ interface TextMenu {
 
 export default function App() {
   const [serverConfigured, setServerConfigured] = useState(() => getServerUrl() !== null)
-  const [auth, setAuth] = useState<AuthState | null>(null)
+  const [auth, setAuth] = useState<AuthState | null>(() => {
+    try {
+      const saved = localStorage.getItem('gander_auth')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
   const [bootDone, setBootDone] = useState(false)
   const [bootClearing, setBootClearing] = useState(false)
   const [textMenu, setTextMenu] = useState<TextMenu | null>(null)
@@ -60,6 +67,7 @@ export default function App() {
   }
 
   function handleChangeServer() {
+    localStorage.removeItem('gander_auth')
     clearServerUrl()
     setAuth(null)
     setServerConfigured(false)
@@ -69,7 +77,7 @@ export default function App() {
   function renderPage() {
     if (!serverConfigured) return <ServerSetup onConfigured={handleConfigured} bootClearing={bootClearing} />
     if (!auth) return <Login onAuth={setAuth} onChangeServer={handleChangeServer} />
-    return <Main auth={auth} onLogout={() => setAuth(null)} />
+    return <Main auth={auth} onLogout={() => { localStorage.removeItem('gander_auth'); setAuth(null) }} />
   }
 
   function textMenuItems() {

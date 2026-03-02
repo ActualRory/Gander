@@ -96,6 +96,21 @@
   width: 100%;
 }
 
+.remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.remember input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--text-secondary);
+}
+
 .error {
   color: #c87060;
   font-size: 12px;
