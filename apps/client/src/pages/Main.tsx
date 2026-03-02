@@ -4,8 +4,7 @@ import hangupUrl from '../../sounds/goosebell_hangup1.mp3?url'
 import { Room, RoomEvent, Track, ParticipantEvent, AudioPresets, LocalAudioTrack, ConnectionQuality } from 'livekit-client'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Image as TauriImage } from '@tauri-apps/api/image'
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { emitTo } from '@tauri-apps/api/event'
+import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import type { Channel, User } from '@gander/shared'
 import type { AuthState } from '../App.tsx'
 import { api } from '../lib/api.ts'
@@ -200,30 +199,10 @@ export default function Main({ auth, onLogout }: Props) {
   useEffect(() => { dmChannelsRef.current = dmChannels }, [dmChannels])
   useEffect(() => { mutedChannelIdsRef.current = mutedChannelIds }, [mutedChannelIds])
 
-  // Create the persistent toast window once on mount.
-  // Position is calculated here (in the visible main window) rather than
-  // inside the toast webview, where screen.availWidth/Height can be unreliable
-  // for a hidden window on Windows.
+  // Request notification permission on mount
   useEffect(() => {
-    WebviewWindow.getByLabel('toast').then(existing => {
-      if (existing) return
-      const W = 340
-      const H = 250
-      const MARGIN = 12
-      const x = screen.availWidth - W - MARGIN
-      const y = screen.availHeight - H - MARGIN
-      new WebviewWindow('toast', {
-        url: '/?page=toast',
-        width: W,
-        height: H,
-        x,
-        y,
-        decorations: false,
-        transparent: true,
-        alwaysOnTop: true,
-        skipTaskbar: true,
-        resizable: false,
-      })
+    isPermissionGranted().then(granted => {
+      if (!granted) requestPermission().catch(() => {})
     }).catch(() => {})
   }, [])
 
@@ -313,7 +292,7 @@ export default function Main({ auth, onLogout }: Props) {
               const ch = [...channelsRef.current, ...dmChannelsRef.current].find(c => c.id === channelId)
               const channelName = ch?.type === 'DM' ? `@${authorName}` : `#${ch?.name ?? channelId}`
               const truncated = content.length > 120 ? content.slice(0, 120) + '…' : content
-              emitTo('toast', 'toast:new', { authorName, channelName, content: truncated }).catch(() => {})
+              sendNotification({ title: `${channelName} · ${authorName}`, body: truncated })
             }).catch(() => {})
           }
         }
