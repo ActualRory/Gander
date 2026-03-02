@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
-import { getCurrentWindow, LogicalPosition } from '@tauri-apps/api/window'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import styles from './Toast.module.css'
 
@@ -14,17 +14,6 @@ interface ToastItem {
 export default function ToastPage() {
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-
-  // Self-position at bottom-right of available screen area on mount
-  useEffect(() => {
-    const win = getCurrentWindow()
-    const W = 340
-    const H = 250
-    const MARGIN = 12
-    const x = screen.availWidth - W - MARGIN
-    const y = screen.availHeight - H - MARGIN
-    win.setPosition(new LogicalPosition(x, y)).catch(() => {})
-  }, [])
 
   // Listen for toast events from the main window
   useEffect(() => {

@@ -177,21 +177,30 @@ export default function Main({ auth, onLogout }: Props) {
   useEffect(() => { dmChannelsRef.current = dmChannels }, [dmChannels])
   useEffect(() => { mutedChannelIdsRef.current = mutedChannelIds }, [mutedChannelIds])
 
-  // Create the persistent toast window once on mount
+  // Create the persistent toast window once on mount.
+  // Position is calculated here (in the visible main window) rather than
+  // inside the toast webview, where screen.availWidth/Height can be unreliable
+  // for a hidden window on Windows.
   useEffect(() => {
     WebviewWindow.getByLabel('toast').then(existing => {
       if (existing) return
+      const W = 340
+      const H = 250
+      const MARGIN = 12
+      const x = screen.availWidth - W - MARGIN
+      const y = screen.availHeight - H - MARGIN
       new WebviewWindow('toast', {
         url: '/?page=toast',
-        width: 340,
-        height: 250,
+        width: W,
+        height: H,
+        x,
+        y,
         decorations: false,
         transparent: true,
         alwaysOnTop: true,
         skipTaskbar: true,
         visible: false,
         resizable: false,
-        shadow: false,
       })
     }).catch(() => {})
   }, [])
