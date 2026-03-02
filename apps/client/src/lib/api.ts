@@ -67,4 +67,10 @@ export const api = {
 
   startDM: (token: string, targetUserId: string) =>
     request<Channel>('/api/dm', { method: 'POST', body: JSON.stringify({ targetUserId }), ...authed(token) }),
+
+  addReaction: (token: string, messageId: string, reaction: string) =>
+    request<void>(`/api/reactions/${messageId}`, { method: 'POST', body: JSON.stringify({ reaction }), ...authed(token) }),
+
+  removeReaction: (token: string, messageId: string, reaction: string) =>
+    request<void>(`/api/reactions/${messageId}?reaction=${encodeURIComponent(reaction)}`, { method: 'DELETE', ...authed(token) }),
 }

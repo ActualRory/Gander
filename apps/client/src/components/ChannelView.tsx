@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { Channel, Message, User } from '@gander/shared'
 import type { GanderWS } from '../lib/ws.ts'
 import { api } from '../lib/api.ts'
 import ContextMenu from './ContextMenu.tsx'
+import ReactionPicker from './ReactionPicker.tsx'
 import styles from './ChannelView.module.css'
 
 const LOGO = `⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣶⣶⣾⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀
@@ -53,12 +55,13 @@ interface Props {
   token: string
   ws: GanderWS
   users: User[]
+  currentUserId: string
   lastReadAt: string | null
   onMarkRead: () => void
   onUserRightClick: (userId: string, x: number, y: number) => void
 }
 
-export default function ChannelView({ channel, token, ws, users, onUserRightClick, lastReadAt, onMarkRead }: Props) {
+export default function ChannelView({ channel, token, ws, users, currentUserId, onUserRightClick, lastReadAt, onMarkRead }: Props) {
   const channelLabel = channel.type === 'DM'
     ? (users.find(u => u.id === channel.otherUserId)?.displayName ?? channel.name)
     : `# ${channel.name}`
@@ -67,6 +70,8 @@ export default function ChannelView({ channel, token, ws, users, onUserRightClic
   const [loading, setLoading] = useState(true)
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [msgMenu, setMsgMenu] = useState<{ msgId: string; x: number; y: number } | null>(null)
+  const [reactionPicker, setReactionPicker] = useState<{ msgId: string; x: number; y: number } | null>(null)
+  const [reactionTooltip, setReactionTooltip] = useState<{ names: string[]; rect: DOMRect } | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -112,6 +117,11 @@ export default function ChannelView({ channel, token, ws, users, onUserRightClic
       }
       if (event.type === 'message:deleted' && event.payload.channelId === channel.id) {
         setMessages(prev => prev.filter(m => m.id !== event.payload.id))
+      }
+      if (event.type === 'reaction:updated' && event.payload.channelId === channel.id) {
+        setMessages(prev => prev.map(m =>
+          m.id === event.payload.messageId ? { ...m, reactions: event.payload.reactions } : m
+        ))
       }
     })
   }, [channel.id, ws])
@@ -161,6 +171,20 @@ export default function ChannelView({ channel, token, ws, users, onUserRightClic
     setReplyingTo(null)
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     onMarkRead()
+  }
+
+  async function handleToggleReaction(messageId: string, reaction: string) {
+    const msg = messages.find(m => m.id === messageId)
+    if (!msg) return
+    const existing = msg.reactions.find(r => r.reaction === reaction)
+    const alreadyReacted = existing?.userIds.includes(currentUserId) ?? false
+    try {
+      if (alreadyReacted) {
+        await api.removeReaction(token, messageId, reaction)
+      } else {
+        await api.addReaction(token, messageId, reaction)
+      }
+    } catch { /* WS broadcast will correct state */ }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -246,6 +270,28 @@ export default function ChannelView({ channel, token, ws, users, onUserRightClic
                 </div>
               )}
               <p className={styles.content}>{msg.content}</p>
+              {msg.reactions.length > 0 && (
+                <div className={styles.reactions}>
+                  {msg.reactions.map(r => {
+                    const reacted = r.userIds.includes(currentUserId)
+                    return (
+                      <button
+                        key={r.reaction}
+                        type="button"
+                        className={`${styles.reactionTag} ${reacted ? styles.reactionTagOwn : ''}`}
+                        onClick={() => handleToggleReaction(msg.id, r.reaction)}
+                        onMouseEnter={e => {
+                          const names = r.userIds.map(id => users.find(u => u.id === id)?.displayName ?? id)
+                          setReactionTooltip({ names, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })
+                        }}
+                        onMouseLeave={() => setReactionTooltip(null)}
+                      >
+                        [{r.reaction}] {r.count}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )
         })}
@@ -256,16 +302,45 @@ export default function ChannelView({ channel, token, ws, users, onUserRightClic
         <ContextMenu
           x={msgMenu.x}
           y={msgMenu.y}
-          items={[{
-            label: 'Reply',
-            action: () => {
-              const msg = messages.find(m => m.id === msgMenu.msgId)
-              if (msg) setReplyingTo(msg)
-              textareaRef.current?.focus()
+          items={[
+            {
+              label: 'reply',
+              action: () => {
+                const msg = messages.find(m => m.id === msgMenu.msgId)
+                if (msg) setReplyingTo(msg)
+                textareaRef.current?.focus()
+              },
             },
-          }]}
+            {
+              label: 'add reaction',
+              action: () => setReactionPicker({ msgId: msgMenu.msgId, x: msgMenu.x, y: msgMenu.y }),
+            },
+          ]}
           onClose={() => setMsgMenu(null)}
         />
+      )}
+
+      {reactionPicker && (
+        <ReactionPicker
+          x={reactionPicker.x}
+          y={reactionPicker.y}
+          onSelect={reaction => handleToggleReaction(reactionPicker.msgId, reaction)}
+          onClose={() => setReactionPicker(null)}
+        />
+      )}
+
+      {reactionTooltip && createPortal(
+        <div
+          className={styles.reactionTooltip}
+          style={{
+            left: reactionTooltip.rect.left,
+            top: reactionTooltip.rect.top - 4,
+            transform: 'translateY(-100%)',
+          }}
+        >
+          {reactionTooltip.names.map((name, i) => <div key={i}>{name}</div>)}
+        </div>,
+        document.body
       )}
 
       {replyingTo && (

@@ -19,6 +19,7 @@ model User {
   memberships     ChannelMember[]
   messages        Message[]
   createdChannels Channel[]       @relation("ChannelCreator")
+  reactions       Reaction[]
 }
 
 model Channel {
@@ -61,8 +62,23 @@ model Message {
   channelId String
   replyToId String?
 
-  author  User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  channel Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  replyTo Message? @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
-  replies Message[] @relation("MessageReplies")
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  channel   Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[] @relation("MessageReplies")
+  reactions Reaction[]
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  reaction  String
+  createdAt DateTime @default(now())
+
+  userId    String
+  messageId String
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, reaction])
 }

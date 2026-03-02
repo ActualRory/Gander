@@ -15,7 +15,7 @@ const voiceRooms = new Map<string, Set<string>>()
 // userId → channelId (which voice channel they're currently in)
 const userVoiceChannel = new Map<string, string>()
 
-function broadcast(channelId: string, event: ServerEvent, exclude?: WebSocket) {
+export function broadcast(channelId: string, event: ServerEvent, exclude?: WebSocket) {
   const room = rooms.get(channelId)
   if (!room) return
   const data = JSON.stringify(event)
@@ -169,6 +169,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
             createdAt: message.createdAt.toISOString(),
             editedAt: null,
             replyTo,
+            reactions: [],
           },
         })
         break

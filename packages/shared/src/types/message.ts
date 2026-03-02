@@ -1,3 +1,9 @@
+export interface ReactionSummary {
+  reaction: string
+  count: number
+  userIds: string[]
+}
+
 export interface MessageReplyPreview {
   id: string
   authorName: string
@@ -13,4 +19,5 @@ export interface Message {
   createdAt: string
   editedAt: string | null
   replyTo: MessageReplyPreview | null
+  reactions: ReactionSummary[]
 }

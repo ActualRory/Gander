@@ -218,6 +218,53 @@
   text-overflow: ellipsis;
 }
 
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.reactionTag {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 5px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+
+.reactionTag:hover {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+.reactionTagOwn {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+  background: var(--bg-surface);
+}
+
+.reactionTagOwn:hover {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
+
+.reactionTooltip {
+  position: fixed;
+  z-index: 400;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  pointer-events: none;
+  line-height: 1.6;
+}
+
 @keyframes msgHighlight {
   0%   { background: var(--bg-elevated); }
   100% { background: transparent; }

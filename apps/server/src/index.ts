@@ -8,6 +8,7 @@ import { dmRoutes } from './routes/dm.js'
 import { messageRoutes } from './routes/messages.js'
 import { voiceRoutes } from './routes/voice.js'
 import { userRoutes } from './routes/users.js'
+import { reactionRoutes } from './routes/reactions.js'
 import { wsHandler } from './ws/handler.js'
 
 const server = Fastify({ logger: true })
@@ -22,6 +23,7 @@ await server.register(dmRoutes, { prefix: '/api/dm' })
 await server.register(messageRoutes, { prefix: '/api/messages' })
 await server.register(voiceRoutes, { prefix: '/api/voice' })
 await server.register(userRoutes, { prefix: '/api/users' })
+await server.register(reactionRoutes, { prefix: '/api/reactions' })
 
 await server.register(async (app) => {
   app.get('/ws', { websocket: true }, wsHandler)

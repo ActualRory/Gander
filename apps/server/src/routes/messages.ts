@@ -34,22 +34,36 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
       include: {
         author: { select: { id: true, displayName: true } },
         replyTo: { select: { id: true, content: true, author: { select: { displayName: true } } } },
+        reactions: { select: { reaction: true, userId: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: Number(limit),
     })
 
-    return messages.reverse().map((m) => ({
-      id: m.id,
-      channelId: m.channelId,
-      authorId: m.authorId,
-      authorName: m.author.displayName,
-      content: m.content,
-      createdAt: m.createdAt.toISOString(),
-      editedAt: m.editedAt?.toISOString() ?? null,
-      replyTo: m.replyTo
-        ? { id: m.replyTo.id, authorName: m.replyTo.author.displayName, content: m.replyTo.content.slice(0, 100) }
-        : null,
-    }))
+    return messages.reverse().map((m) => {
+      const reactionMap = new Map<string, string[]>()
+      for (const r of m.reactions) {
+        if (!reactionMap.has(r.reaction)) reactionMap.set(r.reaction, [])
+        reactionMap.get(r.reaction)!.push(r.userId)
+      }
+      const reactions = [...reactionMap.entries()].map(([reaction, userIds]) => ({
+        reaction,
+        count: userIds.length,
+        userIds,
+      }))
+      return {
+        id: m.id,
+        channelId: m.channelId,
+        authorId: m.authorId,
+        authorName: m.author.displayName,
+        content: m.content,
+        createdAt: m.createdAt.toISOString(),
+        editedAt: m.editedAt?.toISOString() ?? null,
+        replyTo: m.replyTo
+          ? { id: m.replyTo.id, authorName: m.replyTo.author.displayName, content: m.replyTo.content.slice(0, 100) }
+          : null,
+        reactions,
+      }
+    })
   })
 }

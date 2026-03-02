@@ -1,4 +1,4 @@
-import type { Message } from './message.js'
+import type { Message, ReactionSummary } from './message.js'
 import type { Channel } from './channel.js'
 import type { User } from './user.js'
 
@@ -16,6 +16,7 @@ export type ServerEvent =
   | { type: 'user:offline'; payload: { userId: string; lastSeenAt: string } }
   | { type: 'voice:init'; payload: { voiceRooms: Record<string, string[]> } }
   | { type: 'dm:new'; payload: Channel }
+  | { type: 'reaction:updated'; payload: { messageId: string; channelId: string; reactions: ReactionSummary[] } }
 
 // Events sent from client → server
 export type ClientEvent =

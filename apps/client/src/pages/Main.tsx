@@ -769,6 +769,7 @@ export default function Main({ auth, onLogout }: Props) {
             token={auth.token}
             ws={wsRef.current}
             users={users}
+            currentUserId={auth.userId}
             onUserRightClick={handleUserRightClick}
             lastReadAt={loadLastRead(auth.userId, activeChannel.id)}
             onMarkRead={() => markChannelRead(activeChannel.id)}
