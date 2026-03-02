@@ -62,6 +62,7 @@ export default function ParticipantVolumeMenu({ x, y, userName, userId, volume, 
         value={localVol}
         onChange={handleChange}
         className={styles.slider}
+        style={{ '--pct': `${localVol / 2}%` } as React.CSSProperties}
       />
       <div className={styles.hints}>
         <span>0%</span>

@@ -94,9 +94,14 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
     initialScrollDoneRef.current = false
     isAtBottomRef.current = true
 
+    let cancelled = false
     api.getMessages(token, channel.id).then(msgs => {
-      setMessages(msgs)
-      setLoading(false)
+      if (!cancelled) {
+        setMessages(msgs)
+        setLoading(false)
+      }
+    }).catch(() => {
+      if (!cancelled) setLoading(false)
     })
 
     ws.send({ type: 'channel:join', payload: { channelId: channel.id } })

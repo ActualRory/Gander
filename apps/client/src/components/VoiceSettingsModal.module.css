@@ -102,9 +102,26 @@
 
 .slider {
   flex: 1;
-  accent-color: var(--accent);
-  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
   height: 4px;
+  border: 1px solid var(--border);
+  background: linear-gradient(to right, var(--accent) var(--pct, 0%), var(--bg-elevated) var(--pct, 0%));
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 14px;
+  background: var(--accent);
+  border: 1px solid var(--accent-dim);
+  cursor: pointer;
+}
+
+.slider:focus {
+  outline: none;
+  border-color: var(--accent-dim);
 }
 
 .sliderValue {
