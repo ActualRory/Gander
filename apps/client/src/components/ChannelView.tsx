@@ -107,6 +107,7 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
     ws.send({ type: 'channel:join', payload: { channelId: channel.id } })
 
     return () => {
+      cancelled = true
       ws.send({ type: 'channel:leave', payload: { channelId: channel.id } })
     }
   }, [channel.id, token, ws])
@@ -233,11 +234,7 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
         {!loading && messages.length === 0 && (
           <p className={styles.status}>no messages yet — say something</p>
         )}
-        {messages.map((msg, i) => {
-          const prev = messages[i - 1]
-          const grouped = prev && prev.authorId === msg.authorId &&
-            !msg.replyTo &&
-            (new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime()) < 5 * 60 * 1000
+        {messages.map(msg => {
           const isFirstUnread = msg.id === firstUnreadId
 
           return (
@@ -245,7 +242,7 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
               key={msg.id}
               data-msg-id={msg.id}
               ref={isFirstUnread ? el => { firstUnreadRef.current = el } : undefined}
-              className={`${styles.message} ${grouped ? styles.grouped : ''}`}
+              className={styles.message}
               onContextMenu={e => { e.preventDefault(); setMsgMenu({ msgId: msg.id, x: e.clientX, y: e.clientY }) }}
             >
               {isFirstUnread && (
@@ -253,18 +250,16 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
                   <span>new messages</span>
                 </div>
               )}
-              {!grouped && (
-                <div className={styles.meta}>
-                  <span
-                    className={styles.author}
-                    onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onUserRightClick(msg.authorId, e.clientX, e.clientY) }}
-                  >{msg.authorName}</span>
-                  <span className={styles.time}>{formatTime(msg.createdAt)}</span>
-                  {msg.postNumber != null && (
-                    <span className={styles.postNumber}>#{msg.postNumber}</span>
-                  )}
-                </div>
-              )}
+              <div className={styles.meta}>
+                <span
+                  className={styles.author}
+                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onUserRightClick(msg.authorId, e.clientX, e.clientY) }}
+                >{msg.authorName}</span>
+                <span className={styles.time}>{formatTime(msg.createdAt)}</span>
+                {msg.postNumber != null && (
+                  <span className={styles.postNumber}>#{msg.postNumber}</span>
+                )}
+              </div>
               {msg.replyTo && (
                 <div
                   className={styles.replyQuote}

@@ -84,10 +84,6 @@
   opacity: 0.4;
 }
 
-.grouped {
-  margin-top: 2px;
-}
-
 .meta {
   display: flex;
   align-items: baseline;
@@ -117,10 +113,6 @@
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.grouped .content {
-  padding-left: 0;
 }
 
 .inputBar {
