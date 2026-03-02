@@ -387,10 +387,18 @@ export default function Main({ auth, onLogout }: Props) {
         setSettingsOpen(false)
       })
 
-      // Apply volume and deafen state to newly subscribed tracks
+      // Attach incoming audio tracks to the DOM so they actually play
       room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
         if (track.kind === Track.Kind.Audio) {
+          const el = track.attach()
+          document.body.appendChild(el)
           participant.setVolume(isDeafenedRef.current ? 0 : outputVolumeRef.current)
+        }
+      })
+
+      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+        if (track.kind === Track.Kind.Audio) {
+          track.detach().forEach(el => el.remove())
         }
       })
 
