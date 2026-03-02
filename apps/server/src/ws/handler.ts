@@ -29,7 +29,7 @@ export function broadcast(channelId: string, event: ServerEvent, exclude?: WebSo
   }
 }
 
-function broadcastAll(event: ServerEvent, exclude?: WebSocket) {
+export function broadcastAll(event: ServerEvent, exclude?: WebSocket) {
   const data = JSON.stringify(event)
   for (const socket of connectedUsers.values()) {
     if (socket !== exclude && socket.readyState === socket.OPEN) {

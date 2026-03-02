@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { prisma } from '../lib/prisma.js'
+import { broadcastAll } from '../ws/handler.js'
 
 export const channelRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', async (req, reply) => {
@@ -22,6 +23,7 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
         members: { create: { userId } },
       },
     })
+    broadcastAll({ type: 'channel:created', payload: { ...channel, createdAt: channel.createdAt.toISOString() } })
     return reply.status(201).send(channel)
   })
 
@@ -50,6 +52,7 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
       where: { id: channelId },
       data: { name },
     })
+    broadcastAll({ type: 'channel:updated', payload: { ...updated, createdAt: updated.createdAt.toISOString() } })
     return updated
   })
 
@@ -62,6 +65,7 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     if (channel.creatorId !== userId) return reply.status(403).send({ error: 'Forbidden' })
 
     await prisma.channel.delete({ where: { id: channelId } })
+    broadcastAll({ type: 'channel:deleted', payload: { channelId } })
     return reply.status(204).send()
   })
 }

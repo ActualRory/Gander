@@ -331,6 +331,23 @@ export default function Main({ auth, onLogout }: Props) {
             }
           })
         }
+      } else if (event.type === 'channel:created') {
+        const channel = event.payload
+        setChannels(prev => prev.some(c => c.id === channel.id) ? prev : [...prev, channel])
+      } else if (event.type === 'channel:updated') {
+        const channel = event.payload
+        setChannels(prev => prev.map(c => c.id === channel.id ? channel : c))
+        setActiveChannel(prev => prev?.id === channel.id ? channel : prev)
+      } else if (event.type === 'channel:deleted') {
+        const { channelId } = event.payload
+        setChannels(prev => prev.filter(c => c.id !== channelId))
+        setActiveChannel(prev => prev?.id === channelId ? null : prev)
+        setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+      } else if (event.type === 'user:updated') {
+        const user = event.payload
+        setUsers(prev => prev.map(u => u.id === user.id ? user : u))
+        setProfileTarget(prev => prev && prev.user.id === user.id ? { ...prev, user } : prev)
+        setFullProfileTarget(prev => prev?.id === user.id ? user : prev)
       }
     })
 

@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { prisma } from '../lib/prisma.js'
+import { broadcastAll } from '../ws/handler.js'
 
 const USER_SELECT = {
   id: true,
@@ -28,10 +29,12 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
 
   app.patch('/me', async (req) => {
     const { subtitle } = req.body as { subtitle: string | null }
-    return prisma.user.update({
+    const updated = await prisma.user.update({
       where: { id: (req.user as { userId: string }).userId },
       data: { subtitle: subtitle ?? null },
       select: USER_SELECT,
     })
+    broadcastAll({ type: 'user:updated', payload: { ...updated, createdAt: updated.createdAt.toISOString(), lastSeenAt: updated.lastSeenAt?.toISOString() ?? null } })
+    return updated
   })
 }

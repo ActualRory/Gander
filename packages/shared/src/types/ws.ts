@@ -18,6 +18,10 @@ export type ServerEvent =
   | { type: 'voice:state'; payload: { userId: string; muted: boolean; deafened: boolean } }
   | { type: 'dm:new'; payload: Channel }
   | { type: 'reaction:updated'; payload: { messageId: string; channelId: string; reactions: ReactionSummary[] } }
+  | { type: 'channel:created'; payload: Channel }
+  | { type: 'channel:updated'; payload: Channel }
+  | { type: 'channel:deleted'; payload: { channelId: string } }
+  | { type: 'user:updated'; payload: User }
 
 // Events sent from client → server
 export type ClientEvent =
