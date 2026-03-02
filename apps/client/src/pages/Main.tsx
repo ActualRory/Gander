@@ -362,6 +362,24 @@ export default function Main({ auth, onLogout }: Props) {
     return () => { voiceRoomRef.current?.disconnect() }
   }, [])
 
+  // Send voice:leave + disconnect LiveKit before the Tauri window closes
+  useEffect(() => {
+    const win = getCurrentWindow()
+    let unlisten: (() => void) | null = null
+
+    win.onCloseRequested(async (event) => {
+      event.preventDefault()
+      if (voiceRoomRef.current && voiceChannelIdRef.current) {
+        wsRef.current?.send({ type: 'voice:leave', payload: { channelId: voiceChannelIdRef.current } })
+        intentionalDisconnectRef.current = true
+        await voiceRoomRef.current.disconnect()
+      }
+      await win.close()
+    }).then(fn => { unlisten = fn })
+
+    return () => { unlisten?.() }
+  }, [])
+
   // Push-to-talk keyboard handler
   useEffect(() => {
     if (!pttMode || !voiceChannelId) return
