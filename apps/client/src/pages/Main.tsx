@@ -415,6 +415,7 @@ export default function Main({ auth, onLogout }: Props) {
       })
 
       await room.connect(url, token)
+      await room.startAudio()
 
       setVoiceStats({ quality: 'unknown', ping: null, jitter: null, packetsLost: null })
 
