@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import goosehonkUrl from '../../sounds/goosehonk1.mp3?url'
 import hangupUrl from '../../sounds/goosebell_hangup1.mp3?url'
-import { Room, RoomEvent, Track, ParticipantEvent, AudioPresets, LocalAudioTrack, ConnectionQuality } from 'livekit-client'
+import { Room, RoomEvent, Track, AudioPresets, LocalAudioTrack, ConnectionQuality, createAudioAnalyser, type RemoteAudioTrack } from 'livekit-client'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Image as TauriImage } from '@tauri-apps/api/image'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
@@ -440,6 +440,14 @@ export default function Main({ auth, onLogout }: Props) {
       })
       voiceRoomRef.current = room
 
+      // Speaking indicators — use createAudioAnalyser (local Web Audio API) instead of
+      // ActiveSpeakersChanged (server-driven, ~1s interval) for zero-latency response.
+      const SPEAKING_THRESHOLD = 0.05
+      type VolCalc = { calculateVolume: () => number; cleanup: () => Promise<void> }
+      const remoteAnalysers = new Map<string, VolCalc>()
+      let localAnalyser: VolCalc | null = null
+      let speakingPollInterval: ReturnType<typeof setInterval> | null = null
+
       // Surface unexpected disconnects (after successful connect) via error modal
       room.on(RoomEvent.Disconnected, (reason) => {
         if (!intentionalDisconnectRef.current && reason !== undefined) {
@@ -449,6 +457,11 @@ export default function Main({ auth, onLogout }: Props) {
         rnnoiseProcessorRef.current = null
         voiceRoomRef.current = null
         if (statsIntervalRef.current) { clearInterval(statsIntervalRef.current); statsIntervalRef.current = null }
+        if (speakingPollInterval) { clearInterval(speakingPollInterval); speakingPollInterval = null }
+        for (const a of remoteAnalysers.values()) a.cleanup().catch(() => {})
+        remoteAnalysers.clear()
+        localAnalyser?.cleanup().catch(() => {})
+        localAnalyser = null
         setVoiceChannelId(null)
         setIsMuted(false)
         setIsDeafened(false)
@@ -459,35 +472,61 @@ export default function Main({ auth, onLogout }: Props) {
         setSettingsOpen(false)
       })
 
-      // Attach incoming audio tracks to the DOM so they actually play
+      // Attach incoming audio tracks to the DOM and create analysers for speaking detection
       room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
         if (track.kind === Track.Kind.Audio) {
           const el = track.attach()
           document.body.appendChild(el)
           const multiplier = participantVolumesRef.current[participant.identity] ?? 1.0
           participant.setVolume(isDeafenedRef.current ? 0 : Math.min(2, outputVolumeRef.current * multiplier))
+          try {
+            remoteAnalysers.set(participant.identity, createAudioAnalyser(track as RemoteAudioTrack))
+          } catch { /* ignore — browser may lack AudioContext support */ }
         }
       })
 
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+      room.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
         if (track.kind === Track.Kind.Audio) {
           track.detach().forEach(el => el.remove())
+          const a = remoteAnalysers.get(participant.identity)
+          if (a) { a.cleanup().catch(() => {}); remoteAnalysers.delete(participant.identity) }
         }
       })
 
-      room.on(RoomEvent.ParticipantDisconnected, () => {
+      room.on(RoomEvent.ParticipantDisconnected, (participant) => {
         new Audio(hangupUrl).play().catch(() => {})
+        const a = remoteAnalysers.get(participant.identity)
+        if (a) { a.cleanup().catch(() => {}); remoteAnalysers.delete(participant.identity) }
       })
 
-      // Speaking indicators
-      room.localParticipant.on(ParticipantEvent.IsSpeakingChanged, (speaking: boolean) => {
-        setIsSpeaking(speaking)
+      // Local mic analyser — set up when the mic track is published
+      room.on(RoomEvent.LocalTrackPublished, (pub) => {
+        if (pub.source === Track.Source.Microphone && pub.audioTrack) {
+          try {
+            localAnalyser?.cleanup().catch(() => {})
+            localAnalyser = createAudioAnalyser(pub.audioTrack)
+          } catch { /* ignore */ }
+        }
       })
-      room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
-        const remotes = speakers.filter(p => p.identity !== room.localParticipant.identity)
-        setIsReceiving(remotes.length > 0)
-        setSpeakingUserIds(new Set(remotes.map(p => p.identity)))
+      room.on(RoomEvent.LocalTrackUnpublished, (pub) => {
+        if (pub.source === Track.Source.Microphone) {
+          localAnalyser?.cleanup().catch(() => {})
+          localAnalyser = null
+        }
       })
+
+      // Poll all analysers at 50ms (20fps) — purely local, no server round-trip
+      speakingPollInterval = setInterval(() => {
+        setIsSpeaking((localAnalyser?.calculateVolume() ?? 0) > SPEAKING_THRESHOLD)
+        const speaking = new Set<string>()
+        for (const [identity, { calculateVolume }] of remoteAnalysers) {
+          if (calculateVolume() > SPEAKING_THRESHOLD) speaking.add(identity)
+        }
+        setSpeakingUserIds(prev =>
+          prev.size === speaking.size && [...speaking].every(id => prev.has(id)) ? prev : speaking
+        )
+        setIsReceiving(speaking.size > 0)
+      }, 50)
 
       await room.connect(url, token)
       await room.startAudio()
