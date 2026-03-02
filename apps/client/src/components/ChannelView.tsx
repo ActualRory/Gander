@@ -208,7 +208,7 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
   let firstUnreadId: string | null = null
   if (lastReadTime !== null) {
     for (const msg of messages) {
-      if (new Date(msg.createdAt).getTime() > lastReadTime) {
+      if (new Date(msg.createdAt).getTime() > lastReadTime && msg.authorId !== currentUserId) {
         firstUnreadId = msg.id
         break
       }
