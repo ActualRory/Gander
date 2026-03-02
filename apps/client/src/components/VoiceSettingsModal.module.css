@@ -107,8 +107,8 @@
   height: 4px;
   border: 1px solid var(--border);
   background: linear-gradient(to right,
-    var(--accent) calc(var(--val, 0) * (100% - 10px) + 5px),
-    var(--bg-elevated) calc(var(--val, 0) * (100% - 10px) + 5px));
+    var(--accent) calc(var(--val, 0) * 100%),
+    var(--bg-elevated) calc(var(--val, 0) * 100%));
   cursor: pointer;
 }
 
