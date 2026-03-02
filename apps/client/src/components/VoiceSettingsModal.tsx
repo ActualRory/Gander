@@ -233,7 +233,7 @@ export default function VoiceSettingsModal({
               value={outputVolume}
               onChange={e => onChangeOutputVolume(parseFloat(e.target.value))}
               className={styles.slider}
-              style={{ '--pct': `${outputVolume * 100}%` } as React.CSSProperties}
+              style={{ '--val': outputVolume } as React.CSSProperties}
             />
             <span className={styles.sliderValue}>{Math.round(outputVolume * 100)}%</span>
           </div>
@@ -324,7 +324,7 @@ export default function VoiceSettingsModal({
               value={testPlaybackVolume}
               onChange={e => handleTestVolumeChange(parseFloat(e.target.value))}
               className={styles.slider}
-              style={{ '--pct': `${testPlaybackVolume * 100}%` } as React.CSSProperties}
+              style={{ '--val': testPlaybackVolume } as React.CSSProperties}
             />
             <span className={styles.sliderValue}>{Math.round(testPlaybackVolume * 100)}%</span>
           </div>
