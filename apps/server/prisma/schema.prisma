@@ -53,10 +53,11 @@ model ChannelMember {
 }
 
 model Message {
-  id        String   @id @default(cuid())
-  content   String
-  createdAt DateTime @default(now())
-  editedAt  DateTime?
+  id         String   @id @default(cuid())
+  postNumber Int?     @unique
+  content    String
+  createdAt  DateTime @default(now())
+  editedAt   DateTime?
 
   authorId  String
   channelId String

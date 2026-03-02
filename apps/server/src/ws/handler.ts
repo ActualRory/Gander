@@ -140,7 +140,10 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
 
       case 'message:send': {
         const { channelId, content, replyToId } = event.payload
-        const author = await prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } })
+        const [author, channel] = await Promise.all([
+          prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } }),
+          prisma.channel.findUnique({ where: { id: channelId }, select: { type: true } }),
+        ])
         if (!author) return
 
         let replyTo: { id: string; authorName: string; content: string } | null = null
@@ -154,8 +157,15 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
           }
         }
 
+        const isDm = channel?.type === 'DM' || channel?.type === 'GROUP'
+        let postNumber: number | null = null
+        if (!isDm) {
+          const { _max } = await prisma.message.aggregate({ _max: { postNumber: true } })
+          postNumber = (_max.postNumber ?? 0) + 1
+        }
+
         const message = await prisma.message.create({
-          data: { content, channelId, authorId: userId, ...(replyToId ? { replyToId } : {}) },
+          data: { content, channelId, authorId: userId, postNumber, ...(replyToId ? { replyToId } : {}) },
         })
 
         broadcast(channelId, {
@@ -168,6 +178,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
             content: message.content,
             createdAt: message.createdAt.toISOString(),
             editedAt: null,
+            postNumber,
             replyTo,
             reactions: [],
           },

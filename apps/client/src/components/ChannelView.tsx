@@ -255,6 +255,9 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
                     onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onUserRightClick(msg.authorId, e.clientX, e.clientY) }}
                   >{msg.authorName}</span>
                   <span className={styles.time}>{formatTime(msg.createdAt)}</span>
+                  {msg.postNumber != null && (
+                    <span className={styles.postNumber}>#{msg.postNumber}</span>
+                  )}
                 </div>
               )}
               {msg.replyTo && (

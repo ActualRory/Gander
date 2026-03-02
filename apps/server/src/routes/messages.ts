@@ -59,6 +59,7 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         content: m.content,
         createdAt: m.createdAt.toISOString(),
         editedAt: m.editedAt?.toISOString() ?? null,
+        postNumber: m.postNumber,
         replyTo: m.replyTo
           ? { id: m.replyTo.id, authorName: m.replyTo.author.displayName, content: m.replyTo.content.slice(0, 100) }
           : null,

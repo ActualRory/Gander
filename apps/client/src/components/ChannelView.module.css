@@ -105,6 +105,12 @@
   font-size: 11px;
 }
 
+.postNumber {
+  color: var(--text-muted);
+  font-size: 11px;
+  user-select: none;
+}
+
 .content {
   color: var(--text-primary);
   font-size: 13px;

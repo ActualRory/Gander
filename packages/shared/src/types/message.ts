@@ -18,6 +18,7 @@ export interface Message {
   content: string
   createdAt: string
   editedAt: string | null
+  postNumber: number | null
   replyTo: MessageReplyPreview | null
   reactions: ReactionSummary[]
 }
