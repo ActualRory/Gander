@@ -108,12 +108,27 @@
 }
 
 .voiceParticipant {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 1px 16px 1px 28px;
   font-size: 11px;
   color: var(--text-muted);
-  white-space: nowrap;
+  overflow: hidden;
+}
+
+.participantName {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voiceStateBadge {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.6;
 }
 
 .voiceParticipant::before {

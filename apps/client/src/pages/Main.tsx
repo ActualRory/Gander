@@ -132,6 +132,7 @@ export default function Main({ auth, onLogout }: Props) {
   const [voiceStats, setVoiceStats] = useState<VoiceStats | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [participantVolumes, setParticipantVolumes] = useState<Record<string, number>>({})
+  const [participantVoiceState, setParticipantVoiceState] = useState<Record<string, { muted: boolean; deafened: boolean }>>({})
   const isDeafenedRef = useRef(false)
   const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const intentionalDisconnectRef = useRef(false)
@@ -279,6 +280,10 @@ export default function Main({ auth, onLogout }: Props) {
         }
       } else if (event.type === 'voice:init') {
         setVoiceParticipants(event.payload.voiceRooms)
+        setParticipantVoiceState(event.payload.voiceStates)
+      } else if (event.type === 'voice:state') {
+        const { userId, muted, deafened } = event.payload
+        setParticipantVoiceState(prev => ({ ...prev, [userId]: { muted, deafened } }))
       } else if (event.type === 'voice:join') {
         const { userId, channelId } = event.payload
         setVoiceParticipants(prev => ({
@@ -295,6 +300,7 @@ export default function Main({ auth, onLogout }: Props) {
           ...prev,
           [channelId]: (prev[channelId] ?? []).filter(id => id !== userId),
         }))
+        setParticipantVoiceState(prev => { const next = { ...prev }; delete next[userId]; return next })
       } else if (event.type === 'dm:new') {
         const channel = event.payload
         const isNew = !dmChannelsRef.current.some(c => c.id === channel.id)
@@ -340,11 +346,13 @@ export default function Main({ auth, onLogout }: Props) {
         }
       }
       setIsMuted(false)
+      wsRef.current?.send({ type: 'voice:state', payload: { muted: false, deafened: false } })
     }
     const up = async (e: KeyboardEvent) => {
       if (e.code !== pttKey) return
       await voiceRoomRef.current?.localParticipant.setMicrophoneEnabled(false)
       setIsMuted(true)
+      wsRef.current?.send({ type: 'voice:state', payload: { muted: true, deafened: false } })
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -526,6 +534,9 @@ export default function Main({ auth, onLogout }: Props) {
         const multiplier = participantVolumesRef.current[p.identity] ?? 1.0
         p.setVolume(Math.min(2, outputVolumeRef.current * multiplier))
       }
+      wsRef.current?.send({ type: 'voice:state', payload: { muted: next, deafened: false } })
+    } else {
+      wsRef.current?.send({ type: 'voice:state', payload: { muted: next, deafened: isDeafened } })
     }
   }
 
@@ -535,14 +546,17 @@ export default function Main({ auth, onLogout }: Props) {
     const next = !isDeafened
     setIsDeafened(next)
     // Deafening also mutes mic
+    let nextMuted = isMuted
     if (next && !isMuted) {
       await room.localParticipant.setMicrophoneEnabled(false)
       setIsMuted(true)
+      nextMuted = true
     }
     for (const p of room.remoteParticipants.values()) {
       const multiplier = participantVolumesRef.current[p.identity] ?? 1.0
       p.setVolume(next ? 0 : Math.min(2, outputVolumeRef.current * multiplier))
     }
+    wsRef.current?.send({ type: 'voice:state', payload: { muted: nextMuted, deafened: next } })
   }
 
   async function handleChangePttMode(ptt: boolean) {
@@ -806,6 +820,7 @@ export default function Main({ auth, onLogout }: Props) {
         onLogout={onLogout}
         participantVolumes={participantVolumes}
         onSetParticipantVolume={handleSetParticipantVolume}
+        participantVoiceState={participantVoiceState}
       />
       <main className={styles.content}>
         {activeChannel && wsRef.current ? (

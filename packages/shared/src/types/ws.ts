@@ -14,7 +14,8 @@ export type ServerEvent =
   | { type: 'users:init'; payload: { onlineUserIds: string[] } }
   | { type: 'user:online'; payload: { userId: string; user: User } }
   | { type: 'user:offline'; payload: { userId: string; lastSeenAt: string } }
-  | { type: 'voice:init'; payload: { voiceRooms: Record<string, string[]> } }
+  | { type: 'voice:init'; payload: { voiceRooms: Record<string, string[]>; voiceStates: Record<string, { muted: boolean; deafened: boolean }> } }
+  | { type: 'voice:state'; payload: { userId: string; muted: boolean; deafened: boolean } }
   | { type: 'dm:new'; payload: Channel }
   | { type: 'reaction:updated'; payload: { messageId: string; channelId: string; reactions: ReactionSummary[] } }
 
@@ -25,3 +26,4 @@ export type ClientEvent =
   | { type: 'channel:leave'; payload: { channelId: string } }
   | { type: 'voice:join'; payload: { channelId: string } }
   | { type: 'voice:leave'; payload: { channelId: string } }
+  | { type: 'voice:state'; payload: { muted: boolean; deafened: boolean } }

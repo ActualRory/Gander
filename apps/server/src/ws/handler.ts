@@ -15,6 +15,9 @@ const voiceRooms = new Map<string, Set<string>>()
 // userId → channelId (which voice channel they're currently in)
 const userVoiceChannel = new Map<string, string>()
 
+// userId → current mute/deafen state
+const userVoiceState = new Map<string, { muted: boolean; deafened: boolean }>()
+
 export function broadcast(channelId: string, event: ServerEvent, exclude?: WebSocket) {
   const room = rooms.get(channelId)
   if (!room) return
@@ -73,9 +76,13 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         for (const [channelId, members] of voiceRooms) {
           if (members.size > 0) voiceRoomsSnapshot[channelId] = [...members]
         }
+        const voiceStatesSnapshot: Record<string, { muted: boolean; deafened: boolean }> = {}
+        for (const [uid, state] of userVoiceState) {
+          voiceStatesSnapshot[uid] = state
+        }
         socket.send(JSON.stringify({
           type: 'voice:init',
-          payload: { voiceRooms: voiceRoomsSnapshot },
+          payload: { voiceRooms: voiceRoomsSnapshot, voiceStates: voiceStatesSnapshot },
         }))
         // Notify all other clients this user came online (include user data so new users are discoverable)
         const connectedUser = await prisma.user.findUnique({
@@ -134,7 +141,15 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         const { channelId } = event.payload
         voiceRooms.get(channelId)?.delete(userId)
         userVoiceChannel.delete(userId)
+        userVoiceState.delete(userId)
         broadcastAll({ type: 'voice:leave', payload: { userId, channelId } })
+        break
+      }
+
+      case 'voice:state': {
+        const { muted, deafened } = event.payload
+        userVoiceState.set(userId, { muted, deafened })
+        broadcastAll({ type: 'voice:state', payload: { userId, muted, deafened } })
         break
       }
 
@@ -199,6 +214,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
       if (voiceChannelId) {
         voiceRooms.get(voiceChannelId)?.delete(userId)
         userVoiceChannel.delete(userId)
+        userVoiceState.delete(userId)
         broadcastAll({ type: 'voice:leave', payload: { userId, channelId: voiceChannelId } })
       }
     }
