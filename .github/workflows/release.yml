@@ -25,6 +25,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/client/src-tauri -> target
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
