@@ -19,6 +19,8 @@ import UserProfilePopup from '../components/UserProfilePopup.tsx'
 import UserProfileModal from '../components/UserProfileModal.tsx'
 import ContextMenu from '../components/ContextMenu.tsx'
 import { RNNoiseProcessor, rnnoiseSupported } from '../lib/rnnoiseProcessor.ts'
+import UpdateBanner from '../components/UpdateBanner.tsx'
+import { useAppUpdater } from '../lib/useAppUpdater.ts'
 import styles from './Main.module.css'
 
 interface Props {
@@ -846,10 +848,18 @@ export default function Main({ auth, onLogout }: Props) {
     setFullProfileTarget(prev => prev?.id === updated.id ? updated : prev)
   }
 
+  const updater = useAppUpdater()
   const userContextMenuUser = userContextMenu ? users.find(u => u.id === userContextMenu.userId) : null
 
   return (
     <div className={styles.root}>
+      {updater.visible && (
+        <UpdateBanner
+          state={updater.state}
+          onInstall={updater.install}
+          onDismiss={updater.dismiss}
+        />
+      )}
       {errorMessage && <ErrorModal message={errorMessage} onClose={() => setErrorMessage(null)} />}
       {settingsOpen && voiceRoomRef.current && (
         <VoiceSettingsModal
@@ -875,6 +885,7 @@ export default function Main({ auth, onLogout }: Props) {
           onClose={() => setSettingsOpen(false)}
         />
       )}
+      <div className={styles.columns}>
       <Sidebar
         channels={channels}
         dmChannels={dmChannels}
@@ -938,6 +949,7 @@ export default function Main({ auth, onLogout }: Props) {
         onUserClick={handleUserLeftClick}
         onUserRightClick={handleUserRightClick}
       />
+      </div>
       {profileTarget && (
         <UserProfilePopup
           user={profileTarget.user}

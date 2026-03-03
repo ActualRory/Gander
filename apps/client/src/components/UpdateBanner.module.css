@@ -1,0 +1,76 @@
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 16px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.bannerActive {
+  border-bottom-color: var(--accent-dim);
+}
+
+.message {
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.messageError {
+  flex: 1;
+  color: #c87060;
+}
+
+.version {
+  color: var(--accent);
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.installBtn {
+  background: none;
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.installBtn:hover {
+  background: var(--accent-dim);
+  color: var(--bg-base);
+}
+
+.dismissBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 0 4px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.dismissBtn:hover {
+  color: var(--text-primary);
+}
+
+.progressBar {
+  width: 120px;
+  height: 4px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.15s ease;
+}

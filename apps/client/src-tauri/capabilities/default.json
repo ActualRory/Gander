@@ -17,6 +17,8 @@
     "core:window:allow-set-focus",
     "core:webview:allow-create-webview-window",
     "core:event:allow-emit-to",
-    "notification:default"
+    "notification:default",
+    "updater:default",
+    "process:allow-relaunch"
   ]
 }

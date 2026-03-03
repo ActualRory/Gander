@@ -45,11 +45,33 @@ jobs:
         run: pnpm --filter client tauri build
         env:
           APP_VERSION: ${{ env.APP_VERSION }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Generate update manifest
+        shell: bash
+        run: |
+          NSIS_DIR="apps/client/src-tauri/target/release/bundle/nsis"
+          ZIP_FILE=$(ls "$NSIS_DIR"/*.nsis.zip | head -1)
+          ZIP_NAME=$(basename "$ZIP_FILE")
+          SIGNATURE=$(cat "${ZIP_FILE}.sig")
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
+          jq -n \
+            --arg version "$APP_VERSION" \
+            --arg notes "" \
+            --arg pub_date "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            --arg sig "$SIGNATURE" \
+            --arg url "$DOWNLOAD_URL" \
+            '{version:$version,notes:$notes,pub_date:$pub_date,platforms:{"windows-x86_64":{signature:$sig,url:$url}}}' \
+            > latest.json
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             apps/client/src-tauri/target/release/bundle/nsis/*.exe
+            apps/client/src-tauri/target/release/bundle/nsis/*.nsis.zip
+            apps/client/src-tauri/target/release/bundle/nsis/*.nsis.zip.sig
             apps/client/src-tauri/target/release/bundle/msi/*.msi
+            latest.json
           generate_release_notes: true
