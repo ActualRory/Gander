@@ -172,6 +172,17 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
           }
         }
 
+        // Parse @username mentions from content
+        const mentionHandles = [...content.matchAll(/@(\S+)/g)].map(m => m[1])
+        const mentionedUsers = mentionHandles.length > 0
+          ? await prisma.user.findMany({
+              where: { username: { in: mentionHandles, mode: 'insensitive' } },
+              select: { id: true },
+            })
+          : []
+        // Don't count self-mentions
+        const mentionedUserIds = mentionedUsers.map(u => u.id).filter(id => id !== userId)
+
         const isDm = channel?.type === 'DM' || channel?.type === 'GROUP'
         let postNumber: number | null = null
         if (!isDm) {
@@ -180,10 +191,19 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         }
 
         const message = await prisma.message.create({
-          data: { content, channelId, authorId: userId, postNumber, ...(replyToId ? { replyToId } : {}) },
+          data: {
+            content,
+            channelId,
+            authorId: userId,
+            postNumber,
+            ...(replyToId ? { replyToId } : {}),
+            ...(mentionedUserIds.length > 0 ? {
+              mentions: { createMany: { data: mentionedUserIds.map(uid => ({ userId: uid })), skipDuplicates: true } },
+            } : {}),
+          },
         })
 
-        broadcast(channelId, {
+        const outEvent: ServerEvent = {
           type: 'message:new',
           payload: {
             id: message.id,
@@ -196,8 +216,23 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
             postNumber,
             replyTo,
             reactions: [],
+            mentions: mentionedUserIds,
           },
-        })
+        }
+
+        if (isDm) {
+          // DM/GROUP: deliver only to channel members
+          const members = await prisma.channelMember.findMany({
+            where: { channelId },
+            select: { userId: true },
+          })
+          for (const { userId: memberId } of members) {
+            broadcastToUser(memberId, outEvent)
+          }
+        } else {
+          // TEXT: deliver to all connected users (everyone can see all text channels)
+          broadcastAll(outEvent)
+        }
         break
       }
     }

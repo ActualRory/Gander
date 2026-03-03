@@ -134,6 +134,7 @@ export default function Main({ auth, onLogout }: Props) {
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set())
   const [hiddenChannelIds, setHiddenChannelIds] = useState<Set<string>>(() => loadHidden(auth.userId))
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
+  const [mentionCounts, setMentionCounts] = useState<Record<string, number>>({})
   const [mutedChannelIds, setMutedChannelIds] = useState<Set<string>>(() => loadMuted(auth.userId))
   const [profileTarget, setProfileTarget] = useState<{ user: User; x: number; y: number } | null>(null)
   const [fullProfileTarget, setFullProfileTarget] = useState<User | null>(null)
@@ -210,19 +211,19 @@ export default function Main({ auth, onLogout }: Props) {
 
   // Update taskbar badge
   useEffect(() => {
-    const total = Object.entries(unreadCounts)
-      .filter(([id]) => !mutedChannelIds.has(id))
-      .reduce((sum, [, n]) => sum + n, 0)
+    const unmuted = (id: string) => !mutedChannelIds.has(id)
+    const totalUnread = Object.entries(unreadCounts).filter(([id]) => unmuted(id)).reduce((sum, [, n]) => sum + n, 0)
+    const hasMention = Object.entries(mentionCounts).some(([id, n]) => unmuted(id) && n > 0)
     const win = getCurrentWindow()
-    win.setBadgeCount(total > 0 ? total : undefined).catch(() => {})
-    const badge = total >= 10 ? '!!' : total >= 1 ? '!' : null
+    win.setBadgeCount(totalUnread > 0 ? totalUnread : undefined).catch(() => {})
+    const badge = hasMention ? '@' : totalUnread >= 10 ? '!!' : totalUnread >= 1 ? '!' : null
     win.setTitle(badge ? `[${badge}] Gander` : 'Gander').catch(() => {})
     if (badge) {
       makeBadgeOverlay(badge).then(img => win.setOverlayIcon(img)).catch(() => {})
     } else {
       win.setOverlayIcon(undefined).catch(() => {})
     }
-  }, [unreadCounts, mutedChannelIds])
+  }, [unreadCounts, mentionCounts, mutedChannelIds])
 
   useEffect(() => {
     api.getChannels(auth.token).then(async fetchedChannels => {
@@ -237,10 +238,13 @@ export default function Main({ auth, onLogout }: Props) {
       if (Object.keys(channelLastReadAt).length > 0) {
         const results = await api.getUnreadCounts(auth.token, channelLastReadAt)
         const counts: Record<string, number> = {}
-        for (const { channelId, count } of results) {
+        const mentions: Record<string, number> = {}
+        for (const { channelId, count, mentionCount } of results) {
           if (count > 0) counts[channelId] = count
+          if (mentionCount > 0) mentions[channelId] = mentionCount
         }
         setUnreadCounts(counts)
+        setMentionCounts(mentions)
       }
     })
 
@@ -261,6 +265,13 @@ export default function Main({ auth, onLogout }: Props) {
             if (count > 0) counts[channelId] = count
           }
           return counts
+        })
+        setMentionCounts(prev => {
+          const mentions = { ...prev }
+          for (const { channelId, mentionCount } of results) {
+            if (mentionCount > 0) mentions[channelId] = mentionCount
+          }
+          return mentions
         })
       }
     })
@@ -285,15 +296,28 @@ export default function Main({ auth, onLogout }: Props) {
         })
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, lastSeenAt } : u))
       } else if (event.type === 'message:new') {
-        const { channelId, authorName, content, authorId } = event.payload
-        if (channelId !== activeChannelRef.current?.id) {
+        const { channelId, authorName, content, authorId, mentions } = event.payload
+        const isActiveChannel = channelId === activeChannelRef.current?.id
+        const isMuted = mutedChannelIdsRef.current.has(channelId)
+        const isMentioned = mentions.includes(auth.userId)
+
+        if (!isActiveChannel) {
           setUnreadCounts(prev => ({ ...prev, [channelId]: (prev[channelId] ?? 0) + 1 }))
-          if (authorId !== auth.userId && !mutedChannelIdsRef.current.has(channelId)) {
+          if (isMentioned) {
+            setMentionCounts(prev => ({ ...prev, [channelId]: (prev[channelId] ?? 0) + 1 }))
+          }
+        }
+
+        // Desktop notification: mentions always fire (unless muted); regular only when unfocused
+        if (authorId !== auth.userId && !isMuted) {
+          const ch = [...channelsRef.current, ...dmChannelsRef.current].find(c => c.id === channelId)
+          const channelName = ch?.type === 'DM' ? `@${authorName}` : `#${ch?.name ?? channelId}`
+          const truncated = content.length > 120 ? content.slice(0, 120) + '…' : content
+          if (isMentioned) {
+            sendNotification({ title: `${channelName} · ${authorName} mentioned you`, body: truncated })
+          } else if (!isActiveChannel) {
             getCurrentWindow().isFocused().then(focused => {
               if (focused) return
-              const ch = [...channelsRef.current, ...dmChannelsRef.current].find(c => c.id === channelId)
-              const channelName = ch?.type === 'DM' ? `@${authorName}` : `#${ch?.name ?? channelId}`
-              const truncated = content.length > 120 ? content.slice(0, 120) + '…' : content
               sendNotification({ title: `${channelName} · ${authorName}`, body: truncated })
             }).catch(() => {})
           }
@@ -328,8 +352,9 @@ export default function Main({ auth, onLogout }: Props) {
         if (isNew) {
           // Fetch unread count for this DM — catches messages sent while we were briefly disconnected
           api.getUnreadCounts(auth.token, { [channel.id]: new Date(0).toISOString() }).then(results => {
-            for (const { channelId, count } of results) {
+            for (const { channelId, count, mentionCount } of results) {
               if (count > 0) setUnreadCounts(prev => ({ ...prev, [channelId]: count }))
+              if (mentionCount > 0) setMentionCounts(prev => ({ ...prev, [channelId]: mentionCount }))
             }
           })
         }
@@ -345,6 +370,7 @@ export default function Main({ auth, onLogout }: Props) {
         setChannels(prev => prev.filter(c => c.id !== channelId))
         setActiveChannel(prev => prev?.id === channelId ? null : prev)
         setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+        setMentionCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
       } else if (event.type === 'user:updated') {
         const user = event.payload
         setUsers(prev => prev.map(u => u.id === user.id ? user : u))
@@ -750,10 +776,12 @@ export default function Main({ auth, onLogout }: Props) {
       return next
     })
     setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+    setMentionCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
   }
 
   function markChannelRead(channelId: string) {
     setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+    setMentionCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
     saveLastRead(auth.userId, channelId)
   }
 
@@ -892,6 +920,7 @@ export default function Main({ auth, onLogout }: Props) {
         currentUserId={auth.userId}
         hiddenChannelIds={hiddenChannelIds}
         unreadCounts={unreadCounts}
+        mentionCounts={mentionCounts}
         mutedChannelIds={mutedChannelIds}
         users={users}
         onlineUserIds={onlineUserIds}

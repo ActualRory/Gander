@@ -21,4 +21,5 @@ export interface Message {
   postNumber: number | null
   replyTo: MessageReplyPreview | null
   reactions: ReactionSummary[]
+  mentions: string[]
 }

@@ -300,3 +300,60 @@
 .messageHighlight {
   animation: msgHighlight 1.2s ease-out forwards;
 }
+
+.mention {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  padding: 0 2px;
+}
+
+.mentionSelf {
+  color: var(--bg-base);
+  background: var(--accent);
+  padding: 0 2px;
+  font-weight: bold;
+}
+
+.mentionPopup {
+  position: relative;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.mentionOption {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 10px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.mentionOption:hover {
+  background: var(--bg-surface);
+}
+
+.mentionOptionActive {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.mentionDisplayName {
+  color: var(--text-primary);
+}
+
+.mentionUsername {
+  color: var(--text-muted);
+  font-size: 11px;
+}

@@ -14,6 +14,7 @@ interface Props {
   currentUserId: string
   hiddenChannelIds: Set<string>
   unreadCounts: Record<string, number>
+  mentionCounts: Record<string, number>
   mutedChannelIds: Set<string>
   users: User[]
   onlineUserIds: Set<string>
@@ -60,7 +61,7 @@ interface ParticipantVolumeState {
   userName: string
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, displayName, onLogout, participantVolumes, onSetParticipantVolume, participantVoiceState }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, displayName, onLogout, participantVolumes, onSetParticipantVolume, participantVoiceState }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -144,6 +145,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
     }
 
     const count = unreadCounts[c.id] ?? 0
+    const mentionCount = mentionCounts[c.id] ?? 0
     const muted = mutedChannelIds.has(c.id)
 
     return (
@@ -155,7 +157,12 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
         onContextMenu={e => handleContextMenu(e, c)}
       >
         <span className={styles.channelLabel}># {c.name}</span>
-        {count > 0 && (
+        {mentionCount > 0 && (
+          <span className={`${styles.unreadMention} ${muted ? styles.unreadMuted : ''}`}>
+            [@{mentionCount}]
+          </span>
+        )}
+        {count > 0 && mentionCount === 0 && (
           <span className={`${styles.unreadCount} ${muted ? styles.unreadMuted : ''}`}>
             [{count}]
           </span>
@@ -235,6 +242,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
     const otherUser = users.find(u => u.id === otherId)
     const label = otherUser?.displayName ?? otherId ?? c.name
     const count = unreadCounts[c.id] ?? 0
+    const mentionCount = mentionCounts[c.id] ?? 0
     const muted = mutedChannelIds.has(c.id)
     const status = getDMStatus(c)
     const dotClass = status === 'chatting' ? styles.dotChatting : status === 'online' ? styles.dotOnline : ''
@@ -249,7 +257,12 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
       >
         <span className={`${styles.dmDot} ${dotClass}`}>·</span>
         <span className={styles.dmLabel}>{label}</span>
-        {count > 0 && (
+        {mentionCount > 0 && (
+          <span className={`${styles.unreadMention} ${muted ? styles.unreadMuted : ''}`}>
+            [@{mentionCount}]
+          </span>
+        )}
+        {count > 0 && mentionCount === 0 && (
           <span className={`${styles.unreadCount} ${muted ? styles.unreadMuted : ''}`}>
             [{count}]
           </span>

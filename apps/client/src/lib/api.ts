@@ -44,7 +44,7 @@ export const api = {
     request<Message[]>(`/api/messages/${channelId}`, authed(token)),
 
   getUnreadCounts: (token: string, channelLastReadAt: Record<string, string>) =>
-    request<{ channelId: string; count: number }[]>('/api/messages/unread', {
+    request<{ channelId: string; count: number; mentionCount: number }[]>('/api/messages/unread', {
       method: 'POST',
       body: JSON.stringify({ channelLastReadAt }),
       ...authed(token),

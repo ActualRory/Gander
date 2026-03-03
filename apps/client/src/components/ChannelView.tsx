@@ -66,6 +66,7 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
   const channelLabel = channel.type === 'DM'
     ? (users.find(u => u.id === channel.otherUserId)?.displayName ?? channel.name)
     : `# ${channel.name}`
+  const currentUsername = users.find(u => u.id === currentUserId)?.username ?? ''
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -73,12 +74,21 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
   const [msgMenu, setMsgMenu] = useState<{ msgId: string; x: number; y: number } | null>(null)
   const [reactionPicker, setReactionPicker] = useState<{ msgId: string; x: number; y: number } | null>(null)
   const [reactionTooltip, setReactionTooltip] = useState<{ names: string[]; rect: DOMRect } | null>(null)
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const [mentionIndex, setMentionIndex] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const firstUnreadRef = useRef<HTMLDivElement | null>(null)
   const isAtBottomRef = useRef(true)
   const initialScrollDoneRef = useRef(false)
+
+  const mentionUsers = mentionQuery !== null
+    ? users.filter(u =>
+        u.displayName.toLowerCase().includes(mentionQuery.toLowerCase()) ||
+        u.username.toLowerCase().includes(mentionQuery.toLowerCase())
+      ).slice(0, 8)
+    : []
 
   function resize() {
     const el = textareaRef.current
@@ -194,7 +204,38 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
     } catch { /* WS broadcast will correct state */ }
   }
 
+  function handleInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const val = e.target.value
+    setInput(val)
+    resize()
+    // Detect @mention query: find @word immediately before cursor with no space after @
+    const pos = e.target.selectionStart ?? val.length
+    const before = val.slice(0, pos)
+    const match = before.match(/@(\S*)$/)
+    if (match) {
+      setMentionQuery(match[1])
+      setMentionIndex(0)
+    } else {
+      setMentionQuery(null)
+    }
+  }
+
+  function selectMention(username: string) {
+    const pos = textareaRef.current?.selectionStart ?? input.length
+    const before = input.slice(0, pos)
+    const after = input.slice(pos)
+    setInput(before.replace(/@(\S*)$/, `@${username} `) + after)
+    setMentionQuery(null)
+    textareaRef.current?.focus()
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionQuery !== null && mentionUsers.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIndex(i => Math.min(i + 1, mentionUsers.length - 1)); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setMentionIndex(i => Math.max(i - 1, 0)); return }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectMention(mentionUsers[mentionIndex].username); return }
+      if (e.key === 'Escape') { setMentionQuery(null); return }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       send()
@@ -281,7 +322,7 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
                   <span className={styles.replyQuoteContent}>{msg.replyTo.content}</span>
                 </div>
               )}
-              <p className={styles.content}>{renderContent(msg.content)}</p>
+              <p className={styles.content}>{renderContent(msg.content, currentUsername)}</p>
               {msg.reactions.length > 0 && (
                 <div className={styles.reactions}>
                   {msg.reactions.map(r => {
@@ -364,6 +405,22 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
         </div>
       )}
 
+      {mentionQuery !== null && mentionUsers.length > 0 && (
+        <div className={styles.mentionPopup}>
+          {mentionUsers.map((u, i) => (
+            <button
+              key={u.id}
+              type="button"
+              className={`${styles.mentionOption} ${i === mentionIndex ? styles.mentionOptionActive : ''}`}
+              onMouseDown={e => { e.preventDefault(); selectMention(u.username) }}
+            >
+              <span className={styles.mentionDisplayName}>{u.displayName}</span>
+              <span className={styles.mentionUsername}>@{u.username}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <form className={styles.inputBar} onSubmit={e => { e.preventDefault(); send() }}>
         <span className={styles.prompt}>&gt;</span>
         <textarea
@@ -372,7 +429,7 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
           placeholder={`message ${channelLabel}`}
           value={input}
           rows={1}
-          onChange={e => { setInput(e.target.value); resize() }}
+          onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           autoComplete="off"
           autoFocus
@@ -397,28 +454,41 @@ function getDateLabel(iso: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g
+// Matches URLs or @mention handles in one pass
+const CONTENT_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+|@(\S+)/g
 
-function renderContent(text: string): React.ReactNode {
+function renderContent(text: string, currentUsername: string): React.ReactNode {
   const parts: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
-  URL_REGEX.lastIndex = 0
-  while ((match = URL_REGEX.exec(text)) !== null) {
+  CONTENT_REGEX.lastIndex = 0
+  while ((match = CONTENT_REGEX.exec(text)) !== null) {
     if (match.index > last) parts.push(text.slice(last, match.index))
-    const url = match[0]
-    parts.push(
-      <a
-        key={match.index}
-        className={styles.link}
-        href={url}
-        onClick={e => { e.preventDefault(); void openUrl(url) }}
-        rel="noopener noreferrer"
-      >
-        {url}
-      </a>
-    )
-    last = match.index + url.length
+    if (match[1] !== undefined) {
+      // @mention
+      const handle = match[1]
+      const isSelf = handle.toLowerCase() === currentUsername.toLowerCase()
+      parts.push(
+        <span key={match.index} className={`${styles.mention} ${isSelf ? styles.mentionSelf : ''}`}>
+          @{handle}
+        </span>
+      )
+    } else {
+      // URL
+      const url = match[0]
+      parts.push(
+        <a
+          key={match.index}
+          className={styles.link}
+          href={url}
+          onClick={e => { e.preventDefault(); void openUrl(url) }}
+          rel="noopener noreferrer"
+        >
+          {url}
+        </a>
+      )
+    }
+    last = match.index + match[0].length
   }
   if (last < text.length) parts.push(text.slice(last))
   return parts.length > 0 ? parts : text

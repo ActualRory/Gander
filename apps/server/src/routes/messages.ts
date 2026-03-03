@@ -8,17 +8,23 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
 
   // Batch unread counts for multiple channels since given timestamps.
   // Body: { channelLastReadAt: Record<channelId, isoTimestamp> }
-  // Returns: { channelId: string, count: number }[]
+  // Returns: { channelId: string, count: number, mentionCount: number }[]
   app.post('/unread', async (req) => {
     const { userId } = req.user as { userId: string }
     const { channelLastReadAt } = req.body as { channelLastReadAt: Record<string, string> }
     return Promise.all(
-      Object.entries(channelLastReadAt).map(async ([channelId, lastReadAt]) => ({
-        channelId,
-        count: await prisma.message.count({
-          where: { channelId, authorId: { not: userId }, createdAt: { gt: new Date(lastReadAt) } },
-        }),
-      }))
+      Object.entries(channelLastReadAt).map(async ([channelId, lastReadAt]) => {
+        const since = new Date(lastReadAt)
+        const [count, mentionCount] = await Promise.all([
+          prisma.message.count({
+            where: { channelId, authorId: { not: userId }, createdAt: { gt: since } },
+          }),
+          prisma.mention.count({
+            where: { userId, message: { channelId, createdAt: { gt: since } } },
+          }),
+        ])
+        return { channelId, count, mentionCount }
+      })
     )
   })
 
@@ -35,6 +41,7 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         author: { select: { id: true, displayName: true } },
         replyTo: { select: { id: true, content: true, author: { select: { displayName: true } } } },
         reactions: { select: { reaction: true, userId: true } },
+        mentions: { select: { userId: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: Number(limit),
@@ -64,6 +71,7 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
           ? { id: m.replyTo.id, authorName: m.replyTo.author.displayName, content: m.replyTo.content.slice(0, 100) }
           : null,
         reactions,
+        mentions: m.mentions.map(mn => mn.userId),
       }
     })
   })

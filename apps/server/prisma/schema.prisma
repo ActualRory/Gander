@@ -20,6 +20,7 @@ model User {
   messages        Message[]
   createdChannels Channel[]       @relation("ChannelCreator")
   reactions       Reaction[]
+  mentions        Mention[]
 }
 
 model Channel {
@@ -68,6 +69,17 @@ model Message {
   replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies   Message[] @relation("MessageReplies")
   reactions Reaction[]
+  mentions  Mention[]
+}
+
+model Mention {
+  messageId String
+  userId    String
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId])
 }
 
 model Reaction {
