@@ -63,14 +63,14 @@ jobs:
         shell: bash
         run: |
           NSIS_DIR="apps/client/src-tauri/target/release/bundle/nsis"
-          ZIP_FILE=$(find "$NSIS_DIR" -name "*.nsis.zip" | head -1)
-          if [ -z "$ZIP_FILE" ]; then
-            echo "No .nsis.zip found. Signing key may not be configured."
+          EXE_FILE=$(find "$NSIS_DIR" -name "*.exe" | head -1)
+          if [ -z "$EXE_FILE" ]; then
+            echo "No .exe found in NSIS bundle directory."
             exit 1
           fi
-          ZIP_NAME=$(basename "$ZIP_FILE")
-          SIGNATURE=$(cat "${ZIP_FILE}.sig")
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
+          EXE_NAME=$(basename "$EXE_FILE")
+          SIGNATURE=$(cat "${EXE_FILE}.sig")
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${EXE_NAME}"
           jq -n \
             --arg version "$APP_VERSION" \
             --arg notes "" \
@@ -85,8 +85,8 @@ jobs:
         with:
           files: |
             apps/client/src-tauri/target/release/bundle/nsis/*.exe
-            apps/client/src-tauri/target/release/bundle/nsis/*.nsis.zip
-            apps/client/src-tauri/target/release/bundle/nsis/*.nsis.zip.sig
+            apps/client/src-tauri/target/release/bundle/nsis/*.exe.sig
             apps/client/src-tauri/target/release/bundle/msi/*.msi
+            apps/client/src-tauri/target/release/bundle/msi/*.msi.sig
             latest.json
           generate_release_notes: true
