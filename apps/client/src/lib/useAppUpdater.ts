@@ -16,7 +16,7 @@ export function useAppUpdater() {
 
   useEffect(() => {
     // Only run inside Tauri (not in browser dev mode)
-    if (!window.__TAURI_INTERNALS__) return
+    if (!(window as any).__TAURI_INTERNALS__) return
 
     let cancelled = false
 
