@@ -728,7 +728,6 @@ export default function Main({ auth, onLogout }: Props) {
 
   async function handleCreateChannel(name: string, type: 'TEXT' | 'VOICE') {
     const channel = await api.createChannel(auth.token, name, type)
-    setChannels(prev => [...prev, channel])
     if (type === 'TEXT') setActiveChannel(channel)
   }
 
