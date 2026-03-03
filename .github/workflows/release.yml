@@ -55,11 +55,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      - name: List bundle artifacts
+        shell: bash
+        run: find apps/client/src-tauri/target/release/bundle -type f | sort
+
       - name: Generate update manifest
         shell: bash
         run: |
           NSIS_DIR="apps/client/src-tauri/target/release/bundle/nsis"
-          ZIP_FILE=$(ls "$NSIS_DIR"/*.nsis.zip | head -1)
+          ZIP_FILE=$(find "$NSIS_DIR" -name "*.nsis.zip" | head -1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "No .nsis.zip found. Signing key may not be configured."
+            exit 1
+          fi
           ZIP_NAME=$(basename "$ZIP_FILE")
           SIGNATURE=$(cat "${ZIP_FILE}.sig")
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
