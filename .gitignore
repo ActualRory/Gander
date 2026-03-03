@@ -7,5 +7,7 @@ dist/
 
 # Tauri
 apps/client/src-tauri/target/
+*.key
+*.key.pub
 
 # Prisma - keep migrations in git, ignore local dev db
