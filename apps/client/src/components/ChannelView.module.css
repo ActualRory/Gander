@@ -65,6 +65,25 @@
   margin-top: 14px;
 }
 
+.dateSeparator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  opacity: 0.5;
+}
+
+.dateSeparator::before,
+.dateSeparator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 .unreadDivider {
   display: flex;
   align-items: center;

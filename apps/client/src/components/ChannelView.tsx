@@ -235,8 +235,11 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
         {!loading && messages.length === 0 && (
           <p className={styles.status}>no messages yet — say something</p>
         )}
-        {messages.map(msg => {
+        {messages.map((msg, i) => {
           const isFirstUnread = msg.id === firstUnreadId
+          const prevMsg = messages[i - 1]
+          const showDateSep = !prevMsg ||
+            new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString()
 
           return (
             <div
@@ -246,6 +249,11 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
               className={styles.message}
               onContextMenu={e => { e.preventDefault(); setMsgMenu({ msgId: msg.id, x: e.clientX, y: e.clientY }) }}
             >
+              {showDateSep && (
+                <div className={styles.dateSeparator}>
+                  <span>{getDateLabel(msg.createdAt)}</span>
+                </div>
+              )}
               {isFirstUnread && (
                 <div className={styles.unreadDivider}>
                   <span>new messages</span>
@@ -377,6 +385,16 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
 function formatTime(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function getDateLabel(iso: string): string {
+  const d = new Date(iso)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (d.toDateString() === today.toDateString()) return 'today'
+  if (d.toDateString() === yesterday.toDateString()) return 'yesterday'
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g
