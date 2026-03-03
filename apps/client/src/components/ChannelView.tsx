@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { createPortal } from 'react-dom'
 import type { Channel, Message, User } from '@gander/shared'
 import type { GanderWS } from '../lib/ws.ts'
@@ -272,7 +273,7 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
                   <span className={styles.replyQuoteContent}>{msg.replyTo.content}</span>
                 </div>
               )}
-              <p className={styles.content}>{msg.content}</p>
+              <p className={styles.content}>{renderContent(msg.content)}</p>
               {msg.reactions.length > 0 && (
                 <div className={styles.reactions}>
                   {msg.reactions.map(r => {
@@ -376,4 +377,31 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
 function formatTime(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g
+
+function renderContent(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = []
+  let last = 0
+  let match: RegExpExecArray | null
+  URL_REGEX.lastIndex = 0
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index))
+    const url = match[0]
+    parts.push(
+      <a
+        key={match.index}
+        className={styles.link}
+        href={url}
+        onClick={e => { e.preventDefault(); void openUrl(url) }}
+        rel="noopener noreferrer"
+      >
+        {url}
+      </a>
+    )
+    last = match.index + url.length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts.length > 0 ? parts : text
 }

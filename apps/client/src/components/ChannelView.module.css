@@ -115,6 +115,16 @@
   word-break: break-word;
 }
 
+.link {
+  color: #e07840;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
 .inputBar {
   display: flex;
   align-items: flex-end;
