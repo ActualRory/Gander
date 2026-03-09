@@ -1,0 +1,8 @@
+# Use the bundled lld linker (faster than MSVC link.exe for large crates)
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "linker-flavor=msvc-lld"]
+
+# Faster debug builds: no optimization, minimal debug info (line tables only)
+[profile.dev]
+opt-level = 0
+debug = 1
