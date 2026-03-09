@@ -12,10 +12,10 @@ jobs:
       contents: write
 
     env:
-      RUSTC_WRAPPER: sccache
       CARGO_INCREMENTAL: 0
 
     steps:
+      # Checkout code
       - uses: actions/checkout@v4
 
       # Node setup
@@ -31,11 +31,23 @@ jobs:
       # Rust toolchain
       - uses: dtolnay/rust-toolchain@stable
 
-      # Install sccache for caching compiled crates
+      # Install sccache
       - name: Install sccache
         run: cargo install sccache
 
-      # Cache Cargo dependencies, target, and sccache
+      # Add cargo bin to PATH so sccache is found
+      - name: Add cargo bin to PATH
+        run: echo "$env:USERPROFILE\.cargo\bin" >> $GITHUB_PATH
+
+      # Set Rust compiler wrapper
+      - name: Set Rust compiler wrapper
+        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+
+      # Verify sccache
+      - name: Verify sccache
+        run: sccache --version
+
+      # Cache Rust dependencies, target, and sccache
       - name: Cache Rust dependencies
         uses: actions/cache@v3
         with:
@@ -59,7 +71,6 @@ jobs:
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          # MSI requires MAJOR.MINOR.PATCH with no pre-release identifier
           echo "APP_VERSION=${VERSION%%-*}" >> $GITHUB_ENV
 
       # Patch tauri.conf.json version
