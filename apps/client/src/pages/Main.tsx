@@ -3,6 +3,7 @@ import goosehonkUrl from '../../sounds/goosehonk1.mp3?url'
 import hangupUrl from '../../sounds/goosebell_hangup1.mp3?url'
 import { Room, RoomEvent, Track, AudioPresets, LocalAudioTrack, ConnectionQuality, createAudioAnalyser, type RemoteAudioTrack } from 'livekit-client'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { Image as TauriImage } from '@tauri-apps/api/image'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import type { Channel, User } from '@gander/shared'
@@ -179,6 +180,18 @@ export default function Main({ auth, onLogout }: Props) {
   const rnnoiseProcessorRef = useRef<RNNoiseProcessor | null>(null)
   const voiceChannelIdRef = useRef<string | null>(null)
   const voiceParticipantsRef = useRef<Record<string, string[]>>({})
+
+  // Ctrl+Shift+F12 opens DevTools (hidden from users, available for debugging)
+  useEffect(() => {
+    if (!(window as any).__TAURI_INTERNALS__) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'F12') {
+        getCurrentWebviewWindow().openDevtools()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   // Persist voice settings to localStorage whenever they change
   useEffect(() => {
