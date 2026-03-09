@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { createPortal } from 'react-dom'
-import type { Channel, Message, User } from '@gander/shared'
+import type { Channel, Message, User, OgData } from '@gander/shared'
 import type { GanderWS } from '../lib/ws.ts'
 import { api, resolveAttachmentUrl } from '../lib/api.ts'
 import ContextMenu from './ContextMenu.tsx'
 import ReactionPicker from './ReactionPicker.tsx'
 import styles from './ChannelView.module.css'
+
+// Module-level OG fetch cache — persists across channel switches
+const ogFetchCache = new Map<string, { data: OgData | null; fetchedAt: number }>()
+const OG_TTL = 60 * 60 * 1000
 
 const LOGO = `⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣶⣶⣾⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀
@@ -84,6 +88,7 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
     error: string | null
   }>>([])
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const [ogData, setOgData] = useState<Map<string, OgData>>(new Map())
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -338,6 +343,27 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
     return () => document.removeEventListener('keydown', onKey)
   }, [lightboxUrl])
 
+  // Fetch OG metadata for non-image URLs in messages
+  useEffect(() => {
+    const toFetch = new Set<string>()
+    for (const msg of messages) {
+      for (const url of extractWebUrls(msg.content)) {
+        const cached = ogFetchCache.get(url)
+        if (!cached || Date.now() - cached.fetchedAt > OG_TTL) toFetch.add(url)
+      }
+    }
+    if (toFetch.size === 0) return
+    for (const url of toFetch) {
+      ogFetchCache.set(url, { data: null, fetchedAt: Date.now() })
+      api.getOg(token, url).then(data => {
+        ogFetchCache.set(url, { data, fetchedAt: Date.now() })
+        if (data) setOgData(prev => new Map(prev).set(url, data))
+      }).catch(() => {
+        ogFetchCache.set(url, { data: null, fetchedAt: Date.now() })
+      })
+    }
+  }, [messages, token])
+
   // Find first unread message ID (stable per mount since lastReadAt is fixed)
   const lastReadTime = lastReadAt ? new Date(lastReadAt).getTime() : null
   let firstUnreadId: string | null = null
@@ -431,6 +457,37 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
                   ))}
                 </div>
               )}
+              {msg.content && extractImageUrls(msg.content).map(url => (
+                <img
+                  key={url}
+                  src={url}
+                  alt={url}
+                  className={styles.messageImage}
+                  loading="lazy"
+                  onClick={() => setLightboxUrl(url)}
+                />
+              ))}
+              {msg.content && (() => {
+                const urlWithOg = extractWebUrls(msg.content).find(url => ogData.has(url))
+                const og = urlWithOg ? ogData.get(urlWithOg)! : null
+                if (!og || !urlWithOg) return null
+                return (
+                  <div
+                    className={styles.ogCard}
+                    onClick={() => void openUrl(urlWithOg)}
+                    role="link"
+                    tabIndex={0}
+                    onKeyDown={e => { if (e.key === 'Enter') void openUrl(urlWithOg) }}
+                  >
+                    <div className={styles.ogCardContent}>
+                      {og.siteName && <div className={styles.ogSiteName}>{og.siteName}</div>}
+                      {og.title && <div className={styles.ogTitle}>{og.title}</div>}
+                      {og.description && <div className={styles.ogDescription}>{og.description}</div>}
+                    </div>
+                    {og.imageUrl && <img src={og.imageUrl} alt="" className={styles.ogThumb} loading="lazy" />}
+                  </div>
+                )
+              })()}
               {msg.reactions.length > 0 && (
                 <div className={styles.reactions}>
                   {msg.reactions.map(r => {
@@ -591,6 +648,28 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
       </form>
     </div>
   )
+}
+
+const IMAGE_EXT_RE = /\.(jpg|jpeg|png|gif|webp)(\?[^\s]*)?$/i
+
+function extractImageUrls(text: string): string[] {
+  const urls: string[] = []
+  const re = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g
+  let m
+  while ((m = re.exec(text)) !== null) {
+    if (IMAGE_EXT_RE.test(m[0])) urls.push(m[0])
+  }
+  return urls
+}
+
+function extractWebUrls(text: string): string[] {
+  const urls: string[] = []
+  const re = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g
+  let m
+  while ((m = re.exec(text)) !== null) {
+    if (!IMAGE_EXT_RE.test(m[0])) urls.push(m[0])
+  }
+  return urls
 }
 
 function formatBytes(bytes: number): string {

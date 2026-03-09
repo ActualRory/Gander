@@ -1,4 +1,4 @@
-import type { Channel, Message, AuthResponse, User, AttachmentInfo } from '@gander/shared'
+import type { Channel, Message, AuthResponse, User, AttachmentInfo, OgData } from '@gander/shared'
 import { getServerUrl } from './config.ts'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -73,6 +73,9 @@ export const api = {
 
   removeReaction: (token: string, messageId: string, reaction: string) =>
     request<void>(`/api/reactions/${messageId}?reaction=${encodeURIComponent(reaction)}`, { method: 'DELETE', ...authed(token) }),
+
+  getOg: (token: string, url: string) =>
+    request<OgData | null>(`/api/og?url=${encodeURIComponent(url)}`, authed(token)),
 
   uploadAttachments: async (token: string, files: File[]): Promise<AttachmentInfo[]> => {
     const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
