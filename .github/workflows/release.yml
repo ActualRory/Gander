@@ -15,10 +15,10 @@ jobs:
       CARGO_INCREMENTAL: 0
 
     steps:
-      # Checkout code
+      # Checkout repository
       - uses: actions/checkout@v4
 
-      # Node setup
+      # Node.js setup
       - uses: pnpm/action-setup@v4
         with:
           version: 9
@@ -31,19 +31,21 @@ jobs:
       # Rust toolchain
       - uses: dtolnay/rust-toolchain@stable
 
-      # Install sccache
-      - name: Install sccache
-        run: cargo install sccache
+      # Install prebuilt sccache binary
+      - name: Install prebuilt sccache
+        run: |
+          curl -LO https://github.com/mozilla/sccache/releases/download/v0.14.1/sccache-v0.14.1-x86_64-pc-windows-msvc.zip
+          Expand-Archive sccache-v0.14.1-x86_64-pc-windows-msvc.zip -DestinationPath $env:USERPROFILE\.cargo\bin
 
-      # Add cargo bin to PATH so sccache is found
+      # Add cargo bin (sccache) to PATH
       - name: Add cargo bin to PATH
         run: echo "$env:USERPROFILE\.cargo\bin" >> $GITHUB_PATH
 
       # Set Rust compiler wrapper
-      - name: Set Rust compiler wrapper
+      - name: Set RUSTC_WRAPPER
         run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
 
-      # Verify sccache
+      # Verify sccache works
       - name: Verify sccache
         run: sccache --version
 
@@ -80,7 +82,7 @@ jobs:
           jq --arg v "$APP_VERSION" '.version = $v' apps/client/src-tauri/tauri.conf.json > tmp.json
           mv tmp.json apps/client/src-tauri/tauri.conf.json
 
-      # Build Tauri release using sccache
+      # Build Tauri release
       - name: Build Tauri app
         run: pnpm --filter client tauri build
         env:
