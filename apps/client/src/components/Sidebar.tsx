@@ -41,6 +41,7 @@ interface Props {
   onOpenVoiceSettings: () => void
   onOpenDM: (channel: Channel) => void
   onHideDM: (channelId: string) => void
+  onSetTopic: (channelId: string, topic: string) => void
   displayName: string
   onLogout: () => void
   participantVolumes: Record<string, number>
@@ -61,14 +62,17 @@ interface ParticipantVolumeState {
   userName: string
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, displayName, onLogout, participantVolumes, onSetParticipantVolume, participantVoiceState }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, onSetTopic, displayName, onLogout, participantVolumes, onSetParticipantVolume, participantVoiceState }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
   const [renaming, setRenaming] = useState<Channel | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [settingTopic, setSettingTopic] = useState<Channel | null>(null)
+  const [topicValue, setTopicValue] = useState('')
   const [deleting, setDeleting] = useState<Channel | null>(null)
   const renameRef = useRef<HTMLInputElement>(null)
+  const topicRef = useRef<HTMLInputElement>(null)
 
   const visibleText = channels.filter(c => c.type === 'TEXT' && !hiddenChannelIds.has(c.id))
   const visibleVoice = channels.filter(c => c.type === 'VOICE' && !hiddenChannelIds.has(c.id))
@@ -90,6 +94,13 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
     if (!renaming || !renameValue.trim()) return
     onRenameChannel(renaming.id, renameValue.trim())
     setRenaming(null)
+  }
+
+  function submitTopic(e: React.FormEvent) {
+    e.preventDefault()
+    if (!settingTopic) return
+    onSetTopic(settingTopic.id, topicValue)
+    setSettingTopic(null)
   }
 
   function contextItems(channel: Channel): ContextMenuItem[] {
@@ -114,6 +125,9 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
     ]
     if (channel.creatorId === currentUserId) {
       items.push({ label: 'rename', action: () => startRename(channel) })
+      if (channel.type === 'TEXT') {
+        items.push({ label: 'set topic', action: () => { setSettingTopic(channel); setTopicValue(channel.topic ?? '') } })
+      }
       items.push({ label: 'delete', danger: true, action: () => setDeleting(channel) })
     }
     return items
@@ -139,6 +153,21 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
             onChange={e => setRenameValue(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
             onBlur={() => setRenaming(null)}
             onKeyDown={e => e.key === 'Escape' && setRenaming(null)}
+          />
+        </form>
+      )
+    }
+    if (settingTopic?.id === c.id) {
+      return (
+        <form key={c.id} onSubmit={submitTopic} className={styles.renameForm}>
+          <input
+            ref={topicRef}
+            autoFocus
+            placeholder="topic (empty to clear)"
+            value={topicValue}
+            onChange={e => setTopicValue(e.target.value)}
+            onBlur={() => setSettingTopic(null)}
+            onKeyDown={e => e.key === 'Escape' && setSettingTopic(null)}
           />
         </form>
       )

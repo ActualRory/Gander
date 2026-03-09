@@ -757,6 +757,25 @@ export default function Main({ auth, onLogout }: Props) {
     if (type === 'TEXT') setActiveChannel(channel)
   }
 
+  async function handleSetTopic(channelId: string, topic: string) {
+    await api.setChannelTopic(auth.token, channelId, topic)
+    // channel:updated WS broadcast updates channels + activeChannel state
+  }
+
+  function handleNavigateToChannel(channelId: string) {
+    const ch = [...channels, ...dmChannels].find(c => c.id === channelId)
+    if (!ch) return
+    if (hiddenChannelIds.has(channelId)) {
+      setHiddenChannelIds(prev => {
+        const next = new Set(prev)
+        next.delete(channelId)
+        saveHidden(auth.userId, next)
+        return next
+      })
+    }
+    openChannel(ch)
+  }
+
   async function handleRenameChannel(channelId: string, name: string) {
     const updated = await api.renameChannel(auth.token, channelId, name)
     setChannels(prev => prev.map(c => c.id === channelId ? updated : c))
@@ -947,6 +966,7 @@ export default function Main({ auth, onLogout }: Props) {
         onOpenVoiceSettings={() => setSettingsOpen(true)}
         onOpenDM={openChannel}
         onHideDM={handleHideDM}
+        onSetTopic={handleSetTopic}
         displayName={auth.displayName}
         onLogout={onLogout}
         participantVolumes={participantVolumes}
@@ -961,10 +981,12 @@ export default function Main({ auth, onLogout }: Props) {
             token={auth.token}
             ws={wsRef.current}
             users={users}
+            channels={channels}
             currentUserId={auth.userId}
             onUserRightClick={handleUserRightClick}
             lastReadAt={loadLastRead(auth.userId, activeChannel.id)}
             onMarkRead={() => markChannelRead(activeChannel.id)}
+            onNavigateToChannel={handleNavigateToChannel}
           />
         ) : (
           <p className={styles.placeholder}>select a channel</p>
