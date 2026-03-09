@@ -749,12 +749,6 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           style={{ display: 'none' }}
           onChange={e => { if (e.target.files) void handleFilesSelected(e.target.files); e.target.value = '' }}
         />
-        <button
-          type="button"
-          className={styles.attachButton}
-          onClick={() => fileInputRef.current?.click()}
-          title="attach image"
-        >[img]</button>
         <span className={styles.prompt}>&gt;</span>
         <textarea
           ref={textareaRef}
@@ -768,6 +762,12 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           autoComplete="off"
           autoFocus
         />
+        <button
+          type="button"
+          className={styles.attachButton}
+          onClick={() => fileInputRef.current?.click()}
+          title="attach image"
+        >[img]</button>
       </form>
     </div>
   )
