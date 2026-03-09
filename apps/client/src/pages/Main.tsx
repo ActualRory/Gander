@@ -186,7 +186,7 @@ export default function Main({ auth, onLogout }: Props) {
     if (!(window as any).__TAURI_INTERNALS__) return
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'F12') {
-        getCurrentWebviewWindow().openDevtools()
+        ;(getCurrentWebviewWindow() as any).openDevtools()
       }
     }
     window.addEventListener('keydown', handler)
