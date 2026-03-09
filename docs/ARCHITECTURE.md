@@ -212,5 +212,3 @@ Context menus are rendered via `createPortal(el, document.body)` to avoid being 
 | SHA-256 passwords | Fine for self-hosted, upgrade to bcrypt for any public deployment |
 | No token refresh | JWT expires; user must re-login |
 | No message pagination UI | API supports `?before=` cursor but UI doesn't use it yet |
-| Voice not wired to client | Server issues LiveKit tokens; client SDK not connected yet |
-| No DMs | Schema has `DM` and `GROUP` channel types; routes not implemented |
