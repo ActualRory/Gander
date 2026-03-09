@@ -87,10 +87,13 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
     attachmentId: string | null
     error: string | null
   }>>([])
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editInput, setEditInput] = useState('')
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [ogData, setOgData] = useState<Map<string, OgData>>(new Map())
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const firstUnreadRef = useRef<HTMLDivElement | null>(null)
@@ -261,6 +264,17 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
     onMarkRead()
   }
 
+  async function saveEdit() {
+    if (!editingMessageId) return
+    const trimmed = editInput.trim()
+    if (!trimmed) return
+    try {
+      await api.editMessage(token, editingMessageId, trimmed)
+    } catch { /* WS broadcast will update state on success; ignore errors */ }
+    setEditingMessageId(null)
+    setEditInput('')
+  }
+
   async function handleToggleReaction(messageId: string, reaction: string) {
     const msg = messages.find(m => m.id === messageId)
     if (!msg) return
@@ -426,7 +440,7 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
                 >{msg.authorName}</span>
                 <span className={styles.time}>{formatTime(msg.createdAt)}</span>
                 {msg.postNumber != null && (
-                  <span className={styles.postNumber}>#{msg.postNumber}</span>
+                  <span className={styles.postNumber}>#{msg.postNumber}{msg.editedAt ? '*' : ''}</span>
                 )}
               </div>
               {msg.replyTo && (
@@ -441,7 +455,29 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
                   <span className={styles.replyQuoteContent}>{msg.replyTo.content}</span>
                 </div>
               )}
-              {msg.content && <p className={styles.content}>{renderContent(msg.content, currentUsername)}</p>}
+              {editingMessageId === msg.id ? (
+                <div className={styles.editWrapper}>
+                  <textarea
+                    ref={editTextareaRef}
+                    className={styles.editTextarea}
+                    value={editInput}
+                    rows={1}
+                    onChange={e => {
+                      setEditInput(e.target.value)
+                      const el = editTextareaRef.current
+                      if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` }
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void saveEdit() }
+                      if (e.key === 'Escape') { setEditingMessageId(null); setEditInput('') }
+                    }}
+                    autoFocus
+                  />
+                  <span className={styles.editHint}>[enter] save  [esc] cancel</span>
+                </div>
+              ) : (
+                msg.content && <p className={styles.content}>{renderContent(msg.content, currentUsername)}</p>
+              )}
               {msg.attachments.length > 0 && (
                 <div className={styles.messageAttachments}>
                   {msg.attachments.map(att => (
@@ -533,6 +569,13 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
               label: 'add reaction',
               action: () => setReactionPicker({ msgId: msgMenu.msgId, x: msgMenu.x, y: msgMenu.y }),
             },
+            ...(messages.find(m => m.id === msgMenu.msgId)?.authorId === currentUserId ? [{
+              label: 'edit',
+              action: () => {
+                const msg = messages.find(m => m.id === msgMenu.msgId)
+                if (msg) { setEditingMessageId(msg.id); setEditInput(msg.content) }
+              },
+            }] : []),
           ]}
           onClose={() => setMsgMenu(null)}
         />

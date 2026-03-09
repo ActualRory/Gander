@@ -543,6 +543,37 @@
   -webkit-box-orient: vertical;
 }
 
+/* ---- Inline message editing ---- */
+.editWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 1px;
+}
+
+.editTextarea {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--accent-dim);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  padding: 0;
+  resize: none;
+  overflow-y: auto;
+  max-height: 45vh;
+  width: 100%;
+  outline: none;
+}
+
+.editHint {
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
 .ogThumb {
   width: 80px;
   height: 60px;

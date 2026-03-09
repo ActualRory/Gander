@@ -74,6 +74,9 @@ export const api = {
   removeReaction: (token: string, messageId: string, reaction: string) =>
     request<void>(`/api/reactions/${messageId}?reaction=${encodeURIComponent(reaction)}`, { method: 'DELETE', ...authed(token) }),
 
+  editMessage: (token: string, messageId: string, content: string) =>
+    request<Message>(`/api/messages/${messageId}`, { method: 'PATCH', body: JSON.stringify({ content }), ...authed(token) }),
+
   getOg: (token: string, url: string) =>
     request<OgData | null>(`/api/og?url=${encodeURIComponent(url)}`, authed(token)),
 
