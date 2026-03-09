@@ -31,15 +31,17 @@ jobs:
       # Rust toolchain
       - uses: dtolnay/rust-toolchain@stable
 
-      # Install prebuilt sccache binary
+      # Install prebuilt sccache (PowerShell-safe)
       - name: Install prebuilt sccache
         run: |
-          curl -LO https://github.com/mozilla/sccache/releases/download/v0.14.1/sccache-v0.14.1-x86_64-pc-windows-msvc.zip
-          Expand-Archive sccache-v0.14.1-x86_64-pc-windows-msvc.zip -DestinationPath $env:USERPROFILE\.cargo\bin
+          Invoke-WebRequest -Uri "https://github.com/mozilla/sccache/releases/download/v0.14.1/sccache-v0.14.1-x86_64-pc-windows-msvc.zip" -OutFile "$env:TEMP\sccache.zip"
+          Expand-Archive "$env:TEMP\sccache.zip" -DestinationPath "$env:USERPROFILE\.cargo\bin"
+        shell: powershell
 
       # Add cargo bin (sccache) to PATH
       - name: Add cargo bin to PATH
         run: echo "$env:USERPROFILE\.cargo\bin" >> $GITHUB_PATH
+        shell: powershell
 
       # Set Rust compiler wrapper
       - name: Set RUSTC_WRAPPER
@@ -48,6 +50,7 @@ jobs:
       # Verify sccache works
       - name: Verify sccache
         run: sccache --version
+        shell: powershell
 
       # Cache Rust dependencies, target, and sccache
       - name: Cache Rust dependencies
