@@ -37,6 +37,9 @@ export const api = {
   renameChannel: (token: string, channelId: string, name: string) =>
     request<Channel>(`/api/channels/${channelId}`, { method: 'PATCH', body: JSON.stringify({ name }), ...authed(token) }),
 
+  setChannelTopic: (token: string, channelId: string, topic: string) =>
+    request<Channel>(`/api/channels/${channelId}`, { method: 'PATCH', body: JSON.stringify({ topic }), ...authed(token) }),
+
   deleteChannel: (token: string, channelId: string) =>
     request<void>(`/api/channels/${channelId}`, { method: 'DELETE', ...authed(token) }),
 

@@ -60,13 +60,15 @@ interface Props {
   token: string
   ws: GanderWS
   users: User[]
+  channels: Channel[]
   currentUserId: string
   lastReadAt: string | null
   onMarkRead: () => void
   onUserRightClick: (userId: string, x: number, y: number) => void
+  onNavigateToChannel: (channelId: string) => void
 }
 
-export default function ChannelView({ channel, token, ws, users, currentUserId, onUserRightClick, lastReadAt, onMarkRead }: Props) {
+export default function ChannelView({ channel, token, ws, users, channels, currentUserId, onUserRightClick, lastReadAt, onMarkRead, onNavigateToChannel }: Props) {
   const channelLabel = channel.type === 'DM'
     ? (users.find(u => u.id === channel.otherUserId)?.displayName ?? channel.name)
     : `# ${channel.name}`
@@ -80,6 +82,9 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
   const [reactionTooltip, setReactionTooltip] = useState<{ names: string[]; rect: DOMRect } | null>(null)
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [mentionIndex, setMentionIndex] = useState(0)
+  const [channelQuery, setChannelQuery] = useState<string | null>(null)
+  const [channelIndex, setChannelIndex] = useState(0)
+  const [channelLinkTooltip, setChannelLinkTooltip] = useState<{ channel: Channel; rect: DOMRect } | null>(null)
   const [pendingAttachments, setPendingAttachments] = useState<Array<{
     file: File
     previewUrl: string
@@ -105,6 +110,10 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
         u.displayName.toLowerCase().includes(mentionQuery.toLowerCase()) ||
         u.username.toLowerCase().includes(mentionQuery.toLowerCase())
       ).slice(0, 8)
+    : []
+
+  const channelList = channelQuery !== null
+    ? channels.filter(c => c.type === 'TEXT' && c.name.includes(channelQuery.toLowerCase())).slice(0, 8)
     : []
 
   function resize() {
@@ -264,6 +273,20 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
     onMarkRead()
   }
 
+  function jumpToPost(postNumber: number) {
+    const msg = messages.find(m => m.postNumber === postNumber)
+    if (msg) jumpToMessage(msg.id)
+  }
+
+  function selectChannel(name: string) {
+    const pos = textareaRef.current?.selectionStart ?? input.length
+    const before = input.slice(0, pos)
+    const after = input.slice(pos)
+    setInput(before.replace(/#([a-z][a-z0-9-]*)$/, `#${name} `) + after)
+    setChannelQuery(null)
+    textareaRef.current?.focus()
+  }
+
   async function saveEdit() {
     if (!editingMessageId) return
     const trimmed = editInput.trim()
@@ -293,15 +316,23 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
     const val = e.target.value
     setInput(val)
     resize()
-    // Detect @mention query: find @word immediately before cursor with no space after @
     const pos = e.target.selectionStart ?? val.length
     const before = val.slice(0, pos)
-    const match = before.match(/@(\S*)$/)
-    if (match) {
-      setMentionQuery(match[1])
+    const mentionMatch = before.match(/@(\S*)$/)
+    if (mentionMatch) {
+      setMentionQuery(mentionMatch[1])
       setMentionIndex(0)
+      setChannelQuery(null)
     } else {
       setMentionQuery(null)
+      // Detect #channel-name query (non-digit after #)
+      const chMatch = before.match(/#([a-z][a-z0-9-]*)$/)
+      if (chMatch) {
+        setChannelQuery(chMatch[1])
+        setChannelIndex(0)
+      } else {
+        setChannelQuery(null)
+      }
     }
   }
 
@@ -315,6 +346,12 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (channelQuery !== null && channelList.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setChannelIndex(i => Math.min(i + 1, channelList.length - 1)); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setChannelIndex(i => Math.max(i - 1, 0)); return }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectChannel(channelList[channelIndex].name); return }
+      if (e.key === 'Escape') { setChannelQuery(null); return }
+    }
     if (mentionQuery !== null && mentionUsers.length > 0) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIndex(i => Math.min(i + 1, mentionUsers.length - 1)); return }
       if (e.key === 'ArrowUp') { e.preventDefault(); setMentionIndex(i => Math.max(i - 1, 0)); return }
@@ -398,6 +435,12 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
 
       <header className={styles.header}>
         <span className={styles.channelName}>{channelLabel}</span>
+        {channel.topic && (
+          <>
+            <span className={styles.headerDivider}>│</span>
+            <span className={styles.channelTopic}>{channel.topic}</span>
+          </>
+        )}
       </header>
 
       <div
@@ -476,7 +519,7 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
                   <span className={styles.editHint}>[enter] save  [esc] cancel</span>
                 </div>
               ) : (
-                msg.content && <p className={styles.content}>{renderContent(msg.content, currentUsername)}</p>
+                msg.content && <p className={styles.content}>{renderContent(msg.content, currentUsername, channels, jumpToPost, onNavigateToChannel, (ch, rect) => setChannelLinkTooltip({ channel: ch, rect }), () => setChannelLinkTooltip(null))}</p>
               )}
               {msg.attachments.length > 0 && (
                 <div className={styles.messageAttachments}>
@@ -569,6 +612,13 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
               label: 'add reaction',
               action: () => setReactionPicker({ msgId: msgMenu.msgId, x: msgMenu.x, y: msgMenu.y }),
             },
+            ...(messages.find(m => m.id === msgMenu.msgId)?.postNumber != null ? [{
+              label: 'copy link',
+              action: () => {
+                const msg = messages.find(m => m.id === msgMenu.msgId)
+                if (msg?.postNumber != null) void navigator.clipboard.writeText(`#${msg.postNumber}`)
+              },
+            }] : []),
             ...(messages.find(m => m.id === msgMenu.msgId)?.authorId === currentUserId ? [{
               label: 'edit',
               action: () => {
@@ -631,6 +681,22 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
         </div>
       )}
 
+      {channelQuery !== null && channelList.length > 0 && (
+        <div className={styles.mentionPopup}>
+          {channelList.map((c, i) => (
+            <button
+              key={c.id}
+              type="button"
+              className={`${styles.mentionOption} ${i === channelIndex ? styles.mentionOptionActive : ''}`}
+              onMouseDown={e => { e.preventDefault(); selectChannel(c.name) }}
+            >
+              <span className={styles.mentionDisplayName}># {c.name}</span>
+              {c.topic && <span className={styles.mentionUsername}>{c.topic}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
       {mentionQuery !== null && mentionUsers.length > 0 && (
         <div className={styles.mentionPopup}>
           {mentionUsers.map((u, i) => (
@@ -645,6 +711,20 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
             </button>
           ))}
         </div>
+      )}
+
+      {channelLinkTooltip?.channel.topic && createPortal(
+        <div
+          className={styles.reactionTooltip}
+          style={{
+            left: channelLinkTooltip.rect.left,
+            top: channelLinkTooltip.rect.top - 4,
+            transform: 'translateY(-100%)',
+          }}
+        >
+          <div>{channelLinkTooltip.channel.topic}</div>
+        </div>,
+        document.body
       )}
 
       {pendingAttachments.length > 0 && (
@@ -736,10 +816,19 @@ function getDateLabel(iso: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-// Matches URLs or @mention handles in one pass
-const CONTENT_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+|@(\S+)/g
+// Matches URLs, @mentions, #postNumber refs, and #channel-name refs in one pass
+// Groups: [1]=@mention handle, [2]=#post digits, [3]=#channel name
+const CONTENT_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+|@(\S+)|#(\d+)|#([a-z][a-z0-9-]*)/g
 
-function renderContent(text: string, currentUsername: string): React.ReactNode {
+function renderContent(
+  text: string,
+  currentUsername: string,
+  channels: Channel[],
+  onJumpToPost: (n: number) => void,
+  onNavigateToChannel: (channelId: string) => void,
+  onChannelHover: (ch: Channel, rect: DOMRect) => void,
+  onChannelLeave: () => void,
+): React.ReactNode {
   const parts: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
@@ -755,6 +844,39 @@ function renderContent(text: string, currentUsername: string): React.ReactNode {
           @{handle}
         </span>
       )
+    } else if (match[2] !== undefined) {
+      // #postNumber — jump link
+      const num = parseInt(match[2], 10)
+      parts.push(
+        <button
+          key={match.index}
+          type="button"
+          className={styles.postLink}
+          onClick={() => onJumpToPost(num)}
+        >
+          #{num}
+        </button>
+      )
+    } else if (match[3] !== undefined) {
+      // #channel-name — navigation link
+      const chName = match[3]
+      const ch = channels.find(c => c.name === chName && c.type === 'TEXT')
+      if (ch) {
+        parts.push(
+          <button
+            key={match.index}
+            type="button"
+            className={styles.channelLink}
+            onClick={() => onNavigateToChannel(ch.id)}
+            onMouseEnter={e => onChannelHover(ch, (e.currentTarget as HTMLElement).getBoundingClientRect())}
+            onMouseLeave={onChannelLeave}
+          >
+            #{chName}
+          </button>
+        )
+      } else {
+        parts.push(`#${chName}`)
+      }
     } else {
       // URL
       const url = match[0]

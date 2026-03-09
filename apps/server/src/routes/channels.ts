@@ -42,7 +42,9 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
   app.patch('/:channelId', async (req, reply) => {
     const { userId } = req.user as { userId: string }
     const { channelId } = req.params as { channelId: string }
-    const { name } = req.body as { name: string }
+    const { name, topic } = req.body as { name?: string; topic?: string }
+
+    if (!name && topic === undefined) return reply.status(400).send({ error: 'Nothing to update' })
 
     const channel = await prisma.channel.findUnique({ where: { id: channelId } })
     if (!channel) return reply.status(404).send({ error: 'Not found' })
@@ -50,7 +52,10 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
 
     const updated = await prisma.channel.update({
       where: { id: channelId },
-      data: { name },
+      data: {
+        ...(name ? { name } : {}),
+        ...(topic !== undefined ? { topic: topic.trim() || null } : {}),
+      },
     })
     broadcastAll({ type: 'channel:updated', payload: { ...updated, createdAt: updated.createdAt.toISOString() } })
     return updated

@@ -28,6 +28,7 @@ model Channel {
   id        String      @id @default(cuid())
   name      String
   type      ChannelType @default(TEXT)
+  topic     String?
   createdAt DateTime    @default(now())
   creatorId String?
 
