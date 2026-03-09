@@ -11,9 +11,14 @@ jobs:
     permissions:
       contents: write
 
+    env:
+      CARGO_INCREMENTAL: 0
+
     steps:
+      # Checkout repository
       - uses: actions/checkout@v4
 
+      # Node.js setup
       - uses: pnpm/action-setup@v4
         with:
           version: 9
@@ -23,42 +28,76 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # Rust toolchain
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: apps/client/src-tauri -> target
+      # Install prebuilt sccache (PowerShell-safe)
+      - name: Install prebuilt sccache
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/mozilla/sccache/releases/download/v0.14.1/sccache-v0.14.1-x86_64-pc-windows-msvc.zip" -OutFile "$env:TEMP\sccache.zip"
+          Expand-Archive "$env:TEMP\sccache.zip" -DestinationPath "$env:USERPROFILE\.cargo\bin"
+        shell: powershell
 
+      # Add cargo bin (sccache) to PATH
+      - name: Add cargo bin to PATH
+        run: echo "$env:USERPROFILE\.cargo\bin" >> $GITHUB_PATH
+        shell: powershell
+
+      # Set Rust compiler wrapper
+      - name: Set RUSTC_WRAPPER
+        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+
+      # Verify sccache works
+      - name: Verify sccache
+        run: sccache --version
+        shell: powershell
+
+      # Cache Rust dependencies, target, and sccache
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            ~/.cache/sccache
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      # Install project dependencies
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Build shared package
       - name: Build shared package
         run: pnpm --filter @gander/shared build
 
+      # Extract version from tag
       - name: Extract version from tag
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          # MSI requires MAJOR.MINOR.PATCH with no pre-release identifier
           echo "APP_VERSION=${VERSION%%-*}" >> $GITHUB_ENV
 
+      # Patch tauri.conf.json version
       - name: Patch tauri.conf.json version
         shell: bash
         run: |
           jq --arg v "$APP_VERSION" '.version = $v' apps/client/src-tauri/tauri.conf.json > tmp.json
           mv tmp.json apps/client/src-tauri/tauri.conf.json
 
+      # Build Tauri release
       - name: Build Tauri app
         run: pnpm --filter client tauri build
         env:
           APP_VERSION: ${{ env.APP_VERSION }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      # List bundle artifacts
       - name: List bundle artifacts
         shell: bash
         run: find apps/client/src-tauri/target/release/bundle -type f | sort
 
+      # Generate update manifest
       - name: Generate update manifest
         shell: bash
         run: |
@@ -80,6 +119,7 @@ jobs:
             '{version:$version,notes:$notes,pub_date:$pub_date,platforms:{"windows-x86_64":{signature:$sig,url:$url}}}' \
             > latest.json
 
+      # Publish GitHub Release
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
