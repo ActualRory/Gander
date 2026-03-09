@@ -1,4 +1,4 @@
-import type { Channel, Message, AuthResponse, User } from '@gander/shared'
+import type { Channel, Message, AuthResponse, User, AttachmentInfo } from '@gander/shared'
 import { getServerUrl } from './config.ts'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -73,4 +73,28 @@ export const api = {
 
   removeReaction: (token: string, messageId: string, reaction: string) =>
     request<void>(`/api/reactions/${messageId}?reaction=${encodeURIComponent(reaction)}`, { method: 'DELETE', ...authed(token) }),
+
+  uploadAttachments: async (token: string, files: File[]): Promise<AttachmentInfo[]> => {
+    const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+    const form = new FormData()
+    for (const file of files.slice(0, 5)) {
+      form.append('file', file)
+    }
+    const res = await fetch(`${base}/api/attachments`, {
+      method: 'POST',
+      body: form,
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string }
+      throw new Error(body?.error ?? `HTTP ${res.status}`)
+    }
+    const body = await res.json() as { attachments: AttachmentInfo[] }
+    return body.attachments
+  },
+}
+
+export function resolveAttachmentUrl(relativePath: string): string {
+  const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+  return `${base}${relativePath}`
 }

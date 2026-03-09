@@ -34,6 +34,7 @@ COPY apps/server/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 WORKDIR /app/apps/server
+RUN mkdir -p /app/uploads
 EXPOSE 3000
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -21,6 +21,7 @@ model User {
   createdChannels Channel[]       @relation("ChannelCreator")
   reactions       Reaction[]
   mentions        Mention[]
+  attachments     Attachment[]
 }
 
 model Channel {
@@ -68,8 +69,24 @@ model Message {
   channel   Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
   replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies   Message[] @relation("MessageReplies")
-  reactions Reaction[]
-  mentions  Mention[]
+  reactions   Reaction[]
+  mentions    Mention[]
+  attachments Attachment[]
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  filename   String
+  storedName String   @unique
+  mimeType   String
+  size       Int
+  uploadedAt DateTime @default(now())
+
+  uploaderId String
+  messageId  String?
+
+  uploader User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  message  Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
 }
 
 model Mention {

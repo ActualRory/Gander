@@ -357,3 +357,140 @@
   color: var(--text-muted);
   font-size: 11px;
 }
+
+/* ---- Attach button ---- */
+.attachButton {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 0 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1.5;
+}
+
+.attachButton:hover {
+  color: var(--accent);
+}
+
+/* ---- Pending attachment thumbnails ---- */
+.pendingAttachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 20px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.pendingThumb {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.pendingThumbError {
+  border-color: #c87060;
+}
+
+.pendingThumbImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pendingThumbStatus {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  background: rgba(26, 26, 14, 0.8);
+  padding: 1px 3px;
+}
+
+.pendingThumbRemove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: rgba(26, 26, 14, 0.85);
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 3px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.pendingThumbRemove:hover {
+  color: var(--text-primary);
+}
+
+/* ---- Inline images in messages ---- */
+.messageAttachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.messageImage {
+  display: block;
+  max-width: 400px;
+  max-height: 300px;
+  width: auto;
+  height: auto;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  object-fit: contain;
+}
+
+.messageImage:hover {
+  border-color: var(--accent-dim);
+}
+
+/* ---- Lightbox ---- */
+.lightboxOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(10, 10, 8, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.lightboxImage {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  cursor: default;
+}
+
+.lightboxClose {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.lightboxClose:hover {
+  border-color: var(--accent-dim);
+  color: var(--text-primary);
+}

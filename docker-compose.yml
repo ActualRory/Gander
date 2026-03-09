@@ -39,6 +39,9 @@ services:
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
       PORT: 3000
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - gander_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,3 +49,4 @@ services:
 
 volumes:
   gander_db:
+  gander_uploads:

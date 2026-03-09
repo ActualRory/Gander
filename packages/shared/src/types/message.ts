@@ -10,6 +10,14 @@ export interface MessageReplyPreview {
   content: string
 }
 
+export interface AttachmentInfo {
+  id: string
+  url: string       // server-relative path, e.g. "/uploads/abc123.jpg"
+  mimeType: string
+  filename: string
+  size: number      // bytes
+}
+
 export interface Message {
   id: string
   channelId: string
@@ -22,4 +30,5 @@ export interface Message {
   replyTo: MessageReplyPreview | null
   reactions: ReactionSummary[]
   mentions: string[]
+  attachments: AttachmentInfo[]
 }

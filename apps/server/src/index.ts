@@ -2,6 +2,10 @@ import Fastify from 'fastify'
 import fastifyCors from '@fastify/cors'
 import fastifyJwt from '@fastify/jwt'
 import fastifyWebsocket from '@fastify/websocket'
+import fastifyMultipart from '@fastify/multipart'
+import fastifyStatic from '@fastify/static'
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { authRoutes } from './routes/auth.js'
 import { channelRoutes } from './routes/channels.js'
 import { dmRoutes } from './routes/dm.js'
@@ -9,13 +13,25 @@ import { messageRoutes } from './routes/messages.js'
 import { voiceRoutes } from './routes/voice.js'
 import { userRoutes } from './routes/users.js'
 import { reactionRoutes } from './routes/reactions.js'
+import { attachmentRoutes } from './routes/attachments.js'
 import { wsHandler } from './ws/handler.js'
+
+const UPLOADS_DIR = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads')
+mkdirSync(UPLOADS_DIR, { recursive: true })
 
 const server = Fastify({ logger: true })
 
 await server.register(fastifyCors, { origin: true })
 await server.register(fastifyJwt, { secret: process.env.JWT_SECRET ?? 'dev-secret' })
 await server.register(fastifyWebsocket)
+await server.register(fastifyMultipart, {
+  limits: { fileSize: 10 * 1024 * 1024, files: 5, fields: 0 },
+})
+await server.register(fastifyStatic, {
+  root: UPLOADS_DIR,
+  prefix: '/uploads/',
+  decorateReply: false,
+})
 
 await server.register(authRoutes, { prefix: '/api/auth' })
 await server.register(channelRoutes, { prefix: '/api/channels' })
@@ -24,6 +40,7 @@ await server.register(messageRoutes, { prefix: '/api/messages' })
 await server.register(voiceRoutes, { prefix: '/api/voice' })
 await server.register(userRoutes, { prefix: '/api/users' })
 await server.register(reactionRoutes, { prefix: '/api/reactions' })
+await server.register(attachmentRoutes, { prefix: '/api/attachments' })
 
 await server.register(async (app) => {
   app.get('/ws', { websocket: true }, wsHandler)

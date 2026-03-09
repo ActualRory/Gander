@@ -3,7 +3,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { createPortal } from 'react-dom'
 import type { Channel, Message, User } from '@gander/shared'
 import type { GanderWS } from '../lib/ws.ts'
-import { api } from '../lib/api.ts'
+import { api, resolveAttachmentUrl } from '../lib/api.ts'
 import ContextMenu from './ContextMenu.tsx'
 import ReactionPicker from './ReactionPicker.tsx'
 import styles from './ChannelView.module.css'
@@ -76,8 +76,17 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
   const [reactionTooltip, setReactionTooltip] = useState<{ names: string[]; rect: DOMRect } | null>(null)
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [mentionIndex, setMentionIndex] = useState(0)
+  const [pendingAttachments, setPendingAttachments] = useState<Array<{
+    file: File
+    previewUrl: string
+    uploading: boolean
+    attachmentId: string | null
+    error: string | null
+  }>>([])
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const firstUnreadRef = useRef<HTMLDivElement | null>(null)
   const isAtBottomRef = useRef(true)
@@ -178,13 +187,70 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
     setTimeout(() => el.classList.remove(styles.messageHighlight), 1200)
   }
 
+  async function handleFilesSelected(files: FileList | File[]) {
+    const imageFiles = Array.from(files).filter(f =>
+      ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(f.type)
+    )
+    const available = 5 - pendingAttachments.length
+    const toUpload = imageFiles.slice(0, available)
+    if (toUpload.length === 0) return
+
+    const newPending = toUpload.map(file => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      uploading: true,
+      attachmentId: null,
+      error: null,
+    }))
+    setPendingAttachments(prev => [...prev, ...newPending])
+
+    try {
+      const uploaded = await api.uploadAttachments(token, toUpload)
+      setPendingAttachments(prev => {
+        const result = [...prev]
+        let uploadedIdx = 0
+        for (let i = 0; i < result.length; i++) {
+          if (result[i].uploading && uploadedIdx < uploaded.length) {
+            result[i] = { ...result[i], uploading: false, attachmentId: uploaded[uploadedIdx].id }
+            uploadedIdx++
+          }
+        }
+        return result
+      })
+    } catch {
+      setPendingAttachments(prev => prev.map(p =>
+        p.uploading ? { ...p, uploading: false, error: 'upload failed' } : p
+      ))
+    }
+  }
+
+  function removePending(index: number) {
+    setPendingAttachments(prev => {
+      const next = [...prev]
+      URL.revokeObjectURL(next[index].previewUrl)
+      next.splice(index, 1)
+      return next
+    })
+  }
+
   function send() {
-    if (!input.trim()) return
+    const trimmed = input.trim()
+    const readyIds = pendingAttachments.filter(p => p.attachmentId !== null).map(p => p.attachmentId as string)
+    if (!trimmed && readyIds.length === 0) return
+    if (pendingAttachments.some(p => p.uploading)) return
+
     ws.send({
       type: 'message:send',
-      payload: { channelId: channel.id, content: input.trim(), ...(replyingTo ? { replyToId: replyingTo.id } : {}) },
+      payload: {
+        channelId: channel.id,
+        content: trimmed,
+        ...(replyingTo ? { replyToId: replyingTo.id } : {}),
+        ...(readyIds.length > 0 ? { attachmentIds: readyIds } : {}),
+      },
     })
+    for (const p of pendingAttachments) URL.revokeObjectURL(p.previewUrl)
     setInput('')
+    setPendingAttachments([])
     setReplyingTo(null)
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     onMarkRead()
@@ -245,6 +311,33 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
     }
   }
 
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(e.clipboardData.files).filter(f =>
+      ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(f.type)
+    )
+    if (files.length > 0) {
+      e.preventDefault()
+      void handleFilesSelected(files)
+    }
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    void handleFilesSelected(e.dataTransfer.files)
+  }
+
+  useEffect(() => {
+    if (!lightboxUrl) return
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setLightboxUrl(null) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [lightboxUrl])
+
   // Find first unread message ID (stable per mount since lastReadAt is fixed)
   const lastReadTime = lastReadAt ? new Date(lastReadAt).getTime() : null
   let firstUnreadId: string | null = null
@@ -258,7 +351,7 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
   }
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} onDragOver={handleDragOver} onDrop={handleDrop}>
       <div className={styles.watermark} aria-hidden="true">
         <pre className={styles.watermarkLogo}>{LOGO}</pre>
       </div>
@@ -322,7 +415,22 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
                   <span className={styles.replyQuoteContent}>{msg.replyTo.content}</span>
                 </div>
               )}
-              <p className={styles.content}>{renderContent(msg.content, currentUsername)}</p>
+              {msg.content && <p className={styles.content}>{renderContent(msg.content, currentUsername)}</p>}
+              {msg.attachments.length > 0 && (
+                <div className={styles.messageAttachments}>
+                  {msg.attachments.map(att => (
+                    <img
+                      key={att.id}
+                      src={resolveAttachmentUrl(att.url)}
+                      alt={att.filename}
+                      className={styles.messageImage}
+                      loading="lazy"
+                      onClick={() => setLightboxUrl(resolveAttachmentUrl(att.url))}
+                      title={`${att.filename} (${formatBytes(att.size)})`}
+                    />
+                  ))}
+                </div>
+              )}
               {msg.reactions.length > 0 && (
                 <div className={styles.reactions}>
                   {msg.reactions.map(r => {
@@ -396,6 +504,24 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
         document.body
       )}
 
+      {lightboxUrl && createPortal(
+        <div
+          className={styles.lightboxOverlay}
+          onClick={() => setLightboxUrl(null)}
+          role="dialog"
+          tabIndex={0}
+        >
+          <img
+            src={lightboxUrl}
+            alt="full size"
+            className={styles.lightboxImage}
+            onClick={e => e.stopPropagation()}
+          />
+          <button type="button" className={styles.lightboxClose} onClick={() => setLightboxUrl(null)}>[close]</button>
+        </div>,
+        document.body
+      )}
+
       {replyingTo && (
         <div className={styles.replyBanner}>
           <span className={styles.replyBannerText}>
@@ -421,7 +547,34 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
         </div>
       )}
 
+      {pendingAttachments.length > 0 && (
+        <div className={styles.pendingAttachments}>
+          {pendingAttachments.map((p, i) => (
+            <div key={i} className={`${styles.pendingThumb} ${p.error ? styles.pendingThumbError : ''}`}>
+              <img src={p.previewUrl} alt={p.file.name} className={styles.pendingThumbImg} />
+              {p.uploading && <span className={styles.pendingThumbStatus}>...</span>}
+              {p.error && <span className={styles.pendingThumbStatus}>!</span>}
+              <button type="button" className={styles.pendingThumbRemove} onClick={() => removePending(i)}>[x]</button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <form className={styles.inputBar} onSubmit={e => { e.preventDefault(); send() }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          multiple
+          style={{ display: 'none' }}
+          onChange={e => { if (e.target.files) void handleFilesSelected(e.target.files); e.target.value = '' }}
+        />
+        <button
+          type="button"
+          className={styles.attachButton}
+          onClick={() => fileInputRef.current?.click()}
+          title="attach image"
+        >[img]</button>
         <span className={styles.prompt}>&gt;</span>
         <textarea
           ref={textareaRef}
@@ -431,12 +584,19 @@ export default function ChannelView({ channel, token, ws, users, currentUserId, 
           rows={1}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           autoComplete="off"
           autoFocus
         />
       </form>
     </div>
   )
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
 
 function formatTime(iso: string): string {

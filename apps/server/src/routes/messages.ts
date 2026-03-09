@@ -42,6 +42,7 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         replyTo: { select: { id: true, content: true, author: { select: { displayName: true } } } },
         reactions: { select: { reaction: true, userId: true } },
         mentions: { select: { userId: true } },
+        attachments: { select: { id: true, storedName: true, mimeType: true, filename: true, size: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: Number(limit),
@@ -68,10 +69,17 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         editedAt: m.editedAt?.toISOString() ?? null,
         postNumber: m.postNumber,
         replyTo: m.replyTo
-          ? { id: m.replyTo.id, authorName: m.replyTo.author.displayName, content: m.replyTo.content.slice(0, 100) }
+          ? { id: m.replyTo.id, authorName: m.replyTo.author.displayName, content: m.replyTo.content.slice(0, 100) || '[image]' }
           : null,
         reactions,
         mentions: m.mentions.map(mn => mn.userId),
+        attachments: m.attachments.map(a => ({
+          id: a.id,
+          url: `/uploads/${a.storedName}`,
+          mimeType: a.mimeType,
+          filename: a.filename,
+          size: a.size,
+        })),
       }
     })
   })

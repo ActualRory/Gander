@@ -154,7 +154,11 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
       }
 
       case 'message:send': {
-        const { channelId, content, replyToId } = event.payload
+        const { channelId, content, replyToId, attachmentIds } = event.payload
+        const hasContent = content.trim().length > 0
+        const hasAttachments = Array.isArray(attachmentIds) && attachmentIds.length > 0
+        if (!hasContent && !hasAttachments) return
+
         const [author, channel] = await Promise.all([
           prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } }),
           prisma.channel.findUnique({ where: { id: channelId }, select: { type: true } }),
@@ -168,7 +172,11 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
             select: { id: true, content: true, author: { select: { displayName: true } } },
           })
           if (original) {
-            replyTo = { id: original.id, authorName: original.author.displayName, content: original.content.slice(0, 100) }
+            replyTo = {
+              id: original.id,
+              authorName: original.author.displayName,
+              content: original.content.slice(0, 100) || '[image]',
+            }
           }
         }
 
@@ -203,6 +211,20 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
           },
         })
 
+        // Link attachments (only the uploader's unlinked ones)
+        let attachments: Array<{ id: string; storedName: string; mimeType: string; filename: string; size: number }> = []
+        if (hasAttachments) {
+          const safeIds = attachmentIds!.slice(0, 5)
+          await prisma.attachment.updateMany({
+            where: { id: { in: safeIds }, uploaderId: userId, messageId: null },
+            data: { messageId: message.id },
+          })
+          attachments = await prisma.attachment.findMany({
+            where: { messageId: message.id },
+            select: { id: true, storedName: true, mimeType: true, filename: true, size: true },
+          })
+        }
+
         const outEvent: ServerEvent = {
           type: 'message:new',
           payload: {
@@ -217,6 +239,13 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
             replyTo,
             reactions: [],
             mentions: mentionedUserIds,
+            attachments: attachments.map(a => ({
+              id: a.id,
+              url: `/uploads/${a.storedName}`,
+              mimeType: a.mimeType,
+              filename: a.filename,
+              size: a.size,
+            })),
           },
         }
 
