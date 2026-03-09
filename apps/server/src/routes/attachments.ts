@@ -10,6 +10,10 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/png',
   'image/gif',
   'image/webp',
+  'application/pdf',
+  'text/plain',
+  'application/zip',
+  'application/x-zip-compressed',
 ])
 
 const MIME_TO_EXT: Record<string, string> = {
@@ -17,6 +21,10 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/png': '.png',
   'image/gif': '.gif',
   'image/webp': '.webp',
+  'application/pdf': '.pdf',
+  'text/plain': '.txt',
+  'application/zip': '.zip',
+  'application/x-zip-compressed': '.zip',
 }
 
 export const attachmentRoutes: FastifyPluginAsync = async (app) => {
@@ -24,7 +32,7 @@ export const attachmentRoutes: FastifyPluginAsync = async (app) => {
     try { await req.jwtVerify() } catch { reply.status(401).send({ error: 'Unauthorized' }) }
   })
 
-  // POST /api/attachments  — upload image files (multipart/form-data, field name: "file")
+  // POST /api/attachments  — upload files (multipart/form-data, field name: "file")
   app.post('/', async (req, reply) => {
     const { userId } = req.user as { userId: string }
     const uploadsDir = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads')

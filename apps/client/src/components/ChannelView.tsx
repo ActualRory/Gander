@@ -205,9 +205,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   }
 
   async function handleFilesSelected(files: FileList | File[]) {
-    const imageFiles = Array.from(files).filter(f =>
-      ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(f.type)
-    )
+    const validFiles = Array.from(files).filter(f => SUPPORTED_MIMES.has(f.type))
+    const imageFiles = validFiles
     const available = 5 - pendingAttachments.length
     const toUpload = imageFiles.slice(0, available)
     if (toUpload.length === 0) return
@@ -523,7 +522,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
               )}
               {msg.attachments.length > 0 && (
                 <div className={styles.messageAttachments}>
-                  {msg.attachments.map(att => (
+                  {msg.attachments.map(att => isImageMime(att.mimeType) ? (
                     <img
                       key={att.id}
                       src={resolveAttachmentUrl(att.url)}
@@ -533,6 +532,18 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                       onClick={() => setLightboxUrl(resolveAttachmentUrl(att.url))}
                       title={`${att.filename} (${formatBytes(att.size)})`}
                     />
+                  ) : (
+                    <button
+                      key={att.id}
+                      type="button"
+                      className={styles.fileChip}
+                      onClick={() => void openUrl(resolveAttachmentUrl(att.url))}
+                      title={att.filename}
+                    >
+                      <span className={styles.fileChipIcon}>[file]</span>
+                      <span className={styles.fileChipName}>{att.filename}</span>
+                      <span className={styles.fileChipMeta}>{formatBytes(att.size)}</span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -731,7 +742,13 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         <div className={styles.pendingAttachments}>
           {pendingAttachments.map((p, i) => (
             <div key={i} className={`${styles.pendingThumb} ${p.error ? styles.pendingThumbError : ''}`}>
-              <img src={p.previewUrl} alt={p.file.name} className={styles.pendingThumbImg} />
+              {isImageMime(p.file.type) ? (
+                <img src={p.previewUrl} alt={p.file.name} className={styles.pendingThumbImg} />
+              ) : (
+                <div className={styles.pendingThumbFile}>
+                  <span className={styles.pendingThumbFileName}>{p.file.name}</span>
+                </div>
+              )}
               {p.uploading && <span className={styles.pendingThumbStatus}>...</span>}
               {p.error && <span className={styles.pendingThumbStatus}>!</span>}
               <button type="button" className={styles.pendingThumbRemove} onClick={() => removePending(i)}>[x]</button>
@@ -744,7 +761,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/gif,image/webp"
+          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,application/zip"
           multiple
           style={{ display: 'none' }}
           onChange={e => { if (e.target.files) void handleFilesSelected(e.target.files); e.target.value = '' }}
@@ -766,11 +783,20 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           type="button"
           className={styles.attachButton}
           onClick={() => fileInputRef.current?.click()}
-          title="attach image"
-        >[img]</button>
+          title="attach file"
+        >[file]</button>
       </form>
     </div>
   )
+}
+
+const SUPPORTED_MIMES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'application/pdf', 'text/plain', 'application/zip', 'application/x-zip-compressed',
+])
+
+function isImageMime(mimeType: string): boolean {
+  return mimeType.startsWith('image/')
 }
 
 const IMAGE_EXT_RE = /\.(jpg|jpeg|png|gif|webp)(\?[^\s]*)?$/i
