@@ -38,7 +38,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQxRDE4MEM1RUI4QTQzRDkKUldUWlE0cnJ4WURSUVdrWDMxM3ljWUYraGpnZEs1VkZnaURqeDlqcDlnbDdBL1JrRVBVVk1zbUsK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFBNTU0QkVBOUYwNzQ0M0MKUldROFJBZWY2a3RWR24xdnE0aEtZMWM3T2toa1kzNUEydEkzNHdsNklkN0s4RFllNVNGRkNybUIK",
       "endpoints": [
         "https://github.com/ActualRory/Gander/releases/latest/download/latest.json"
       ],
