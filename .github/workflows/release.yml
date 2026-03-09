@@ -11,9 +11,14 @@ jobs:
     permissions:
       contents: write
 
+    env:
+      RUSTC_WRAPPER: sccache
+      CARGO_INCREMENTAL: 0
+
     steps:
       - uses: actions/checkout@v4
 
+      # Node setup
       - uses: pnpm/action-setup@v4
         with:
           version: 9
@@ -23,18 +28,33 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # Rust toolchain
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: apps/client/src-tauri -> target
+      # Install sccache for caching compiled crates
+      - name: Install sccache
+        run: cargo install sccache
 
+      # Cache Cargo dependencies, target, and sccache
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            ~/.cache/sccache
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      # Install project dependencies
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Build shared package
       - name: Build shared package
         run: pnpm --filter @gander/shared build
 
+      # Extract version from tag
       - name: Extract version from tag
         shell: bash
         run: |
@@ -42,22 +62,26 @@ jobs:
           # MSI requires MAJOR.MINOR.PATCH with no pre-release identifier
           echo "APP_VERSION=${VERSION%%-*}" >> $GITHUB_ENV
 
+      # Patch tauri.conf.json version
       - name: Patch tauri.conf.json version
         shell: bash
         run: |
           jq --arg v "$APP_VERSION" '.version = $v' apps/client/src-tauri/tauri.conf.json > tmp.json
           mv tmp.json apps/client/src-tauri/tauri.conf.json
 
+      # Build Tauri release using sccache
       - name: Build Tauri app
         run: pnpm --filter client tauri build
         env:
           APP_VERSION: ${{ env.APP_VERSION }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
+      # List bundle artifacts
       - name: List bundle artifacts
         shell: bash
         run: find apps/client/src-tauri/target/release/bundle -type f | sort
 
+      # Generate update manifest
       - name: Generate update manifest
         shell: bash
         run: |
@@ -79,6 +103,7 @@ jobs:
             '{version:$version,notes:$notes,pub_date:$pub_date,platforms:{"windows-x86_64":{signature:$sig,url:$url}}}' \
             > latest.json
 
+      # Publish GitHub Release
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
