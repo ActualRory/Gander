@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { createPortal } from 'react-dom'
-import type { Channel, Message, User, OgData } from '@gander/shared'
+import type { Channel, Message, User, OgData, PinnedMessageEntry } from '@gander/shared'
 import type { GanderWS } from '../lib/ws.ts'
 import { api, resolveAttachmentUrl } from '../lib/api.ts'
 import ContextMenu from './ContextMenu.tsx'
@@ -66,9 +66,12 @@ interface Props {
   onMarkRead: () => void
   onUserRightClick: (userId: string, x: number, y: number) => void
   onNavigateToChannel: (channelId: string) => void
+  jumpToMessageId?: string | null
+  jumpAnchorTime?: string | null
+  onNavigateToMessage?: (channelId: string, messageId: string, createdAt: string) => void
 }
 
-export default function ChannelView({ channel, token, ws, users, channels, currentUserId, onUserRightClick, lastReadAt, onMarkRead, onNavigateToChannel }: Props) {
+export default function ChannelView({ channel, token, ws, users, channels, currentUserId, onUserRightClick, lastReadAt, onMarkRead, onNavigateToChannel, jumpToMessageId, jumpAnchorTime, onNavigateToMessage }: Props) {
   const channelLabel = channel.type === 'DM'
     ? (users.find(u => u.id === channel.otherUserId)?.displayName ?? channel.name)
     : `# ${channel.name}`
@@ -96,6 +99,10 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const [editInput, setEditInput] = useState('')
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [ogData, setOgData] = useState<Map<string, OgData>>(new Map())
+  const [pinsOpen, setPinsOpen] = useState(false)
+  const [pins, setPins] = useState<PinnedMessageEntry[]>([])
+  const [pinsLoaded, setPinsLoaded] = useState(false)
+  const pinsBtnRef = useRef<HTMLButtonElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const editTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -123,7 +130,9 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     el.style.height = `${el.scrollHeight}px`
   }
 
-  // Load history and join channel
+  // Load history and join channel.
+  // If jumpAnchorTime is set, load the 50 messages ending at that timestamp so
+  // the target message appears at/near the bottom of the loaded batch.
   useEffect(() => {
     setLoading(true)
     setMessages([])
@@ -132,7 +141,10 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     isAtBottomRef.current = true
 
     let cancelled = false
-    api.getMessages(token, channel.id).then(msgs => {
+    const before = jumpAnchorTime
+      ? new Date(new Date(jumpAnchorTime).getTime() + 1000).toISOString()
+      : undefined
+    api.getMessages(token, channel.id, before ? { before } : undefined).then(msgs => {
       if (!cancelled) {
         setMessages(msgs)
         setLoading(false)
@@ -147,6 +159,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       cancelled = true
       ws.send({ type: 'channel:leave', payload: { channelId: channel.id } })
     }
+  // jumpAnchorTime intentionally not in deps — read at mount only (ChannelView remounts on channel change)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel.id, token, ws])
 
   // Subscribe to incoming WS events
@@ -187,6 +201,32 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages])
+
+  // Jump to a specific message after load (cross-channel navigation or pinned message click)
+  useEffect(() => {
+    if (loading || !jumpToMessageId) return
+    jumpToMessage(jumpToMessageId)
+  // jumpToMessage is defined later but stable — fine as dep
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, jumpToMessageId])
+
+  // Lazily load pins when the panel opens
+  useEffect(() => {
+    if (!pinsOpen || pinsLoaded) return
+    api.getPins(token, channel.id).then(data => { setPins(data); setPinsLoaded(true) }).catch(() => {})
+  }, [pinsOpen, pinsLoaded, token, channel.id])
+
+  // Close pins panel on Escape / click-outside
+  useEffect(() => {
+    if (!pinsOpen) return
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setPinsOpen(false) }
+    function onDown(e: MouseEvent) {
+      if (!pinsBtnRef.current?.contains(e.target as Node)) setPinsOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown) }
+  }, [pinsOpen])
 
   function handleMessagesScroll() {
     const el = messagesContainerRef.current
@@ -272,9 +312,13 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     onMarkRead()
   }
 
-  function jumpToPost(postNumber: number) {
+  async function jumpToPost(postNumber: number) {
     const msg = messages.find(m => m.postNumber === postNumber)
-    if (msg) jumpToMessage(msg.id)
+    if (msg) { jumpToMessage(msg.id); return }
+    // Not in loaded messages — look up globally
+    const result = await api.getMessageByPostNumber(token, postNumber)
+    if (!result) return
+    onNavigateToMessage?.(result.channelId, result.id, result.createdAt)
   }
 
   function selectChannel(name: string) {
@@ -440,7 +484,58 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
             <span className={styles.channelTopic}>{channel.topic}</span>
           </>
         )}
+        {channel.type !== 'VOICE' && (
+          <button
+            ref={pinsBtnRef}
+            className={styles.headerPinBtn}
+            onClick={() => setPinsOpen(o => !o)}
+            title="pinned messages"
+          >
+            [pinned{pinsLoaded && pins.length > 0 ? ` ${pins.length}` : ''}]
+          </button>
+        )}
       </header>
+      {pinsOpen && pinsBtnRef.current && createPortal(
+        <div
+          className={styles.pinsPanel}
+          style={{
+            top: pinsBtnRef.current.getBoundingClientRect().bottom + 4,
+            right: window.innerWidth - pinsBtnRef.current.getBoundingClientRect().right,
+          }}
+        >
+          <div className={styles.pinsPanelHeader}>pinned messages</div>
+          {!pinsLoaded && <div className={styles.pinsEmpty}>loading...</div>}
+          {pinsLoaded && pins.length === 0 && <div className={styles.pinsEmpty}>no pinned messages</div>}
+          {pinsLoaded && pins.map(p => (
+            <div key={p.id} className={styles.pinEntry}>
+              <div
+                className={styles.pinEntryBody}
+                role="button"
+                tabIndex={0}
+                onClick={() => { jumpToMessage(p.message.id); setPinsOpen(false) }}
+                onKeyDown={e => { if (e.key === 'Enter') { jumpToMessage(p.message.id); setPinsOpen(false) } }}
+              >
+                <div className={styles.pinEntryMeta}>
+                  {p.message.postNumber != null ? `#${p.message.postNumber} · ` : ''}{p.message.authorName}
+                </div>
+                <div className={styles.pinEntryContent}>
+                  {p.message.content || '[attachment]'}
+                </div>
+              </div>
+              <button
+                className={styles.pinUnpinBtn}
+                onClick={async () => {
+                  await api.unpinMessage(token, channel.id, p.messageId)
+                  setPins(prev => prev.filter(x => x.messageId !== p.messageId))
+                }}
+              >
+                [×]
+              </button>
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
 
       <div
         ref={messagesContainerRef}
@@ -630,6 +725,20 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                 if (msg?.postNumber != null) void navigator.clipboard.writeText(`#${msg.postNumber}`)
               },
             }] : []),
+            {
+              label: pinsLoaded && pins.some(p => p.messageId === msgMenu.msgId) ? 'unpin message' : 'pin message',
+              action: async () => {
+                const msgId = msgMenu.msgId
+                const isPinned = pinsLoaded && pins.some(p => p.messageId === msgId)
+                if (isPinned) {
+                  await api.unpinMessage(token, channel.id, msgId)
+                  setPins(prev => prev.filter(p => p.messageId !== msgId))
+                } else {
+                  await api.pinMessage(token, channel.id, msgId)
+                  setPinsLoaded(false) // force reload next open
+                }
+              },
+            },
             ...(messages.find(m => m.id === msgMenu.msgId)?.authorId === currentUserId ? [{
               label: 'edit',
               action: () => {

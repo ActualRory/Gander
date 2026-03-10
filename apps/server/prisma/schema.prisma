@@ -22,6 +22,7 @@ model User {
   reactions       Reaction[]
   mentions        Mention[]
   attachments     Attachment[]
+  pinnedMessages  PinnedMessage[]
 }
 
 model Channel {
@@ -35,6 +36,7 @@ model Channel {
   creator  User?          @relation("ChannelCreator", fields: [creatorId], references: [id])
   members  ChannelMember[]
   messages Message[]
+  pins     PinnedMessage[]
 }
 
 enum ChannelType {
@@ -73,6 +75,21 @@ model Message {
   reactions   Reaction[]
   mentions    Mention[]
   attachments Attachment[]
+  pins        PinnedMessage[]
+}
+
+model PinnedMessage {
+  id        String   @id @default(cuid())
+  pinnedAt  DateTime @default(now())
+  messageId String
+  channelId String
+  pinnedBy  String
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  pinner  User    @relation(fields: [pinnedBy], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, messageId])
 }
 
 model Attachment {

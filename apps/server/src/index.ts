@@ -15,6 +15,7 @@ import { userRoutes } from './routes/users.js'
 import { reactionRoutes } from './routes/reactions.js'
 import { attachmentRoutes } from './routes/attachments.js'
 import { ogRoutes } from './routes/og.js'
+import { searchRoutes } from './routes/search.js'
 import { wsHandler } from './ws/handler.js'
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads')
@@ -43,6 +44,7 @@ await server.register(userRoutes, { prefix: '/api/users' })
 await server.register(reactionRoutes, { prefix: '/api/reactions' })
 await server.register(attachmentRoutes, { prefix: '/api/attachments' })
 await server.register(ogRoutes, { prefix: '/api/og' })
+await server.register(searchRoutes, { prefix: '/api/search' })
 
 await server.register(async (app) => {
   app.get('/ws', { websocket: true }, wsHandler)

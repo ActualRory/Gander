@@ -140,6 +140,7 @@ export default function Main({ auth, onLogout }: Props) {
   const [profileTarget, setProfileTarget] = useState<{ user: User; x: number; y: number } | null>(null)
   const [fullProfileTarget, setFullProfileTarget] = useState<User | null>(null)
   const [userContextMenu, setUserContextMenu] = useState<{ userId: string; x: number; y: number } | null>(null)
+  const [pendingJump, setPendingJump] = useState<{ messageId: string; anchorTime: string } | null>(null)
   const wsRef = useRef<GanderWS | null>(null)
   const activeChannelRef = useRef<Channel | null>(null)
   const channelsRef = useRef<Channel[]>([])
@@ -818,8 +819,25 @@ export default function Main({ auth, onLogout }: Props) {
   }
 
   function openChannel(channel: Channel) {
+    setPendingJump(null)
     setActiveChannel(channel)
     markChannelRead(channel.id)
+  }
+
+  function handleNavigateToMessage(channelId: string, messageId: string, createdAt: string) {
+    const ch = [...channels, ...dmChannels].find(c => c.id === channelId)
+    if (!ch) return
+    if (hiddenChannelIds.has(channelId)) {
+      setHiddenChannelIds(prev => {
+        const next = new Set(prev)
+        next.delete(channelId)
+        saveHidden(auth.userId, next)
+        return next
+      })
+    }
+    setPendingJump({ messageId, anchorTime: createdAt })
+    setActiveChannel(ch)
+    markChannelRead(ch.id)
   }
 
   function handleToggleMuted(channelId: string) {
@@ -1000,6 +1018,9 @@ export default function Main({ auth, onLogout }: Props) {
             lastReadAt={loadLastRead(auth.userId, activeChannel.id)}
             onMarkRead={() => markChannelRead(activeChannel.id)}
             onNavigateToChannel={handleNavigateToChannel}
+            jumpToMessageId={pendingJump?.messageId ?? null}
+            jumpAnchorTime={pendingJump?.anchorTime ?? null}
+            onNavigateToMessage={handleNavigateToMessage}
           />
         ) : (
           <p className={styles.placeholder}>select a channel</p>
@@ -1011,6 +1032,8 @@ export default function Main({ auth, onLogout }: Props) {
         voiceParticipants={voiceParticipants}
         onUserClick={handleUserLeftClick}
         onUserRightClick={handleUserRightClick}
+        token={auth.token}
+        onNavigateToMessage={handleNavigateToMessage}
       />
       </div>
       {profileTarget && (

@@ -1,4 +1,4 @@
-import type { Channel, Message, AuthResponse, User, AttachmentInfo, OgData } from '@gander/shared'
+import type { Channel, Message, AuthResponse, User, AttachmentInfo, OgData, PinnedMessageEntry, SearchResult } from '@gander/shared'
 import { getServerUrl } from './config.ts'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -43,8 +43,11 @@ export const api = {
   deleteChannel: (token: string, channelId: string) =>
     request<void>(`/api/channels/${channelId}`, { method: 'DELETE', ...authed(token) }),
 
-  getMessages: (token: string, channelId: string) =>
-    request<Message[]>(`/api/messages/${channelId}`, authed(token)),
+  getMessages: (token: string, channelId: string, params?: { before?: string }) =>
+    request<Message[]>(
+      `/api/messages/${channelId}${params?.before ? `?before=${encodeURIComponent(params.before)}` : ''}`,
+      authed(token)
+    ),
 
   getUnreadCounts: (token: string, channelLastReadAt: Record<string, string>) =>
     request<{ channelId: string; count: number; mentionCount: number }[]>('/api/messages/unread', {
@@ -79,6 +82,29 @@ export const api = {
 
   editMessage: (token: string, messageId: string, content: string) =>
     request<Message>(`/api/messages/${messageId}`, { method: 'PATCH', body: JSON.stringify({ content }), ...authed(token) }),
+
+  getPins: (token: string, channelId: string) =>
+    request<PinnedMessageEntry[]>(`/api/channels/${channelId}/pins`, authed(token)),
+
+  pinMessage: (token: string, channelId: string, messageId: string) =>
+    request<void>(`/api/channels/${channelId}/pins/${messageId}`, { method: 'POST', ...authed(token) }),
+
+  unpinMessage: (token: string, channelId: string, messageId: string) =>
+    request<void>(`/api/channels/${channelId}/pins/${messageId}`, { method: 'DELETE', ...authed(token) }),
+
+  getMessageByPostNumber: async (token: string, postNumber: number) => {
+    try {
+      return await request<{ id: string; channelId: string; createdAt: string }>(
+        `/api/messages/by-post/${postNumber}`, authed(token)
+      )
+    } catch { return null }
+  },
+
+  searchMessages: (token: string, q: string, from?: string) =>
+    request<SearchResult[]>(
+      `/api/search?q=${encodeURIComponent(q)}${from ? `&from=${encodeURIComponent(from)}` : ''}`,
+      authed(token)
+    ),
 
   getOg: (token: string, url: string) =>
     request<OgData | null>(`/api/og?url=${encodeURIComponent(url)}`, authed(token)),

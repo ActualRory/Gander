@@ -32,3 +32,32 @@ export interface Message {
   mentions: string[]
   attachments: AttachmentInfo[]
 }
+
+export interface PinnedMessageEntry {
+  id: string
+  messageId: string
+  channelId: string
+  pinnedAt: string
+  pinnedBy: string
+  message: {
+    id: string
+    channelId: string
+    authorId: string
+    authorName: string
+    content: string
+    createdAt: string
+    postNumber: number | null
+    attachments: AttachmentInfo[]
+  }
+}
+
+export interface SearchResult {
+  id: string
+  channelId: string
+  channelName: string
+  channelType: string
+  authorName: string
+  content: string
+  createdAt: string
+  postNumber: number | null
+}

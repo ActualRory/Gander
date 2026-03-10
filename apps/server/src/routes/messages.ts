@@ -29,6 +29,18 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
     )
   })
 
+  // GET /api/messages/by-post/:postNumber — look up a message globally by its post number
+  app.get('/by-post/:postNumber', async (req, reply) => {
+    const num = parseInt((req.params as { postNumber: string }).postNumber, 10)
+    if (isNaN(num)) return reply.status(400).send({ error: 'Invalid post number' })
+    const msg = await prisma.message.findUnique({
+      where: { postNumber: num },
+      select: { id: true, channelId: true, createdAt: true },
+    })
+    if (!msg) return reply.status(404).send({ error: 'Not found' })
+    return { id: msg.id, channelId: msg.channelId, createdAt: msg.createdAt.toISOString() }
+  })
+
   app.get('/:channelId', async (req) => {
     const { channelId } = req.params as { channelId: string }
     const { before, limit = '50' } = req.query as { before?: string; limit?: string }

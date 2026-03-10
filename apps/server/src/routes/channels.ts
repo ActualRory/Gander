@@ -73,4 +73,63 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     broadcastAll({ type: 'channel:deleted', payload: { channelId } })
     return reply.status(204).send()
   })
+
+  // GET /api/channels/:channelId/pins
+  app.get('/:channelId/pins', async (req) => {
+    const { channelId } = req.params as { channelId: string }
+    const pins = await prisma.pinnedMessage.findMany({
+      where: { channelId },
+      include: {
+        message: {
+          include: {
+            author: { select: { id: true, displayName: true } },
+            attachments: { select: { id: true, storedName: true, mimeType: true, filename: true, size: true } },
+          },
+        },
+      },
+      orderBy: { pinnedAt: 'desc' },
+    })
+    return pins.map(p => ({
+      id: p.id,
+      messageId: p.messageId,
+      channelId: p.channelId,
+      pinnedAt: p.pinnedAt.toISOString(),
+      pinnedBy: p.pinnedBy,
+      message: {
+        id: p.message.id,
+        channelId: p.message.channelId,
+        authorId: p.message.authorId,
+        authorName: p.message.author.displayName,
+        content: p.message.content,
+        createdAt: p.message.createdAt.toISOString(),
+        postNumber: p.message.postNumber,
+        attachments: p.message.attachments.map(a => ({
+          id: a.id,
+          url: `/uploads/${a.storedName}`,
+          mimeType: a.mimeType,
+          filename: a.filename,
+          size: a.size,
+        })),
+      },
+    }))
+  })
+
+  // POST /api/channels/:channelId/pins/:messageId
+  app.post('/:channelId/pins/:messageId', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
+    const { channelId, messageId } = req.params as { channelId: string; messageId: string }
+    await prisma.pinnedMessage.upsert({
+      where: { channelId_messageId: { channelId, messageId } },
+      create: { channelId, messageId, pinnedBy: userId },
+      update: {},
+    })
+    return reply.status(204).send()
+  })
+
+  // DELETE /api/channels/:channelId/pins/:messageId
+  app.delete('/:channelId/pins/:messageId', async (req, reply) => {
+    const { channelId, messageId } = req.params as { channelId: string; messageId: string }
+    await prisma.pinnedMessage.deleteMany({ where: { channelId, messageId } })
+    return reply.status(204).send()
+  })
 }
