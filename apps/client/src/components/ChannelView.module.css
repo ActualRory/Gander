@@ -472,6 +472,20 @@
   border-color: var(--accent-dim);
 }
 
+.messageVideo {
+  display: block;
+  max-width: 400px;
+  max-height: 300px;
+  width: auto;
+  height: auto;
+  border: 1px solid var(--border);
+  margin-top: 6px;
+}
+
+.messageVideo:hover {
+  border-color: var(--accent-dim);
+}
+
 /* ---- Pending file (non-image) thumbnail ---- */
 .pendingThumbFile {
   width: 100%;

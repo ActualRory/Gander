@@ -652,6 +652,15 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                   onClick={() => setLightboxUrl(url)}
                 />
               ))}
+              {msg.content && extractVideoUrls(msg.content).map(url => (
+                <video
+                  key={url}
+                  src={url}
+                  className={styles.messageVideo}
+                  controls
+                  preload="metadata"
+                />
+              ))}
               {msg.content && (() => {
                 const urlWithOg = extractWebUrls(msg.content).find(url => ogData.has(url))
                 const og = urlWithOg ? ogData.get(urlWithOg)! : null
@@ -909,6 +918,7 @@ function isImageMime(mimeType: string): boolean {
 }
 
 const IMAGE_EXT_RE = /\.(jpg|jpeg|png|gif|webp)(\?[^\s]*)?$/i
+const VIDEO_EXT_RE = /\.(mp4|webm|mov|ogg)(\?[^\s]*)?$/i
 
 function extractImageUrls(text: string): string[] {
   const urls: string[] = []
@@ -920,12 +930,22 @@ function extractImageUrls(text: string): string[] {
   return urls
 }
 
+function extractVideoUrls(text: string): string[] {
+  const urls: string[] = []
+  const re = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g
+  let m
+  while ((m = re.exec(text)) !== null) {
+    if (VIDEO_EXT_RE.test(m[0])) urls.push(m[0])
+  }
+  return urls
+}
+
 function extractWebUrls(text: string): string[] {
   const urls: string[] = []
   const re = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g
   let m
   while ((m = re.exec(text)) !== null) {
-    if (!IMAGE_EXT_RE.test(m[0])) urls.push(m[0])
+    if (!IMAGE_EXT_RE.test(m[0]) && !VIDEO_EXT_RE.test(m[0])) urls.push(m[0])
   }
   return urls
 }
