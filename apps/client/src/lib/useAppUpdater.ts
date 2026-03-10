@@ -28,7 +28,7 @@ export function useAppUpdater() {
       })
       .catch(err => {
         if (cancelled) return
-        console.warn('[updater] check failed:', err)
+        console.warn('[updater] check failed:', err, JSON.stringify(err))
       })
 
     return () => { cancelled = true }
