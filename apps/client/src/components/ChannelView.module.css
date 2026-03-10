@@ -690,3 +690,92 @@
   flex-shrink: 0;
   border: 1px solid var(--border);
 }
+
+/* ---- Pin button in header ---- */
+.headerPinBtn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  flex-shrink: 0;
+}
+
+.headerPinBtn:hover {
+  color: var(--text-secondary);
+}
+
+/* ---- Pins panel (portal) ---- */
+.pinsPanel {
+  position: fixed;
+  background: var(--bg-secondary, var(--bg-surface));
+  border: 1px solid var(--border);
+  min-width: 320px;
+  max-width: 480px;
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 200;
+  font-size: 13px;
+}
+
+.pinsPanelHeader {
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+}
+
+.pinEntry {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 12px;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pinEntryBody {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.pinEntryBody:hover .pinEntryContent {
+  color: var(--text-secondary);
+}
+
+.pinEntryMeta {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.pinEntryContent {
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pinUnpinBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.pinUnpinBtn:hover {
+  color: #c87060;
+}
+
+.pinsEmpty {
+  padding: 16px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
