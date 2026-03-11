@@ -103,6 +103,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const [pins, setPins] = useState<PinnedMessageEntry[]>([])
   const [pinsLoaded, setPinsLoaded] = useState(false)
   const pinsBtnRef = useRef<HTMLButtonElement>(null)
+  const pinsPanelRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const editTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -221,7 +222,10 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     if (!pinsOpen) return
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setPinsOpen(false) }
     function onDown(e: MouseEvent) {
-      if (!pinsBtnRef.current?.contains(e.target as Node)) setPinsOpen(false)
+      if (
+        !pinsBtnRef.current?.contains(e.target as Node) &&
+        !pinsPanelRef.current?.contains(e.target as Node)
+      ) setPinsOpen(false)
     }
     document.addEventListener('keydown', onKey)
     document.addEventListener('mousedown', onDown)
@@ -497,6 +501,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       </header>
       {pinsOpen && pinsBtnRef.current && createPortal(
         <div
+          ref={pinsPanelRef}
           className={styles.pinsPanel}
           style={{
             top: pinsBtnRef.current.getBoundingClientRect().bottom + 4,
@@ -744,7 +749,9 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                   setPins(prev => prev.filter(p => p.messageId !== msgId))
                 } else {
                   await api.pinMessage(token, channel.id, msgId)
-                  setPinsLoaded(false) // force reload next open
+                  const updated = await api.getPins(token, channel.id)
+                  setPins(updated)
+                  setPinsLoaded(true)
                 }
               },
             },
