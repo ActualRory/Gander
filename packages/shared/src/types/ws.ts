@@ -9,12 +9,12 @@ export type ServerEvent =
   | { type: 'message:deleted'; payload: { id: string; channelId: string } }
   | { type: 'presence:join'; payload: { userId: string; channelId: string } }
   | { type: 'presence:leave'; payload: { userId: string; channelId: string } }
-  | { type: 'voice:join'; payload: { userId: string; channelId: string } }
+  | { type: 'voice:join'; payload: { userId: string; channelId: string; startTime?: number } }
   | { type: 'voice:leave'; payload: { userId: string; channelId: string } }
   | { type: 'users:init'; payload: { onlineUserIds: string[] } }
   | { type: 'user:online'; payload: { userId: string; user: User } }
   | { type: 'user:offline'; payload: { userId: string; lastSeenAt: string } }
-  | { type: 'voice:init'; payload: { voiceRooms: Record<string, string[]>; voiceStates: Record<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }> } }
+  | { type: 'voice:init'; payload: { voiceRooms: Record<string, string[]>; voiceStates: Record<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }>; voiceChannelStartTimes: Record<string, number> } }
   | { type: 'voice:state'; payload: { userId: string; muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean } }
   | { type: 'dm:new'; payload: Channel }
   | { type: 'reaction:updated'; payload: { messageId: string; channelId: string; reactions: ReactionSummary[] } }

@@ -179,6 +179,7 @@ export default function Main({ auth, onLogout }: Props) {
   const voiceRoomRef = useRef<Room | null>(null)
   const [voiceChannelId, setVoiceChannelId] = useState<string | null>(null)
   const [voiceParticipants, setVoiceParticipants] = useState<Record<string, string[]>>({})
+  const [voiceChannelStartTimes, setVoiceChannelStartTimes] = useState<Record<string, number>>({})
   const [isMuted, setIsMuted] = useState(false)
   const [isDeafened, setIsDeafened] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
@@ -399,26 +400,39 @@ export default function Main({ auth, onLogout }: Props) {
       } else if (event.type === 'voice:init') {
         setVoiceParticipants(event.payload.voiceRooms)
         setParticipantVoiceState(event.payload.voiceStates)
+        setVoiceChannelStartTimes(event.payload.voiceChannelStartTimes)
+        // Re-register if WS dropped and reconnected while we were still in a LiveKit room
+        if (voiceChannelIdRef.current && voiceRoomRef.current) {
+          wsRef.current?.send({ type: 'voice:join', payload: { channelId: voiceChannelIdRef.current } })
+          wsRef.current?.send({ type: 'voice:state', payload: { muted: isMutedRef.current, deafened: isDeafenedRef.current, videoEnabled: isCameraOnRef.current, screenSharing: isScreenSharingRef.current } })
+        }
       } else if (event.type === 'voice:state') {
         const { userId, muted, deafened, videoEnabled, screenSharing } = event.payload
         setParticipantVoiceState(prev => ({ ...prev, [userId]: { muted, deafened, videoEnabled, screenSharing } }))
       } else if (event.type === 'voice:join') {
-        const { userId, channelId } = event.payload
+        const { userId, channelId, startTime } = event.payload
         setVoiceParticipants(prev => ({
           ...prev,
           [channelId]: [...(prev[channelId] ?? []).filter(id => id !== userId), userId],
         }))
+        if (startTime !== undefined) {
+          setVoiceChannelStartTimes(prev => ({ ...prev, [channelId]: startTime }))
+        }
         // Honk when someone else joins the voice channel you're in
         if (userId !== auth.userId && channelId === voiceChannelIdRef.current) {
           playHonks((voiceParticipantsRef.current[channelId]?.length ?? 0) + 1)
         }
       } else if (event.type === 'voice:leave') {
         const { userId, channelId } = event.payload
+        const remaining = (voiceParticipantsRef.current[channelId] ?? []).filter(id => id !== userId)
         setVoiceParticipants(prev => ({
           ...prev,
-          [channelId]: (prev[channelId] ?? []).filter(id => id !== userId),
+          [channelId]: remaining,
         }))
         setParticipantVoiceState(prev => { const next = { ...prev }; delete next[userId]; return next })
+        if (remaining.length === 0) {
+          setVoiceChannelStartTimes(prev => { const next = { ...prev }; delete next[channelId]; return next })
+        }
       } else if (event.type === 'dm:new') {
         const channel = event.payload
         const isNew = !dmChannelsRef.current.some(c => c.id === channel.id)
@@ -1130,6 +1144,7 @@ export default function Main({ auth, onLogout }: Props) {
         onlineUserIds={onlineUserIds}
         voiceChannelId={voiceChannelId}
         voiceParticipants={voiceParticipants}
+        voiceChannelStartTimes={voiceChannelStartTimes}
         isMuted={isMuted}
         isDeafened={isDeafened}
         isSpeaking={isSpeaking}

@@ -18,6 +18,9 @@ const userVoiceChannel = new Map<string, string>()
 // userId → current mute/deafen/video state
 const userVoiceState = new Map<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }>()
 
+// channelId → epoch ms when first user joined (cleared when last user leaves)
+const voiceChannelStartTimes = new Map<string, number>()
+
 export function broadcast(channelId: string, event: ServerEvent, exclude?: WebSocket) {
   const room = rooms.get(channelId)
   if (!room) return
@@ -80,9 +83,13 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         for (const [uid, state] of userVoiceState) {
           voiceStatesSnapshot[uid] = state
         }
+        const voiceStartTimesSnapshot: Record<string, number> = {}
+        for (const [channelId, startTime] of voiceChannelStartTimes) {
+          voiceStartTimesSnapshot[channelId] = startTime
+        }
         socket.send(JSON.stringify({
           type: 'voice:init',
-          payload: { voiceRooms: voiceRoomsSnapshot, voiceStates: voiceStatesSnapshot },
+          payload: { voiceRooms: voiceRoomsSnapshot, voiceStates: voiceStatesSnapshot, voiceChannelStartTimes: voiceStartTimesSnapshot },
         }))
         // Notify all other clients this user came online (include user data so new users are discoverable)
         const connectedUser = await prisma.user.findUnique({
@@ -128,18 +135,27 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         const prevChannelId = userVoiceChannel.get(userId)
         if (prevChannelId) {
           voiceRooms.get(prevChannelId)?.delete(userId)
+          if ((voiceRooms.get(prevChannelId)?.size ?? 0) === 0) {
+            voiceChannelStartTimes.delete(prevChannelId)
+          }
           broadcastAll({ type: 'voice:leave', payload: { userId, channelId: prevChannelId } })
         }
         if (!voiceRooms.has(channelId)) voiceRooms.set(channelId, new Set())
+        const wasEmpty = voiceRooms.get(channelId)!.size === 0
         voiceRooms.get(channelId)!.add(userId)
         userVoiceChannel.set(userId, channelId)
-        broadcastAll({ type: 'voice:join', payload: { userId, channelId } })
+        if (wasEmpty) voiceChannelStartTimes.set(channelId, Date.now())
+        const startTime = voiceChannelStartTimes.get(channelId)!
+        broadcastAll({ type: 'voice:join', payload: { userId, channelId, startTime } })
         break
       }
 
       case 'voice:leave': {
         const { channelId } = event.payload
         voiceRooms.get(channelId)?.delete(userId)
+        if ((voiceRooms.get(channelId)?.size ?? 0) === 0) {
+          voiceChannelStartTimes.delete(channelId)
+        }
         userVoiceChannel.delete(userId)
         userVoiceState.delete(userId)
         broadcastAll({ type: 'voice:leave', payload: { userId, channelId } })
@@ -278,6 +294,9 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
       const voiceChannelId = userVoiceChannel.get(userId)
       if (voiceChannelId) {
         voiceRooms.get(voiceChannelId)?.delete(userId)
+        if ((voiceRooms.get(voiceChannelId)?.size ?? 0) === 0) {
+          voiceChannelStartTimes.delete(voiceChannelId)
+        }
         userVoiceChannel.delete(userId)
         userVoiceState.delete(userId)
         broadcastAll({ type: 'voice:leave', payload: { userId, channelId: voiceChannelId } })

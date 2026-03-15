@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Channel, User } from '@gander/shared'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import ChannelIndexModal from './ChannelIndexModal.tsx'
@@ -20,6 +20,7 @@ interface Props {
   onlineUserIds: Set<string>
   voiceChannelId: string | null
   voiceParticipants: Record<string, string[]>
+  voiceChannelStartTimes: Record<string, number>
   isMuted: boolean
   isDeafened: boolean
   isSpeaking: boolean
@@ -68,7 +69,7 @@ interface ParticipantVolumeState {
   userName: string
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -79,6 +80,11 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
   const [deleting, setDeleting] = useState<Channel | null>(null)
   const renameRef = useRef<HTMLInputElement>(null)
   const topicRef = useRef<HTMLInputElement>(null)
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
 
   const visibleText = channels.filter(c => c.type === 'TEXT' && !hiddenChannelIds.has(c.id))
   const visibleVoice = channels.filter(c => c.type === 'VOICE' && !hiddenChannelIds.has(c.id))
@@ -243,6 +249,19 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
 
     const isActive = c.id === voiceChannelId
     const participants = voiceParticipants[c.id] ?? []
+    const startTime = voiceChannelStartTimes[c.id]
+    let liveTimer: string | null = null
+    if (startTime !== undefined && participants.length > 0) {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000)
+      const h = Math.floor(elapsed / 3600)
+      const m = Math.floor((elapsed % 3600) / 60)
+      const s = elapsed % 60
+      const parts: string[] = []
+      if (h > 0) parts.push(`${h}h`)
+      if (h > 0 || m > 0) parts.push(`${m}m`)
+      parts.push(`${s}s`)
+      liveTimer = `[${parts.join(' ')}]`
+    }
 
     return (
       <div key={c.id} className={styles.voiceGroup}>
@@ -257,6 +276,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           onPointerLeave={cancelLongPress}
         >
           ▸ {c.name}
+          {liveTimer && <span className={styles.voiceTimer}>{liveTimer}</span>}
         </button>
         {participants.map(uid => {
           const user = users.find(u => u.id === uid)
