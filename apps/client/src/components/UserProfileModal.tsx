@@ -121,7 +121,8 @@ export default function UserProfileModal({
                   type="button"
                   className={styles.avatarBtn}
                   onClick={() => avatarInputRef.current?.click()}
-                  title={avatarUploading ? 'uploading…' : 'click to change profile picture'}
+                  onContextMenu={e => { e.preventDefault(); if (user.avatarUrl && !avatarUploading) handleRemoveAvatar() }}
+                  title={avatarUploading ? 'uploading…' : user.avatarUrl ? 'click to change · right-click to remove' : 'click to set profile picture'}
                   disabled={avatarUploading}
                 >
                   <Avatar displayName={user.displayName} userId={user.id} avatarUrl={user.avatarUrl} size={64} />
@@ -134,11 +135,6 @@ export default function UserProfileModal({
                   className={styles.avatarInput}
                   onChange={handleAvatarChange}
                 />
-                {user.avatarUrl && (
-                  <button type="button" className={styles.avatarRemove} onClick={handleRemoveAvatar} disabled={avatarUploading}>
-                    remove
-                  </button>
-                )}
               </>
             ) : (
               <Avatar displayName={user.displayName} userId={user.id} avatarUrl={user.avatarUrl} size={64} />
