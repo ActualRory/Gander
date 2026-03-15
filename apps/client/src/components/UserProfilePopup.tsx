@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { User } from '@gander/shared'
 import { api } from '../lib/api.ts'
+import Avatar from './Avatar.tsx'
 import styles from './UserProfilePopup.module.css'
 
 interface Props {
@@ -83,7 +84,10 @@ export default function UserProfilePopup({
       </div>
 
       <div className={styles.body}>
-        <div className={styles.displayName}>{user.displayName}</div>
+        <div className={styles.avatarRow}>
+          <Avatar displayName={user.displayName} userId={user.id} avatarUrl={user.avatarUrl} size={40} />
+          <div className={styles.displayName}>{user.displayName}</div>
+        </div>
 
         {isOwnProfile ? (
           editingSubtitle ? (

@@ -1363,6 +1363,7 @@ export default function Main({ auth, onLogout }: Props) {
           isOwnProfile={fullProfileTarget.id === auth.userId}
           token={auth.token}
           onSubtitleUpdate={handleSubtitleUpdate}
+          onAvatarUpdate={handleSubtitleUpdate}
           onClose={() => setFullProfileTarget(null)}
         />
       )}

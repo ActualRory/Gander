@@ -12,6 +12,7 @@ model User {
   username     String    @unique
   displayName  String
   subtitle     String?
+  avatarUrl    String?
   passwordHash String
   createdAt    DateTime  @default(now())
   lastSeenAt   DateTime?

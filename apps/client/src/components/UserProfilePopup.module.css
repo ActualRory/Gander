@@ -33,6 +33,13 @@
   gap: 4px;
 }
 
+.avatarRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
 .displayName {
   font-size: 15px;
   color: var(--text-bright);

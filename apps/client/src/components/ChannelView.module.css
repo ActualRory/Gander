@@ -80,6 +80,17 @@
   margin-top: 14px;
 }
 
+.messageRow {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.messageBody {
+  flex: 1;
+  min-width: 0;
+}
+
 .dateSeparator {
   display: flex;
   align-items: center;

@@ -112,6 +112,25 @@ export const api = {
   getOg: (token: string, url: string) =>
     request<OgData | null>(`/api/og?url=${encodeURIComponent(url)}`, authed(token)),
 
+  uploadAvatar: async (token: string, file: File): Promise<User> => {
+    const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch(`${base}/api/users/me/avatar`, {
+      method: 'POST',
+      body: form,
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string }
+      throw new Error(body?.error ?? `HTTP ${res.status}`)
+    }
+    return res.json() as Promise<User>
+  },
+
+  deleteAvatar: (token: string) =>
+    request<void>('/api/users/me/avatar', { method: 'DELETE', ...authed(token) }),
+
   uploadAttachments: async (token: string, files: File[]): Promise<AttachmentInfo[]> => {
     const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
     const form = new FormData()

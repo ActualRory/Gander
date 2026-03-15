@@ -3,6 +3,7 @@ export interface User {
   username: string
   displayName: string
   subtitle: string | null
+  avatarUrl: string | null
   createdAt: string
   lastSeenAt: string | null
 }

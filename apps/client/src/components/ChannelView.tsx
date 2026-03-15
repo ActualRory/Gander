@@ -6,6 +6,7 @@ import type { GanderWS } from '../lib/ws.ts'
 import { api, resolveAttachmentUrl } from '../lib/api.ts'
 import ContextMenu from './ContextMenu.tsx'
 import ReactionPicker from './ReactionPicker.tsx'
+import Avatar from './Avatar.tsx'
 import styles from './ChannelView.module.css'
 
 // Module-level OG fetch cache — persists across channel switches
@@ -615,7 +616,14 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                   })()}
                 </div>
               ) : (
-              <>
+              <div className={styles.messageRow}>
+              <Avatar
+                displayName={msg.authorName}
+                avatarUrl={users.find(u => u.id === msg.authorId)?.avatarUrl}
+                userId={msg.authorId}
+                size={38}
+              />
+              <div className={styles.messageBody}>
               <div className={styles.meta}>
                 <span
                   className={styles.author}
@@ -750,7 +758,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                   })}
                 </div>
               )}
-              </>
+              </div>
+              </div>
               )}
             </div>
           )

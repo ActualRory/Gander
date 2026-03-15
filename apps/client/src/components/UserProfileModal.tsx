@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { User, UserStats } from '@gander/shared'
 import { api } from '../lib/api.ts'
+import Avatar from './Avatar.tsx'
 import styles from './UserProfileModal.module.css'
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
   token: string
   onSubtitleUpdate: (updated: User) => void
   onClose: () => void
+  onAvatarUpdate?: (updated: User) => void
 }
 
 export default function UserProfileModal({
@@ -20,11 +22,14 @@ export default function UserProfileModal({
   token,
   onSubtitleUpdate,
   onClose,
+  onAvatarUpdate,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
   const [editingSubtitle, setEditingSubtitle] = useState(false)
   const [subtitleDraft, setSubtitleDraft] = useState(user.subtitle ?? '')
   const [stats, setStats] = useState<UserStats | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
 
   useEffect(() => {
     api.getUserStats(token, user.id).then(setStats).catch(() => {})
@@ -57,6 +62,29 @@ export default function UserProfileModal({
     }
   }
 
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAvatarUploading(true)
+    try {
+      const updated = await api.uploadAvatar(token, file)
+      onAvatarUpdate?.(updated)
+    } finally {
+      setAvatarUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  async function handleRemoveAvatar() {
+    setAvatarUploading(true)
+    try {
+      await api.deleteAvatar(token)
+      onAvatarUpdate?.({ ...user, avatarUrl: null })
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
+
   function handleSubtitleKey(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') saveSubtitle()
     if (e.key === 'Escape') {
@@ -75,6 +103,36 @@ export default function UserProfileModal({
         </div>
 
         <div className={styles.body}>
+          <div className={styles.avatarSection}>
+            {isOwnProfile ? (
+              <>
+                <button
+                  type="button"
+                  className={styles.avatarBtn}
+                  onClick={() => avatarInputRef.current?.click()}
+                  title={avatarUploading ? 'uploading…' : 'click to change profile picture'}
+                  disabled={avatarUploading}
+                >
+                  <Avatar displayName={user.displayName} userId={user.id} avatarUrl={user.avatarUrl} size={64} />
+                  <span className={styles.avatarOverlay}>{avatarUploading ? '…' : 'change'}</span>
+                </button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className={styles.avatarInput}
+                  onChange={handleAvatarChange}
+                />
+                {user.avatarUrl && (
+                  <button type="button" className={styles.avatarRemove} onClick={handleRemoveAvatar} disabled={avatarUploading}>
+                    remove
+                  </button>
+                )}
+              </>
+            ) : (
+              <Avatar displayName={user.displayName} userId={user.id} avatarUrl={user.avatarUrl} size={64} />
+            )}
+          </div>
           <div className={styles.displayName}>{user.displayName}</div>
           <div className={styles.username}>@{user.username}</div>
 
