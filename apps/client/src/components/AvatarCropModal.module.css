@@ -1,0 +1,149 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  max-width: 94vw;
+}
+
+.header {
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.closeBtn {
+  all: unset;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.closeBtn:hover {
+  opacity: 1;
+}
+
+.canvas {
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  background: #0a0a06;
+  touch-action: none;
+}
+
+.canvas:active {
+  cursor: grabbing;
+}
+
+.img {
+  position: absolute;
+  user-select: none;
+  pointer-events: none;
+  display: block;
+}
+
+.svgOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: block;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.zoomBtn {
+  all: unset;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text-muted);
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  line-height: 1;
+}
+
+.zoomBtn:hover {
+  opacity: 1;
+  color: var(--text-bright);
+}
+
+.hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.5;
+  flex: 1;
+  text-align: right;
+}
+
+.gifNote {
+  color: var(--text-dim);
+}
+
+.actions {
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--border);
+}
+
+.cancelBtn {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.cancelBtn:hover {
+  opacity: 1;
+}
+
+.confirmBtn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 5px 16px;
+  cursor: pointer;
+}
+
+.confirmBtn:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.confirmBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

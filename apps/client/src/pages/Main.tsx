@@ -1201,8 +1201,7 @@ export default function Main({ auth, onLogout }: Props) {
         onWatchStream={handleWatchStream}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        hasUpdate={updater.hasUpdate}
-        onShowUpdate={updater.show}
+
       />
       <main className={styles.content}>
         <button

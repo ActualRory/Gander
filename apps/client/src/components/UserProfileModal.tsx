@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type { User, UserStats } from '@gander/shared'
 import { api } from '../lib/api.ts'
 import Avatar from './Avatar.tsx'
+import AvatarCropModal from './AvatarCropModal.tsx'
 import styles from './UserProfileModal.module.css'
 
 interface Props {
@@ -30,6 +31,7 @@ export default function UserProfileModal({
   const [subtitleDraft, setSubtitleDraft] = useState(user.subtitle ?? '')
   const [stats, setStats] = useState<UserStats | null>(null)
   const [avatarUploading, setAvatarUploading] = useState(false)
+  const [cropFile, setCropFile] = useState<File | null>(null)
 
   useEffect(() => {
     api.getUserStats(token, user.id).then(setStats).catch(() => {})
@@ -37,9 +39,13 @@ export default function UserProfileModal({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        if (cropFile) { setCropFile(null); return }
+        onClose()
+      }
     }
     function onMouseDown(e: MouseEvent) {
+      if (cropFile) return
       if (ref.current && !ref.current.contains(e.target as Node)) onClose()
     }
     window.addEventListener('keydown', onKey)
@@ -48,7 +54,7 @@ export default function UserProfileModal({
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('mousedown', onMouseDown)
     }
-  }, [onClose])
+  }, [onClose, cropFile])
 
   async function saveSubtitle() {
     setEditingSubtitle(false)
@@ -62,16 +68,21 @@ export default function UserProfileModal({
     }
   }
 
-  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    setCropFile(file)
+    e.target.value = ''
+  }
+
+  async function handleCropConfirm(blob: Blob) {
+    setCropFile(null)
     setAvatarUploading(true)
     try {
-      const updated = await api.uploadAvatar(token, file)
+      const updated = await api.uploadAvatar(token, new File([blob], 'avatar.png', { type: 'image/png' }))
       onAvatarUpdate?.(updated)
     } finally {
       setAvatarUploading(false)
-      e.target.value = ''
     }
   }
 
@@ -95,7 +106,7 @@ export default function UserProfileModal({
 
   const statusText = isOnline ? 'Currently Online' : formatLastSeen(user.lastSeenAt)
 
-  return createPortal(
+  const profileModal = createPortal(
     <div className={styles.overlay} onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div ref={ref} className={styles.modal}>
         <div className={`${styles.status} ${isOnline ? styles.online : styles.offline}`}>
@@ -184,6 +195,17 @@ export default function UserProfileModal({
     </div>,
     document.body
   )
+
+  return <>
+    {profileModal}
+    {cropFile != null && (
+      <AvatarCropModal
+        file={cropFile}
+        onConfirm={handleCropConfirm}
+        onCancel={() => setCropFile(null)}
+      />
+    )}
+  </>
 }
 
 function formatLastSeen(lastSeenAt: string | null): string {

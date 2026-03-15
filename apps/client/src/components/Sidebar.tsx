@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Channel, User } from '@gander/shared'
+import { platform } from '../lib/platform.ts'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import ChannelIndexModal from './ChannelIndexModal.tsx'
 import ConfirmDeleteModal from './ConfirmDeleteModal.tsx'
@@ -54,8 +55,6 @@ interface Props {
   onWatchStream: (userId: string, type: 'screen' | 'camera') => void
   isOpen: boolean
   onClose: () => void
-  hasUpdate: boolean
-  onShowUpdate: () => void
 }
 
 interface ContextState {
@@ -71,7 +70,7 @@ interface ParticipantVolumeState {
   userName: string
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hasUpdate, onShowUpdate }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -86,6 +85,12 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 1000)
     return () => clearInterval(id)
+  }, [])
+
+  const [appVersion, setAppVersion] = useState<string | null>(null)
+  useEffect(() => {
+    if (!platform.isTauri) return
+    import('@tauri-apps/api/app').then(({ getVersion }) => getVersion().then(setAppVersion))
   }, [])
 
   const visibleText = channels.filter(c => c.type === 'TEXT' && !hiddenChannelIds.has(c.id))
@@ -379,16 +384,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
       <nav className={`${styles.root}${isOpen ? ` ${styles.open}` : ''}`}>
         <div className={styles.serverName}>
           GANDER
-          {hasUpdate && (
-            <button
-              type="button"
-              className={styles.updateBtn}
-              onClick={onShowUpdate}
-              title="update available"
-            >
-              [Update!]
-            </button>
-          )}
+          {appVersion && <span className={styles.version}>v{appVersion}</span>}
         </div>
 
         <div className={styles.channelList}>
