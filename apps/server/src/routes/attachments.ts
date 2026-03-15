@@ -14,6 +14,8 @@ const ALLOWED_MIME_TYPES = new Set([
   'text/plain',
   'application/zip',
   'application/x-zip-compressed',
+  'application/x-msdownload',
+  'application/vnd.microsoft.portable-executable',
 ])
 
 const MIME_TO_EXT: Record<string, string> = {
@@ -25,6 +27,8 @@ const MIME_TO_EXT: Record<string, string> = {
   'text/plain': '.txt',
   'application/zip': '.zip',
   'application/x-zip-compressed': '.zip',
+  'application/x-msdownload': '.exe',
+  'application/vnd.microsoft.portable-executable': '.exe',
 }
 
 export const attachmentRoutes: FastifyPluginAsync = async (app) => {

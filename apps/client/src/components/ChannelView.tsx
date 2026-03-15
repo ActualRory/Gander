@@ -929,7 +929,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,application/zip"
+          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,application/zip,.exe"
           multiple
           style={{ display: 'none' }}
           onChange={e => { if (e.target.files) void handleFilesSelected(e.target.files); e.target.value = '' }}
@@ -961,6 +961,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
 const SUPPORTED_MIMES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
   'application/pdf', 'text/plain', 'application/zip', 'application/x-zip-compressed',
+  'application/x-msdownload', 'application/vnd.microsoft.portable-executable',
 ])
 
 function isImageMime(mimeType: string): boolean {
