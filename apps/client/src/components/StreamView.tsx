@@ -41,12 +41,13 @@ interface Props {
   users: User[]
   currentUserId: string
   streamerName: string
+  streamType: 'screen' | 'camera'
   streamVolume: number
   onSetStreamVolume: (vol: number) => void
   onClose: () => void
 }
 
-export default function StreamView({ screenTile, cameraTiles, users, currentUserId, streamerName, streamVolume, onSetStreamVolume, onClose }: Props) {
+export default function StreamView({ screenTile, cameraTiles, users, currentUserId, streamerName, streamType, streamVolume, onSetStreamVolume, onClose }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const screenVideoRef = useRef<HTMLVideoElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -126,7 +127,9 @@ export default function StreamView({ screenTile, cameraTiles, users, currentUser
   return (
     <div ref={rootRef} className={styles.root}>
       <div className={styles.header}>
-        <span className={styles.streamerLabel}>{streamerName} is streaming</span>
+        <span className={styles.streamerLabel}>
+          {streamType === 'screen' ? `${streamerName} is streaming` : `${streamerName}'s camera`}
+        </span>
         <button type="button" className={styles.closeBtn} onClick={onClose}>[close]</button>
       </div>
       <div className={styles.screenArea} onContextMenu={handleContextMenu}>

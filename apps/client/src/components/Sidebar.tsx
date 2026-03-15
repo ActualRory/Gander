@@ -50,7 +50,7 @@ interface Props {
   participantVolumes: Record<string, number>
   onSetParticipantVolume: (userId: string, vol: number) => void
   participantVoiceState: Record<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }>
-  onWatchStream: (userId: string) => void
+  onWatchStream: (userId: string, type: 'screen' | 'camera') => void
   isOpen: boolean
   onClose: () => void
 }
@@ -269,13 +269,19 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           const streaming = uid === currentUserId
             ? isScreenSharing
             : (participantVoiceState[uid]?.screenSharing ?? false)
+          const cameraOn = uid === currentUserId
+            ? isCameraOn
+            : (participantVoiceState[uid]?.videoEnabled ?? false)
           if (uid === currentUserId) {
             return (
               <div key={uid} className={`${styles.voiceParticipant} ${isTalking ? styles.voiceParticipantSpeaking : ''}`}>
                 <span className={styles.participantName}>{name}</span>
                 {badge && <span className={styles.voiceStateBadge}>{badge}</span>}
                 {streaming && (
-                  <button type="button" className={styles.liveBadge} onClick={() => onWatchStream(uid)}>[LIVE]</button>
+                  <button type="button" className={styles.liveBadge} onClick={() => onWatchStream(uid, 'screen')}>[LIVE]</button>
+                )}
+                {cameraOn && (
+                  <button type="button" className={styles.camBadge} onClick={() => onWatchStream(uid, 'camera')}>[CAM]</button>
                 )}
               </div>
             )
@@ -293,7 +299,10 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
               <span className={styles.participantName}>{name}</span>
               {badge && <span className={styles.voiceStateBadge}>{badge}</span>}
               {streaming && (
-                <button type="button" className={styles.liveBadge} onClick={() => onWatchStream(uid)}>[LIVE]</button>
+                <button type="button" className={styles.liveBadge} onClick={() => onWatchStream(uid, 'screen')}>[LIVE]</button>
+              )}
+              {cameraOn && (
+                <button type="button" className={styles.camBadge} onClick={() => onWatchStream(uid, 'camera')}>[CAM]</button>
               )}
             </div>
           )

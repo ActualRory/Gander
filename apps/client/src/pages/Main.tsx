@@ -18,7 +18,7 @@ import ErrorModal from '../components/ErrorModal.tsx'
 import SettingsModal from '../components/SettingsModal.tsx'
 import type { VoiceStats } from '../components/VoiceControls.tsx'
 import type { CameraQuality, ScreenShareQuality } from '../components/SettingsModal.tsx'
-import VideoGrid, { type VideoTile } from '../components/VideoGrid.tsx'
+import { type VideoTile } from '../components/VideoGrid.tsx'
 import StreamView from '../components/StreamView.tsx'
 import UserProfilePopup from '../components/UserProfilePopup.tsx'
 import UserProfileModal from '../components/UserProfileModal.tsx'
@@ -192,6 +192,7 @@ export default function Main({ auth, onLogout }: Props) {
   const [isScreenSharing, setIsScreenSharing] = useState(false)
   const [videoTiles, setVideoTiles] = useState<VideoTile[]>([])
   const [streamViewUserId, setStreamViewUserId] = useState<string | null>(null)
+  const [streamViewType, setStreamViewType] = useState<'screen' | 'camera'>('screen')
   const prevChannelRef = useRef<Channel | null>(null)
   const isDeafenedRef = useRef(false)
   const isMutedRef = useRef(false)
@@ -263,11 +264,12 @@ export default function Main({ auth, onLogout }: Props) {
   // Auto-close stream view if the streamer stops sharing
   useEffect(() => {
     if (!streamViewUserId) return
-    const stillStreaming = videoTiles.some(t => t.participantId === streamViewUserId && t.isScreen)
-    if (!stillStreaming) handleCloseStream()
+    const isScreen = streamViewType === 'screen'
+    const stillActive = videoTiles.some(t => t.participantId === streamViewUserId && t.isScreen === isScreen)
+    if (!stillActive) handleCloseStream()
   // handleCloseStream is stable (no deps change its behaviour)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoTiles, streamViewUserId])
+  }, [videoTiles, streamViewUserId, streamViewType])
 
   // Request notification permission on mount
   useEffect(() => {
@@ -945,9 +947,10 @@ export default function Main({ auth, onLogout }: Props) {
     saveLastRead(auth.userId, channelId)
   }
 
-  function handleWatchStream(userId: string) {
+  function handleWatchStream(userId: string, type: 'screen' | 'camera') {
     prevChannelRef.current = activeChannel
     setStreamViewUserId(userId)
+    setStreamViewType(type)
   }
 
   function handleCloseStream() {
@@ -1169,22 +1172,26 @@ export default function Main({ auth, onLogout }: Props) {
           [≡]
         </button>
         {(() => {
-          const screenTile = streamViewUserId
-            ? videoTiles.find(t => t.participantId === streamViewUserId && t.isScreen) ?? null
+          const isScreenType = streamViewType === 'screen'
+          const activeTile = streamViewUserId
+            ? videoTiles.find(t => t.participantId === streamViewUserId && t.isScreen === isScreenType) ?? null
             : null
-          const cameraTiles = videoTiles.filter(t => !t.isScreen)
+          const floatingCamTiles = isScreenType
+            ? videoTiles.filter(t => !t.isScreen)
+            : videoTiles.filter(t => !t.isScreen && t.participantId !== streamViewUserId)
           const streamerName = streamViewUserId
             ? (users.find(u => u.id === streamViewUserId)?.displayName ?? streamViewUserId)
             : ''
 
-          if (streamViewUserId && screenTile) {
+          if (streamViewUserId && activeTile) {
             return (
               <StreamView
-                screenTile={screenTile}
-                cameraTiles={cameraTiles}
+                screenTile={activeTile}
+                cameraTiles={floatingCamTiles}
                 users={users}
                 currentUserId={auth.userId}
                 streamerName={streamerName}
+                streamType={streamViewType}
                 streamVolume={participantVolumes[streamViewUserId] ?? 1}
                 onSetStreamVolume={vol => handleSetParticipantVolume(streamViewUserId, vol)}
                 onClose={handleCloseStream}
@@ -1194,27 +1201,22 @@ export default function Main({ auth, onLogout }: Props) {
 
           if (activeChannel && wsRef.current) {
             return (
-              <>
-                {cameraTiles.length > 0 && (
-                  <VideoGrid tiles={cameraTiles} users={users} currentUserId={auth.userId} />
-                )}
-                <ChannelView
-                  key={activeChannel.id}
-                  channel={activeChannel}
-                  token={auth.token}
-                  ws={wsRef.current}
-                  users={users}
-                  channels={channels}
-                  currentUserId={auth.userId}
-                  onUserRightClick={handleUserRightClick}
-                  lastReadAt={loadLastRead(auth.userId, activeChannel.id)}
-                  onMarkRead={() => markChannelRead(activeChannel.id)}
-                  onNavigateToChannel={handleNavigateToChannel}
-                  jumpToMessageId={pendingJump?.messageId ?? null}
-                  jumpAnchorTime={pendingJump?.anchorTime ?? null}
-                  onNavigateToMessage={handleNavigateToMessage}
-                />
-              </>
+              <ChannelView
+                key={activeChannel.id}
+                channel={activeChannel}
+                token={auth.token}
+                ws={wsRef.current}
+                users={users}
+                channels={channels}
+                currentUserId={auth.userId}
+                onUserRightClick={handleUserRightClick}
+                lastReadAt={loadLastRead(auth.userId, activeChannel.id)}
+                onMarkRead={() => markChannelRead(activeChannel.id)}
+                onNavigateToChannel={handleNavigateToChannel}
+                jumpToMessageId={pendingJump?.messageId ?? null}
+                jumpAnchorTime={pendingJump?.anchorTime ?? null}
+                onNavigateToMessage={handleNavigateToMessage}
+              />
             )
           }
 
