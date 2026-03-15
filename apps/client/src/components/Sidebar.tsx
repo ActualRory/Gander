@@ -47,6 +47,8 @@ interface Props {
   participantVolumes: Record<string, number>
   onSetParticipantVolume: (userId: string, vol: number) => void
   participantVoiceState: Record<string, { muted: boolean; deafened: boolean }>
+  isOpen: boolean
+  onClose: () => void
 }
 
 interface ContextState {
@@ -62,7 +64,7 @@ interface ParticipantVolumeState {
   userName: string
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, onSetTopic, displayName, onLogout, participantVolumes, onSetParticipantVolume, participantVoiceState }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, onSetTopic, displayName, onLogout, participantVolumes, onSetParticipantVolume, participantVoiceState, isOpen, onClose }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -77,6 +79,19 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
   const visibleText = channels.filter(c => c.type === 'TEXT' && !hiddenChannelIds.has(c.id))
   const visibleVoice = channels.filter(c => c.type === 'VOICE' && !hiddenChannelIds.has(c.id))
   const visibleDMs = dmChannels.filter(c => !hiddenChannelIds.has(c.id))
+
+  // Long-press: single timer + channel ref handles all channel buttons
+  const lpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  function startLongPress(e: React.PointerEvent, channel: Channel) {
+    const { clientX, clientY } = e
+    lpTimerRef.current = setTimeout(() => {
+      lpTimerRef.current = null
+      setContext({ x: clientX, y: clientY, channel })
+    }, 500)
+  }
+  function cancelLongPress() {
+    if (lpTimerRef.current !== null) { clearTimeout(lpTimerRef.current); lpTimerRef.current = null }
+  }
 
   function handleContextMenu(e: React.MouseEvent, channel: Channel) {
     e.preventDefault()
@@ -184,6 +199,10 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
         className={`${styles.channel} ${c.id === activeChannelId ? styles.active : ''}`}
         onClick={() => onSelectChannel(c)}
         onContextMenu={e => handleContextMenu(e, c)}
+        onPointerDown={e => startLongPress(e, c)}
+        onPointerUp={cancelLongPress}
+        onPointerCancel={cancelLongPress}
+        onPointerLeave={cancelLongPress}
       >
         <span className={styles.channelLabel}># {c.name}</span>
         {mentionCount > 0 && (
@@ -228,6 +247,10 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           className={`${styles.channel} ${isActive ? styles.active : ''}`}
           onClick={() => { if (!isActive) onJoinVoice(c) }}
           onContextMenu={e => handleContextMenu(e, c)}
+          onPointerDown={e => startLongPress(e, c)}
+          onPointerUp={cancelLongPress}
+          onPointerCancel={cancelLongPress}
+          onPointerLeave={cancelLongPress}
         >
           ▸ {c.name}
         </button>
@@ -283,6 +306,10 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
         className={`${styles.dmChannel} ${c.id === activeChannelId ? styles.active : ''}`}
         onClick={() => onOpenDM(c)}
         onContextMenu={e => handleContextMenu(e, c)}
+        onPointerDown={e => startLongPress(e, c)}
+        onPointerUp={cancelLongPress}
+        onPointerCancel={cancelLongPress}
+        onPointerLeave={cancelLongPress}
       >
         <span className={`${styles.dmDot} ${dotClass}`}>·</span>
         <span className={styles.dmLabel}>{label}</span>
@@ -304,7 +331,8 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
 
   return (
     <>
-      <nav className={styles.root}>
+      {isOpen && <div className={styles.backdrop} onClick={onClose} />}
+      <nav className={`${styles.root}${isOpen ? ` ${styles.open}` : ''}`}>
         <div className={styles.serverName}>GANDER</div>
 
         <div className={styles.channelList}>

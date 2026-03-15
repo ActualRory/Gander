@@ -8,6 +8,39 @@
   overflow: hidden;
 }
 
+/* Mobile: sidebar becomes a fixed slide-in drawer */
+@media (max-width: 640px) {
+  .root {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    min-width: 0;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    z-index: 100;
+  }
+
+  .root.open {
+    transform: translateX(0);
+  }
+}
+
+.backdrop {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+  }
+}
+
 .serverName {
   display: flex;
   align-items: center;
@@ -245,4 +278,21 @@
 .logoutBtn:hover {
   color: var(--text-secondary);
   background: none;
+}
+
+/* Touch: larger tap targets */
+@media (pointer: coarse) {
+  .channel,
+  .dmChannel {
+    padding: 10px 16px;
+    min-height: 44px;
+  }
+
+  .sectionHeader {
+    padding: 10px 16px 6px;
+  }
+
+  .userBar {
+    height: 56px;
+  }
 }

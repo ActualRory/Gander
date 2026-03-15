@@ -67,6 +67,13 @@ html, body, #root {
   overflow: hidden;
 }
 
+/* Use dynamic viewport height on mobile so layout shrinks when soft keyboard opens */
+@supports (height: 100dvh) {
+  html, body, #root {
+    height: 100dvh;
+  }
+}
+
 .toast-window,
 .toast-window body,
 .toast-window #root {
@@ -102,6 +109,8 @@ input, textarea {
   color: var(--text-primary);
   padding: 6px 10px;
   outline: none;
+  /* Prevent auto-zoom on focus in Android WebView */
+  font-size: max(16px, 1em);
 }
 
 input:focus, textarea:focus {
@@ -115,6 +124,14 @@ a {
 
 a:hover {
   text-decoration: underline;
+}
+
+/* Touch: ensure minimum tap target size */
+@media (pointer: coarse) {
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 /* Themed scrollbars */

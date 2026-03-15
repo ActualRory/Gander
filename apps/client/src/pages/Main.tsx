@@ -6,6 +6,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { Image as TauriImage } from '@tauri-apps/api/image'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
+import { platform } from '../lib/platform.ts'
 import type { Channel, User } from '@gander/shared'
 import type { AuthState } from '../App.tsx'
 import { api } from '../lib/api.ts'
@@ -141,6 +142,7 @@ export default function Main({ auth, onLogout }: Props) {
   const [fullProfileTarget, setFullProfileTarget] = useState<User | null>(null)
   const [userContextMenu, setUserContextMenu] = useState<{ userId: string; x: number; y: number } | null>(null)
   const [pendingJump, setPendingJump] = useState<{ messageId: string; anchorTime: string } | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const wsRef = useRef<GanderWS | null>(null)
   const activeChannelRef = useRef<Channel | null>(null)
   const channelsRef = useRef<Channel[]>([])
@@ -184,7 +186,7 @@ export default function Main({ auth, onLogout }: Props) {
 
   // Ctrl+Shift+F12 opens DevTools (hidden from users, available for debugging)
   useEffect(() => {
-    if (!(window as any).__TAURI_INTERNALS__) return
+    if (!platform.isDesktop) return
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'F12') {
         ;(getCurrentWebviewWindow() as any).openDevtools()
@@ -223,8 +225,9 @@ export default function Main({ auth, onLogout }: Props) {
     }).catch(() => {})
   }, [])
 
-  // Update taskbar badge
+  // Update taskbar badge (desktop only)
   useEffect(() => {
+    if (!platform.hasWindowBadge) return
     const unmuted = (id: string) => !mutedChannelIds.has(id)
     const totalUnread = Object.entries(unreadCounts).filter(([id]) => unmuted(id)).reduce((sum, [, n]) => sum + n, 0)
     const hasMention = Object.entries(mentionCounts).some(([id, n]) => unmuted(id) && n > 0)
@@ -330,10 +333,14 @@ export default function Main({ auth, onLogout }: Props) {
           if (isMentioned) {
             sendNotification({ title: `${channelName} · ${authorName} mentioned you`, body: truncated })
           } else if (!isActiveChannel) {
-            getCurrentWindow().isFocused().then(focused => {
-              if (focused) return
+            if (platform.hasWindowBadge) {
+              getCurrentWindow().isFocused().then(focused => {
+                if (focused) return
+                sendNotification({ title: `${channelName} · ${authorName}`, body: truncated })
+              }).catch(() => {})
+            } else {
               sendNotification({ title: `${channelName} · ${authorName}`, body: truncated })
-            }).catch(() => {})
+            }
           }
         }
       } else if (event.type === 'voice:init') {
@@ -404,8 +411,9 @@ export default function Main({ auth, onLogout }: Props) {
     return () => { voiceRoomRef.current?.disconnect() }
   }, [])
 
-  // Send voice:leave + disconnect LiveKit before the Tauri window closes
+  // Send voice:leave + disconnect LiveKit before the Tauri window closes (desktop only)
   useEffect(() => {
+    if (!platform.hasCloseEvent) return
     const win = getCurrentWindow()
     let unlisten: (() => void) | null = null
 
@@ -822,6 +830,7 @@ export default function Main({ auth, onLogout }: Props) {
     setPendingJump(null)
     setActiveChannel(channel)
     markChannelRead(channel.id)
+    setSidebarOpen(false)
   }
 
   function handleNavigateToMessage(channelId: string, messageId: string, createdAt: string) {
@@ -1003,8 +1012,18 @@ export default function Main({ auth, onLogout }: Props) {
         participantVolumes={participantVolumes}
         onSetParticipantVolume={handleSetParticipantVolume}
         participantVoiceState={participantVoiceState}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
       <main className={styles.content}>
+        <button
+          type="button"
+          className={styles.hamburger}
+          onClick={() => setSidebarOpen(true)}
+          aria-label="open navigation"
+        >
+          [≡]
+        </button>
         {activeChannel && wsRef.current ? (
           <ChannelView
             key={activeChannel.id}

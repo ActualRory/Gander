@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
+import { platform } from './platform.ts'
 
 export type UpdaterState =
   | { phase: 'idle' }
@@ -15,8 +16,7 @@ export function useAppUpdater() {
   const updateRef = useRef<Update | null>(null)
 
   useEffect(() => {
-    // Only run inside Tauri (not in browser dev mode)
-    if (!(window as any).__TAURI_INTERNALS__) return
+    if (!platform.hasUpdater) return
 
     let cancelled = false
 
@@ -35,6 +35,7 @@ export function useAppUpdater() {
   }, [])
 
   async function install() {
+    if (!platform.hasUpdater) return
     const update = updateRef.current
     if (!update) return
 

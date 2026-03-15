@@ -1,24 +1,10 @@
 {
   "identifier": "default",
-  "description": "Default capabilities for Gander",
-  "windows": ["main", "toast"],
+  "description": "Capabilities available on all platforms",
+  "windows": ["main"],
   "permissions": [
     "core:default",
     "opener:default",
-    "core:window:allow-set-badge-count",
-    "core:window:allow-is-minimized",
-    "core:window:allow-show",
-    "core:window:allow-hide",
-    "core:window:allow-set-position",
-    "core:window:allow-set-ignore-cursor-events",
-    "core:window:allow-set-title",
-    "core:window:allow-set-overlay-icon",
-    "core:window:allow-unminimize",
-    "core:window:allow-set-focus",
-    "core:webview:allow-create-webview-window",
-    "core:event:allow-emit-to",
-    "notification:default",
-    "updater:default",
-    "process:allow-restart"
+    "notification:default"
   ]
 }

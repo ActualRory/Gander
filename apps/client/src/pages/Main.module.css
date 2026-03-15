@@ -22,3 +22,40 @@
   color: var(--text-muted);
   font-size: 13px;
 }
+
+/* Hamburger: only visible on touch/narrow screens */
+.hamburger {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 49px;
+  width: 49px;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 16px;
+  z-index: 10;
+  cursor: pointer;
+  padding: 0;
+  min-height: unset;
+  min-width: unset;
+}
+
+.hamburger:hover {
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+}
+
+@media (max-width: 640px) {
+  .hamburger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .content {
+    position: relative;
+  }
+}
