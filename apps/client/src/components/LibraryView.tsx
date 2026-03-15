@@ -571,6 +571,7 @@ export default function LibraryView({ token }: Props) {
           onClose={() => setShelfMenu(null)}
           items={[
             { label: 'edit shelf', action: () => openEditShelf(shelfMenu.shelf) },
+            { label: 'copy link', action: () => { void navigator.clipboard.writeText(`[[shelf:${shelfMenu.shelf.id}]]`); setShelfMenu(null) } },
             {
               label: shelfMenu.shelf._count.books > 0
                 ? `delete (remove all ${shelfMenu.shelf._count.books} book${shelfMenu.shelf._count.books === 1 ? '' : 's'} first)`
@@ -591,6 +592,7 @@ export default function LibraryView({ token }: Props) {
           onClose={() => setBookMenu(null)}
           items={[
             { label: 'edit', action: () => openEditBook(bookMenu.book) },
+            { label: 'copy link', action: () => { void navigator.clipboard.writeText(`[[book:${bookMenu.book.id}]]`); setBookMenu(null) } },
             { label: 'delete', danger: true, action: () => openDeleteBookConfirm(bookMenu.book) },
           ] satisfies ContextMenuItem[]}
         />

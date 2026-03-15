@@ -7,6 +7,10 @@ import { api, resolveAttachmentUrl } from '../lib/api.ts'
 import ContextMenu from './ContextMenu.tsx'
 import ReactionPicker from './ReactionPicker.tsx'
 import Avatar from './Avatar.tsx'
+import BookLinkCard from './BookLinkCard.tsx'
+import ShelfLinkCard from './ShelfLinkCard.tsx'
+import PostLinkChip from './PostLinkChip.tsx'
+import ChannelLinkChip from './ChannelLinkChip.tsx'
 import styles from './ChannelView.module.css'
 
 // Module-level OG fetch cache — persists across channel switches
@@ -67,12 +71,13 @@ interface Props {
   onMarkRead: () => void
   onUserRightClick: (userId: string, x: number, y: number) => void
   onNavigateToChannel: (channelId: string) => void
+  onNavigateToUtility?: (id: 'library' | 'file-manager' | 'gandle') => void
   jumpToMessageId?: string | null
   jumpAnchorTime?: string | null
   onNavigateToMessage?: (channelId: string, messageId: string, createdAt: string) => void
 }
 
-export default function ChannelView({ channel, token, ws, users, channels, currentUserId, onUserRightClick, lastReadAt, onMarkRead, onNavigateToChannel, jumpToMessageId, jumpAnchorTime, onNavigateToMessage }: Props) {
+export default function ChannelView({ channel, token, ws, users, channels, currentUserId, onUserRightClick, lastReadAt, onMarkRead, onNavigateToChannel, onNavigateToUtility, jumpToMessageId, jumpAnchorTime, onNavigateToMessage }: Props) {
   const channelLabel = channel.type === 'DM'
     ? (users.find(u => u.id === channel.otherUserId)?.displayName ?? channel.name)
     : `# ${channel.name}`
@@ -88,7 +93,6 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const [mentionIndex, setMentionIndex] = useState(0)
   const [channelQuery, setChannelQuery] = useState<string | null>(null)
   const [channelIndex, setChannelIndex] = useState(0)
-  const [channelLinkTooltip, setChannelLinkTooltip] = useState<{ channel: Channel; rect: DOMRect } | null>(null)
   const [pendingAttachments, setPendingAttachments] = useState<Array<{
     file: File
     previewUrl: string
@@ -125,7 +129,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     : []
 
   const channelList = channelQuery !== null
-    ? channels.filter(c => c.type === 'TEXT' && c.name.includes(channelQuery.toLowerCase())).slice(0, 8)
+    ? channels.filter(c => (c.type === 'TEXT' || c.type === 'VOICE') && c.name.includes(channelQuery.toLowerCase())).slice(0, 8)
     : []
 
   function resize() {
@@ -718,7 +722,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                   <span className={styles.editHint}>[enter] save  [esc] cancel</span>
                 </div>
               ) : (
-                msg.content && <p className={styles.content}>{renderContent(msg.content, currentUsername, channels, jumpToPost, onNavigateToChannel, (ch, rect) => setChannelLinkTooltip({ channel: ch, rect }), () => setChannelLinkTooltip(null))}</p>
+                msg.content && <p className={styles.content}>{renderContent(msg.content, currentUsername, channels, token, jumpToPost, onNavigateToChannel, onNavigateToUtility)}</p>
               )}
               {msg.attachments.length > 0 && (
                 <div className={styles.messageAttachments}>
@@ -787,6 +791,11 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                   </div>
                 )
               })()}
+              {msg.content && extractLibraryLinks(msg.content).map(({ type, id }) => (
+                type === 'book'
+                  ? <BookLinkCard key={`book:${id}`} bookId={id} token={token} onNavigateToLibrary={onNavigateToUtility ? () => onNavigateToUtility('library') : undefined} />
+                  : <ShelfLinkCard key={`shelf:${id}`} shelfId={id} token={token} onNavigateToLibrary={onNavigateToUtility ? () => onNavigateToUtility('library') : undefined} />
+              ))}
               {msg.reactions.length > 0 && (
                 <div className={styles.reactions}>
                   {msg.reactions.map(r => {
@@ -935,8 +944,9 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
               className={`${styles.mentionOption} ${i === channelIndex ? styles.mentionOptionActive : ''}`}
               onMouseDown={e => { e.preventDefault(); selectChannel(c.name) }}
             >
-              <span className={styles.mentionDisplayName}># {c.name}</span>
+              <span className={styles.mentionDisplayName}>{c.type === 'VOICE' ? '▸' : '#'} {c.name}</span>
               {c.topic && <span className={styles.mentionUsername}>{c.topic}</span>}
+              {c.type === 'VOICE' && <span className={styles.mentionUsername}>voice</span>}
             </button>
           ))}
         </div>
@@ -958,19 +968,6 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         </div>
       )}
 
-      {channelLinkTooltip?.channel.topic && createPortal(
-        <div
-          className={styles.reactionTooltip}
-          style={{
-            left: channelLinkTooltip.rect.left,
-            top: channelLinkTooltip.rect.top - 4,
-            transform: 'translateY(-100%)',
-          }}
-        >
-          <div>{channelLinkTooltip.channel.topic}</div>
-        </div>,
-        document.body
-      )}
 
       {pendingAttachments.length > 0 && (
         <div className={styles.pendingAttachments}>
@@ -1101,16 +1098,29 @@ function getDateLabel(iso: string): string {
 
 // Matches URLs, @mentions, #postNumber refs, and #channel-name refs in one pass
 // Groups: [1]=@mention handle, [2]=#post digits, [3]=#channel name
-const CONTENT_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+|@(\S+)|#(\d+)|#([a-z][a-z0-9-]*)/g
+// Matches [[book:id]], [[shelf:id]], URLs, @mentions, #postNumber, #channel-name
+const CONTENT_REGEX = /\[\[(book|shelf):([a-z0-9]+)\]\]|https?:\/\/[^\s<>"{}|\\^`[\]]+|@(\S+)|#(\d+)|#([a-z][a-z0-9-]*)/g
+
+const UTILITY_IDS = new Set(['library', 'file-manager', 'gandle'])
+
+function extractLibraryLinks(text: string): { type: 'book' | 'shelf'; id: string }[] {
+  const regex = /\[\[(book|shelf):([a-z0-9]+)\]\]/g
+  const results: { type: 'book' | 'shelf'; id: string }[] = []
+  let m: RegExpExecArray | null
+  while ((m = regex.exec(text)) !== null) {
+    results.push({ type: m[1] as 'book' | 'shelf', id: m[2] })
+  }
+  return results
+}
 
 function renderContent(
   text: string,
   currentUsername: string,
   channels: Channel[],
+  token: string,
   onJumpToPost: (n: number) => void,
   onNavigateToChannel: (channelId: string) => void,
-  onChannelHover: (ch: Channel, rect: DOMRect) => void,
-  onChannelLeave: () => void,
+  onNavigateToUtility: ((id: 'library' | 'file-manager' | 'gandle') => void) | undefined,
 ): React.ReactNode {
   const parts: React.ReactNode[] = []
   let last = 0
@@ -1118,44 +1128,54 @@ function renderContent(
   CONTENT_REGEX.lastIndex = 0
   while ((match = CONTENT_REGEX.exec(text)) !== null) {
     if (match.index > last) parts.push(text.slice(last, match.index))
+
     if (match[1] !== undefined) {
+      // [[book:id]] or [[shelf:id]] — inline chip (full card rendered below message)
+      const libType = match[1] as 'book' | 'shelf'
+      const libId = match[2]
+      parts.push(
+        <span key={match.index} className={styles.channelLink}>
+          [{libType}: {libId.slice(0, 8)}…]
+        </span>
+      )
+    } else if (match[3] !== undefined) {
       // @mention
-      const handle = match[1]
+      const handle = match[3]
       const isSelf = handle.toLowerCase() === currentUsername.toLowerCase()
       parts.push(
         <span key={match.index} className={`${styles.mention} ${isSelf ? styles.mentionSelf : ''}`}>
           @{handle}
         </span>
       )
-    } else if (match[2] !== undefined) {
-      // #postNumber — jump link
-      const num = parseInt(match[2], 10)
+    } else if (match[4] !== undefined) {
+      // #postNumber — hover quote chip
+      const num = parseInt(match[4], 10)
       parts.push(
-        <button
-          key={match.index}
-          type="button"
-          className={styles.postLink}
-          onClick={() => onJumpToPost(num)}
-        >
-          #{num}
-        </button>
+        <PostLinkChip key={match.index} postNumber={num} token={token} onJumpToPost={onJumpToPost} />
       )
-    } else if (match[3] !== undefined) {
-      // #channel-name — navigation link
-      const chName = match[3]
-      const ch = channels.find(c => c.name === chName && c.type === 'TEXT')
+    } else if (match[5] !== undefined) {
+      // #channel-name — navigation chip
+      const chName = match[5]
+      const ch = channels.find(c => c.name === chName && (c.type === 'TEXT' || c.type === 'VOICE'))
       if (ch) {
         parts.push(
-          <button
+          <ChannelLinkChip
             key={match.index}
-            type="button"
-            className={styles.channelLink}
-            onClick={() => onNavigateToChannel(ch.id)}
-            onMouseEnter={e => onChannelHover(ch, (e.currentTarget as HTMLElement).getBoundingClientRect())}
-            onMouseLeave={onChannelLeave}
-          >
-            #{chName}
-          </button>
+            channel={ch}
+            token={token}
+            onNavigate={() => onNavigateToChannel(ch.id)}
+          />
+        )
+      } else if (UTILITY_IDS.has(chName) && onNavigateToUtility) {
+        // Utility pseudo-channel link
+        const fakeChannel = { id: chName, name: chName, type: 'TEXT' } as Channel
+        parts.push(
+          <ChannelLinkChip
+            key={match.index}
+            channel={fakeChannel}
+            token={token}
+            onNavigate={() => onNavigateToUtility(chName as 'library' | 'file-manager' | 'gandle')}
+          />
         )
       } else {
         parts.push(`#${chName}`)

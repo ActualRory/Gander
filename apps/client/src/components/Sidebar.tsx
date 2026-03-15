@@ -89,6 +89,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
   const [settingTopic, setSettingTopic] = useState<Channel | null>(null)
   const [topicValue, setTopicValue] = useState('')
   const [deleting, setDeleting] = useState<Channel | null>(null)
+  const [utilityContext, setUtilityContext] = useState<{ id: string; label: string; x: number; y: number } | null>(null)
   const renameRef = useRef<HTMLInputElement>(null)
   const topicRef = useRef<HTMLInputElement>(null)
   const [, setTick] = useState(0)
@@ -166,6 +167,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
         action: () => onToggleMuted(channel.id),
       },
     ]
+    items.push({ label: 'copy link', action: () => void navigator.clipboard.writeText(`#${channel.name}`) })
     if (channel.creatorId === currentUserId) {
       items.push({ label: 'rename', action: () => startRename(channel) })
       if (channel.type === 'TEXT') {
@@ -436,6 +438,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
                   type="button"
                   className={`${styles.channel} ${activeUtilityId === u.id ? styles.active : ''}`}
                   onClick={() => onOpenUtility(u.id)}
+                  onContextMenu={e => { e.preventDefault(); setUtilityContext({ id: u.id, label: u.label, x: e.clientX, y: e.clientY }) }}
                 >
                   <span className={styles.channelLabel}>{u.label}</span>
                 </button>
@@ -493,6 +496,17 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           y={context.y}
           items={contextItems(context.channel)}
           onClose={() => setContext(null)}
+        />
+      )}
+
+      {utilityContext && (
+        <ContextMenu
+          x={utilityContext.x}
+          y={utilityContext.y}
+          items={[
+            { label: 'copy link', action: () => void navigator.clipboard.writeText(`#${utilityContext.id}`) },
+          ]}
+          onClose={() => setUtilityContext(null)}
         />
       )}
 

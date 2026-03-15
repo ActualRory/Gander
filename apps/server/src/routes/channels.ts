@@ -105,6 +105,15 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(204).send()
   })
 
+  // GET /api/channels/:channelId/preview
+  app.get('/:channelId/preview', async (req, reply) => {
+    const { channelId } = req.params as { channelId: string }
+    const channel = await prisma.channel.findUnique({ where: { id: channelId } })
+    if (!channel) return reply.status(404).send({ error: 'Not found' })
+    const messageCount = await prisma.message.count({ where: { channelId, isSystem: false } })
+    return { id: channel.id, name: channel.name, type: channel.type, topic: channel.topic, messageCount }
+  })
+
   // GET /api/channels/:channelId/pins
   app.get('/:channelId/pins', async (req) => {
     const { channelId } = req.params as { channelId: string }

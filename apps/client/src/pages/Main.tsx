@@ -1354,6 +1354,7 @@ export default function Main({ auth, onLogout }: Props) {
                 lastReadAt={loadLastRead(auth.userId, activeChannel.id)}
                 onMarkRead={() => markChannelRead(activeChannel.id)}
                 onNavigateToChannel={handleNavigateToChannel}
+                onNavigateToUtility={openUtility}
                 jumpToMessageId={pendingJump?.messageId ?? null}
                 jumpAnchorTime={pendingJump?.anchorTime ?? null}
                 onNavigateToMessage={handleNavigateToMessage}

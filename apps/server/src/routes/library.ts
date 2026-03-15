@@ -89,6 +89,39 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(204).send()
   })
 
+  // GET /api/library/shelves/:shelfId/preview
+  app.get<{ Params: { shelfId: string } }>('/shelves/:shelfId/preview', async (req, reply) => {
+    const shelf = await prisma.libraryShelf.findUnique({
+      where: { id: req.params.shelfId },
+      include: { _count: { select: { books: true } } },
+    })
+    if (!shelf) return reply.status(404).send({ error: 'Not found' })
+    const agg = await prisma.libraryBook.aggregate({
+      where: { shelfId: req.params.shelfId },
+      _sum: { size: true },
+    })
+    return {
+      id: shelf.id,
+      name: shelf.name,
+      description: shelf.description,
+      bookCount: shelf._count.books,
+      totalSize: agg._sum.size ?? 0,
+    }
+  })
+
+  // GET /api/library/books/:bookId (global lookup, no shelf scope)
+  app.get<{ Params: { bookId: string } }>('/books/:bookId', async (req, reply) => {
+    const book = await prisma.libraryBook.findUnique({
+      where: { id: req.params.bookId },
+      include: {
+        uploader: { select: { displayName: true } },
+        shelf: { select: { id: true, name: true } },
+      },
+    })
+    if (!book) return reply.status(404).send({ error: 'Not found' })
+    return book
+  })
+
   // GET /api/library/books/search?q=&genre=
   app.get<{ Querystring: { q?: string; genre?: string } }>('/books/search', async (req) => {
     const { q, genre } = req.query as { q?: string; genre?: string }

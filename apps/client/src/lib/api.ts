@@ -180,6 +180,21 @@ export const api = {
     return res.json()
   },
 
+  getLibraryShelfPreview: (token: string, shelfId: string) =>
+    request<{ id: string; name: string; description: string | null; bookCount: number; totalSize: number }>(
+      `/api/library/shelves/${shelfId}/preview`, authed(token)
+    ),
+
+  getLibraryBookPreview: (token: string, bookId: string) =>
+    request<{ id: string; title: string; author: string | null; series: string | null; genre: string | null; coverUrl: string | null; mimeType: string; size: number; shelf: { id: string; name: string } | null }>(
+      `/api/library/books/${bookId}`, authed(token)
+    ),
+
+  getChannelPreview: (token: string, channelId: string) =>
+    request<{ id: string; name: string; type: string; topic: string | null; messageCount: number }>(
+      `/api/channels/${channelId}/preview`, authed(token)
+    ),
+
   searchLibraryBooks: (token: string, params?: { q?: string; genre?: string }) => {
     const qs = new URLSearchParams()
     if (params?.q) qs.set('q', params.q)
