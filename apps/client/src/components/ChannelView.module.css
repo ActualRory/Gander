@@ -170,6 +170,25 @@
   text-decoration: underline;
 }
 
+.scrollToBottomBtn {
+  position: absolute;
+  right: 20px;
+  bottom: 80px;
+  z-index: 10;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.scrollToBottomBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-dim);
+}
+
 .typingBar {
   padding: 2px 20px;
   font-size: 11px;

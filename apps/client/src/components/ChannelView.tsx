@@ -115,6 +115,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const firstUnreadRef = useRef<HTMLDivElement | null>(null)
   const isAtBottomRef = useRef(true)
   const initialScrollDoneRef = useRef(false)
+  const [isAtBottom, setIsAtBottom] = useState(true)
 
   const mentionUsers = mentionQuery !== null
     ? users.filter(u =>
@@ -239,6 +240,20 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     api.getPins(token, channel.id).then(data => { setPins(data); setPinsLoaded(true) }).catch(() => { setPinsLoaded(true) })
   }, [pinsOpen, pinsLoaded, token, channel.id])
 
+  // Focus textarea on any printable keypress when nothing else is focused
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey || e.altKey || e.metaKey) return
+      if (e.key.length !== 1) return
+      const focused = document.activeElement
+      if (focused === textareaRef.current) return
+      if (focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement) return
+      textareaRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   // Close pins panel on Escape / click-outside
   useEffect(() => {
     if (!pinsOpen) return
@@ -259,7 +274,14 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     if (!el) return
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
     isAtBottomRef.current = atBottom
+    setIsAtBottom(atBottom)
     if (atBottom) onMarkRead()
+  }
+
+  function scrollToBottom() {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    isAtBottomRef.current = true
+    setIsAtBottom(true)
   }
 
   function jumpToMessage(id: string) {
@@ -336,6 +358,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     setReplyingTo(null)
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     onMarkRead()
+    scrollToBottom()
   }
 
   async function jumpToPost(postNumber: number) {
@@ -794,6 +817,12 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         })}
         <div ref={bottomRef} />
       </div>
+
+      {!isAtBottom && (
+        <button className={styles.scrollToBottomBtn} onClick={scrollToBottom}>
+          ↓ scroll to bottom
+        </button>
+      )}
 
       {msgMenu && (
         <ContextMenu
