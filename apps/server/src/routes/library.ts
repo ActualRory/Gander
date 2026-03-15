@@ -213,7 +213,7 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
   })
 
   // PATCH /api/library/shelves/:shelfId/books/:bookId (move shelf or update metadata)
-  app.patch<{ Params: { shelfId: string; bookId: string }; Body: { shelfId?: string; title?: string; author?: string; series?: string; genre?: string } }>(
+  app.patch<{ Params: { shelfId: string; bookId: string }; Body: { shelfId?: string; title?: string; author?: string; series?: string; genre?: string; coverUrl?: string | null } }>(
     '/shelves/:shelfId/books/:bookId',
     async (req, reply) => {
       const { userId } = req.user as { userId: string }
@@ -225,16 +225,55 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
       if (book.uploaderId !== userId && book.shelf.creatorId !== userId) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
-      const body = req.body as { shelfId?: string; title?: string; author?: string; series?: string; genre?: string }
+      const body = req.body as { shelfId?: string; title?: string; author?: string; series?: string; genre?: string; coverUrl?: string | null }
       const data: Record<string, unknown> = {}
       if (body.shelfId) data.shelfId = body.shelfId
       if (body.title !== undefined) data.title = body.title
       if (body.author !== undefined) data.author = body.author || null
       if (body.series !== undefined) data.series = body.series || null
       if (body.genre !== undefined) data.genre = body.genre || null
+      if (body.coverUrl !== undefined) data.coverUrl = body.coverUrl || null
       const updated = await prisma.libraryBook.update({
         where: { id: req.params.bookId },
         data,
+        include: { uploader: { select: { displayName: true } } },
+      })
+      return updated
+    },
+  )
+
+  // PATCH /api/library/shelves/:shelfId/books/:bookId/cover (replace cover image via file upload)
+  app.patch<{ Params: { shelfId: string; bookId: string } }>(
+    '/shelves/:shelfId/books/:bookId/cover',
+    async (req, reply) => {
+      const { userId } = req.user as { userId: string }
+      const uploadsDir = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads')
+      const book = await prisma.libraryBook.findUnique({
+        where: { id: req.params.bookId },
+        include: { shelf: true },
+      })
+      if (!book || book.shelfId !== req.params.shelfId) return reply.status(404).send({ error: 'Not found' })
+      if (book.uploaderId !== userId && book.shelf.creatorId !== userId) {
+        return reply.status(403).send({ error: 'Forbidden' })
+      }
+      let newCoverUrl: string | null = null
+      const parts = req.parts({ limits: { fields: 0, fileSize: 10 * 1024 * 1024 } })
+      for await (const part of parts) {
+        if (part.type !== 'file') continue
+        if (part.fieldname !== 'cover' || !COVER_MIME_TYPES.has(part.mimetype)) { await part.toBuffer(); continue }
+        const ext = MIME_TO_EXT[part.mimetype]
+        const coverStoredName = `cover_${randomBytes(16).toString('hex')}${ext}`
+        await pipeline(part.file, createWriteStream(join(uploadsDir, coverStoredName)))
+        newCoverUrl = `/uploads/${coverStoredName}`
+      }
+      if (!newCoverUrl) return reply.status(400).send({ error: 'cover file required (field name: "cover")' })
+      // Delete old cover if it was an uploaded file (not an external URL)
+      if (book.coverUrl?.startsWith('/uploads/')) {
+        try { unlinkSync(join(uploadsDir, book.coverUrl.replace('/uploads/', ''))) } catch {}
+      }
+      const updated = await prisma.libraryBook.update({
+        where: { id: req.params.bookId },
+        data: { coverUrl: newCoverUrl },
         include: { uploader: { select: { displayName: true } } },
       })
       return updated

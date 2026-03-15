@@ -161,6 +161,25 @@ export const api = {
   moveLibraryBook: (token: string, shelfId: string, bookId: string, targetShelfId: string) =>
     request<unknown>(`/api/library/shelves/${shelfId}/books/${bookId}`, { method: 'PATCH', body: JSON.stringify({ shelfId: targetShelfId }), ...authed(token) }),
 
+  updateLibraryBook: (token: string, shelfId: string, bookId: string, data: { title?: string; author?: string; series?: string; genre?: string; coverUrl?: string | null }) =>
+    request<unknown>(`/api/library/shelves/${shelfId}/books/${bookId}`, { method: 'PATCH', body: JSON.stringify(data), ...authed(token) }),
+
+  updateLibraryBookCover: async (token: string, shelfId: string, bookId: string, cover: File) => {
+    const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+    const form = new FormData()
+    form.append('cover', cover)
+    const res = await fetch(`${base}/api/library/shelves/${shelfId}/books/${bookId}/cover`, {
+      method: 'PATCH',
+      body: form,
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string }
+      throw new Error(body?.error ?? `HTTP ${res.status}`)
+    }
+    return res.json()
+  },
+
   searchLibraryBooks: (token: string, params?: { q?: string; genre?: string }) => {
     const qs = new URLSearchParams()
     if (params?.q) qs.set('q', params.q)

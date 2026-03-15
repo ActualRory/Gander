@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, resolveAttachmentUrl } from '../lib/api.ts'
+import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import styles from './LibraryView.module.css'
 
 type LibraryShelf = { id: string; name: string; createdAt: string; creatorId: string; _count: { books: number } }
@@ -80,9 +81,23 @@ export default function LibraryView({ token }: Props) {
   const [uploadCover, setUploadCover] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
 
+  // Book context menu
+  const [bookMenu, setBookMenu] = useState<{ book: LibraryBook; x: number; y: number } | null>(null)
+
+  // Edit book
+  const [editBook, setEditBook] = useState<LibraryBook | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editAuthor, setEditAuthor] = useState('')
+  const [editSeries, setEditSeries] = useState('')
+  const [editGenre, setEditGenre] = useState<Genre | ''>('')
+  const [editCoverFile, setEditCoverFile] = useState<File | null>(null)
+  const [editCoverUrl, setEditCoverUrl] = useState('')
+  const [saving, setSaving] = useState(false)
+
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const coverInputRef = useRef<HTMLInputElement>(null)
+  const editCoverInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { fetchShelves() }, [])
 
@@ -228,6 +243,55 @@ export default function LibraryView({ token }: Props) {
         : s))
     } catch {
       setError('failed to delete book')
+    }
+  }
+
+  function openEditBook(book: LibraryBook) {
+    setEditBook(book)
+    setEditTitle(book.title)
+    setEditAuthor(book.author ?? '')
+    setEditSeries(book.series ?? '')
+    setEditGenre((book.genre as Genre | null) ?? '')
+    setEditCoverFile(null)
+    setEditCoverUrl('')
+  }
+
+  function closeEditBook() {
+    setEditBook(null)
+    setEditCoverFile(null)
+    setEditCoverUrl('')
+  }
+
+  async function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editBook) return
+    setSaving(true)
+    try {
+      const shelfId = editBook.shelf?.id ?? selectedShelfId
+      if (!shelfId) return
+
+      // Update metadata + optional cover URL
+      const updated = await api.updateLibraryBook(token, shelfId, editBook.id, {
+        title: editTitle || editBook.title,
+        author: editAuthor || undefined,
+        series: editSeries || undefined,
+        genre: editGenre || undefined,
+        ...(editCoverUrl && !editCoverFile ? { coverUrl: editCoverUrl } : {}),
+      }) as LibraryBook
+
+      // If a cover file was chosen, upload it separately
+      let finalBook: LibraryBook = updated
+      if (editCoverFile) {
+        finalBook = await api.updateLibraryBookCover(token, shelfId, editBook.id, editCoverFile) as LibraryBook
+      }
+
+      setBooks(prev => prev.map(b => b.id === editBook.id ? { ...b, ...finalBook } : b))
+      if (searchResults) setSearchResults(prev => prev?.map(b => b.id === editBook.id ? { ...b, ...finalBook } : b) ?? null)
+      closeEditBook()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to save')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -444,6 +508,7 @@ export default function LibraryView({ token }: Props) {
                   setDragSourceShelfId(book.shelf?.id ?? selectedShelfId)
                 }}
                 onDragEnd={() => { setDragBookId(null); setDragSourceShelfId(null); setDragOverShelfId(null) }}
+                onContextMenu={e => { e.preventDefault(); setBookMenu({ book, x: e.clientX, y: e.clientY }) }}
               >
                 <a
                   href={resolveAttachmentUrl(`/uploads/${book.storedName}`)}
@@ -482,6 +547,125 @@ export default function LibraryView({ token }: Props) {
           </div>
         </main>
       </div>
+
+      {/* Book context menu */}
+      {bookMenu && (
+        <ContextMenu
+          x={bookMenu.x}
+          y={bookMenu.y}
+          onClose={() => setBookMenu(null)}
+          items={[
+            { label: 'edit', action: () => openEditBook(bookMenu.book) },
+            { label: 'delete', danger: true, action: () => handleDeleteBook(bookMenu.book.id, bookMenu.book.shelf?.id ?? selectedShelfId ?? undefined) },
+          ] satisfies ContextMenuItem[]}
+        />
+      )}
+
+      {/* Edit book modal */}
+      {editBook && (
+        <div className={styles.modalOverlay} onClick={e => e.target === e.currentTarget && closeEditBook()}>
+          <div className={styles.modal}>
+            <div className={styles.modalTitle}>edit "{editBook.title}"</div>
+            <form onSubmit={handleSaveEdit} className={styles.uploadForm}>
+              <label className={styles.formLabel}>
+                title
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={e => setEditTitle(e.target.value)}
+                  className={styles.formInput}
+                  autoFocus
+                />
+              </label>
+
+              <label className={styles.formLabel}>
+                author
+                <input
+                  type="text"
+                  value={editAuthor}
+                  onChange={e => setEditAuthor(e.target.value)}
+                  placeholder="author name"
+                  className={styles.formInput}
+                />
+              </label>
+
+              <label className={styles.formLabel}>
+                series
+                <input
+                  type="text"
+                  value={editSeries}
+                  onChange={e => setEditSeries(e.target.value)}
+                  placeholder="series name"
+                  className={styles.formInput}
+                />
+              </label>
+
+              <label className={styles.formLabel}>
+                genre
+                <div className={styles.genreRadios}>
+                  {GENRES.map(g => (
+                    <label key={g} className={styles.genreRadio}>
+                      <input
+                        type="radio"
+                        name="editGenre"
+                        value={g}
+                        checked={editGenre === g}
+                        onChange={() => setEditGenre(g)}
+                      />
+                      {g}
+                    </label>
+                  ))}
+                  <label className={styles.genreRadio}>
+                    <input
+                      type="radio"
+                      name="editGenre"
+                      value=""
+                      checked={editGenre === ''}
+                      onChange={() => setEditGenre('')}
+                    />
+                    none
+                  </label>
+                </div>
+              </label>
+
+              <label className={styles.formLabel}>
+                cover image
+                <button type="button" className={styles.filePickerBtn} onClick={() => editCoverInputRef.current?.click()}>
+                  {editCoverFile ? editCoverFile.name : '[choose file]'}
+                </button>
+                <input
+                  ref={editCoverInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  style={{ display: 'none' }}
+                  onChange={e => { setEditCoverFile(e.target.files?.[0] ?? null); setEditCoverUrl('') }}
+                />
+              </label>
+
+              <label className={styles.formLabel}>
+                — or cover URL
+                <input
+                  type="url"
+                  value={editCoverUrl}
+                  onChange={e => { setEditCoverUrl(e.target.value); setEditCoverFile(null) }}
+                  placeholder="https://..."
+                  className={styles.formInput}
+                  disabled={!!editCoverFile}
+                />
+              </label>
+
+              <div className={styles.formActions}>
+                <button type="submit" className={styles.submitBtn} disabled={saving}>
+                  {saving ? 'saving...' : '[save]'}
+                </button>
+                <button type="button" className={styles.cancelBtn} onClick={closeEditBook}>
+                  [cancel]
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Upload modal */}
       {uploadOpen && (
