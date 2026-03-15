@@ -197,6 +197,7 @@ export default function Main({ auth, onLogout }: Props) {
   const prevChannelRef = useRef<Channel | null>(null)
   const isDeafenedRef = useRef(false)
   const isMutedRef = useRef(false)
+  const mutedByDeafenRef = useRef(false)
   const isCameraOnRef = useRef(false)
   const isScreenSharingRef = useRef(false)
   const screenShareAudioTrackRef = useRef<LocalAudioTrack | null>(null)
@@ -795,12 +796,20 @@ export default function Main({ auth, onLogout }: Props) {
     const room = voiceRoomRef.current
     const next = !isDeafened
     setIsDeafened(next)
-    // Deafening also mutes mic
+    // Deafening also mutes mic; undeafening reverses that auto-mute
     let nextMuted = isMuted
     if (next && !isMuted) {
       if (room) await room.localParticipant.setMicrophoneEnabled(false)
       setIsMuted(true)
+      isMutedRef.current = true
       nextMuted = true
+      mutedByDeafenRef.current = true
+    } else if (!next && mutedByDeafenRef.current) {
+      if (room) await room.localParticipant.setMicrophoneEnabled(true)
+      setIsMuted(false)
+      isMutedRef.current = false
+      nextMuted = false
+      mutedByDeafenRef.current = false
     }
     if (room) {
       for (const p of room.remoteParticipants.values()) {
