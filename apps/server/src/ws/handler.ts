@@ -97,7 +97,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         // Notify all other clients this user came online (include user data so new users are discoverable)
         const connectedUser = await prisma.user.findUnique({
           where: { id: userId },
-          select: { id: true, username: true, displayName: true, subtitle: true, createdAt: true, lastSeenAt: true },
+          select: { id: true, username: true, displayName: true, subtitle: true, avatarUrl: true, createdAt: true, lastSeenAt: true },
         })
         if (connectedUser) {
           broadcastAll({
