@@ -140,7 +140,6 @@ function screenSharePreset(q: ScreenShareQuality) {
     case '720p30':  return ScreenSharePresets.h720fps30
     case '1080p15': return ScreenSharePresets.h1080fps15
     case '1080p30': return ScreenSharePresets.h1080fps30
-    case '4K30':    return ScreenSharePresets.h2160fps30
   }
 }
 

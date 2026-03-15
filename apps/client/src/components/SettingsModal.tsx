@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import styles from './SettingsModal.module.css'
 
 export type CameraQuality = '360p' | '720p' | '1080p'
-export type ScreenShareQuality = '720p15' | '720p30' | '1080p15' | '1080p30' | '4K30'
+export type ScreenShareQuality = '720p15' | '720p30' | '1080p15' | '1080p30'
 
 export const CAMERA_QUALITY_OPTIONS: { value: CameraQuality; label: string }[] = [
   { value: '360p',  label: '360p' },
@@ -16,7 +16,6 @@ export const SCREEN_SHARE_QUALITY_OPTIONS: { value: ScreenShareQuality; label: s
   { value: '720p30',  label: '720p / 30 fps' },
   { value: '1080p15', label: '1080p / 15 fps' },
   { value: '1080p30', label: '1080p / 30 fps' },
-  { value: '4K30',    label: '4K / 30 fps' },
 ]
 
 interface Props {
