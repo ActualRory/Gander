@@ -16,13 +16,17 @@ interface Props {
   isSpeaking: boolean
   isReceiving: boolean
   voiceStats: VoiceStats | null
+  isCameraOn: boolean
+  isScreenSharing: boolean
   onToggleMute: () => void
   onToggleDeafen: () => void
+  onToggleCamera: () => void
+  onToggleScreenShare: () => void
   onOpenSettings: () => void
   onLeave: () => void
 }
 
-export default function VoiceControls({ channelName, isMuted, isDeafened, isSpeaking, isReceiving, voiceStats, onToggleMute, onToggleDeafen, onOpenSettings, onLeave }: Props) {
+export default function VoiceControls({ channelName, isMuted, isDeafened, isSpeaking, isReceiving, voiceStats, isCameraOn, isScreenSharing, onToggleMute, onToggleDeafen, onToggleCamera, onToggleScreenShare, onOpenSettings, onLeave }: Props) {
   const iconRef = useRef<HTMLSpanElement>(null)
   const [tooltipAnchor, setTooltipAnchor] = useState<DOMRect | null>(null)
 
@@ -63,6 +67,22 @@ export default function VoiceControls({ channelName, isMuted, isDeafened, isSpea
             title={isDeafened ? 'undeafen' : 'deafen'}
           >
             {isDeafened ? '[deaf]' : '[hear]'}
+          </button>
+          <button
+            type="button"
+            className={`${styles.btn} ${isCameraOn ? styles.btnActive : ''}`}
+            onClick={onToggleCamera}
+            title={isCameraOn ? 'stop camera' : 'start camera'}
+          >
+            [cam]
+          </button>
+          <button
+            type="button"
+            className={`${styles.btn} ${isScreenSharing ? styles.btnActive : ''}`}
+            onClick={onToggleScreenShare}
+            title={isScreenSharing ? 'stop screen share' : 'share screen'}
+          >
+            [scr]
           </button>
           <button
             type="button"

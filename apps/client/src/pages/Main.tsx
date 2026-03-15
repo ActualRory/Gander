@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import goosehonkUrl from '../../sounds/goosehonk1.mp3?url'
 import hangupUrl from '../../sounds/goosebell_hangup1.mp3?url'
-import { Room, RoomEvent, Track, AudioPresets, LocalAudioTrack, ConnectionQuality, createAudioAnalyser, type RemoteAudioTrack } from 'livekit-client'
+import { Room, RoomEvent, Track, AudioPresets, LocalAudioTrack, ConnectionQuality, createAudioAnalyser, type RemoteAudioTrack, type RemoteVideoTrack, type LocalVideoTrack } from 'livekit-client'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { Image as TauriImage } from '@tauri-apps/api/image'
@@ -17,6 +17,7 @@ import SocialPanel from '../components/SocialPanel.tsx'
 import ErrorModal from '../components/ErrorModal.tsx'
 import VoiceSettingsModal from '../components/VoiceSettingsModal.tsx'
 import type { VoiceStats } from '../components/VoiceControls.tsx'
+import VideoGrid, { type VideoTile } from '../components/VideoGrid.tsx'
 import UserProfilePopup from '../components/UserProfilePopup.tsx'
 import UserProfileModal from '../components/UserProfileModal.tsx'
 import ContextMenu from '../components/ContextMenu.tsx'
@@ -161,8 +162,14 @@ export default function Main({ auth, onLogout }: Props) {
   const [voiceStats, setVoiceStats] = useState<VoiceStats | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [participantVolumes, setParticipantVolumes] = useState<Record<string, number>>({})
-  const [participantVoiceState, setParticipantVoiceState] = useState<Record<string, { muted: boolean; deafened: boolean }>>({})
+  const [participantVoiceState, setParticipantVoiceState] = useState<Record<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }>>({})
+  const [isCameraOn, setIsCameraOn] = useState(false)
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [videoTiles, setVideoTiles] = useState<VideoTile[]>([])
   const isDeafenedRef = useRef(false)
+  const isMutedRef = useRef(false)
+  const isCameraOnRef = useRef(false)
+  const isScreenSharingRef = useRef(false)
   const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const intentionalDisconnectRef = useRef(false)
   const participantVolumesRef = useRef<Record<string, number>>({})
@@ -208,6 +215,9 @@ export default function Main({ auth, onLogout }: Props) {
 
   // Keep refs in sync for use inside LiveKit event callbacks
   useEffect(() => { isDeafenedRef.current = isDeafened }, [isDeafened])
+  useEffect(() => { isMutedRef.current = isMuted }, [isMuted])
+  useEffect(() => { isCameraOnRef.current = isCameraOn }, [isCameraOn])
+  useEffect(() => { isScreenSharingRef.current = isScreenSharing }, [isScreenSharing])
   useEffect(() => { outputVolumeRef.current = outputVolume }, [outputVolume])
   useEffect(() => { rnnoiseEnabledRef.current = rnnoiseEnabled }, [rnnoiseEnabled])
   useEffect(() => { activeChannelRef.current = activeChannel }, [activeChannel])
@@ -347,8 +357,8 @@ export default function Main({ auth, onLogout }: Props) {
         setVoiceParticipants(event.payload.voiceRooms)
         setParticipantVoiceState(event.payload.voiceStates)
       } else if (event.type === 'voice:state') {
-        const { userId, muted, deafened } = event.payload
-        setParticipantVoiceState(prev => ({ ...prev, [userId]: { muted, deafened } }))
+        const { userId, muted, deafened, videoEnabled, screenSharing } = event.payload
+        setParticipantVoiceState(prev => ({ ...prev, [userId]: { muted, deafened, videoEnabled, screenSharing } }))
       } else if (event.type === 'voice:join') {
         const { userId, channelId } = event.payload
         setVoiceParticipants(prev => ({
@@ -449,13 +459,13 @@ export default function Main({ auth, onLogout }: Props) {
         }
       }
       setIsMuted(false)
-      wsRef.current?.send({ type: 'voice:state', payload: { muted: false, deafened: false } })
+      wsRef.current?.send({ type: 'voice:state', payload: { muted: false, deafened: false, videoEnabled: isCameraOnRef.current, screenSharing: isScreenSharingRef.current } })
     }
     const up = async (e: KeyboardEvent) => {
       if (e.code !== pttKey) return
       await voiceRoomRef.current?.localParticipant.setMicrophoneEnabled(false)
       setIsMuted(true)
-      wsRef.current?.send({ type: 'voice:state', payload: { muted: true, deafened: false } })
+      wsRef.current?.send({ type: 'voice:state', payload: { muted: true, deafened: false, videoEnabled: isCameraOnRef.current, screenSharing: isScreenSharingRef.current } })
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -522,8 +532,8 @@ export default function Main({ auth, onLogout }: Props) {
         setSettingsOpen(false)
       })
 
-      // Attach incoming audio tracks to the DOM and create analysers for speaking detection
-      room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
+      // Attach incoming audio/video tracks
+      room.on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
         if (track.kind === Track.Kind.Audio) {
           const el = track.attach()
           document.body.appendChild(el)
@@ -532,14 +542,23 @@ export default function Main({ auth, onLogout }: Props) {
           try {
             remoteAnalysers.set(participant.identity, createAudioAnalyser(track as RemoteAudioTrack))
           } catch { /* ignore — browser may lack AudioContext support */ }
+        } else if (track.kind === Track.Kind.Video) {
+          const isScreen = pub.source === Track.Source.ScreenShare
+          setVideoTiles(prev => {
+            const filtered = prev.filter(t => !(t.participantId === participant.identity && t.isScreen === isScreen))
+            return [...filtered, { participantId: participant.identity, track: track as RemoteVideoTrack, isScreen, isLocal: false }]
+          })
         }
       })
 
-      room.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
+      room.on(RoomEvent.TrackUnsubscribed, (track, pub, participant) => {
         if (track.kind === Track.Kind.Audio) {
           track.detach().forEach(el => el.remove())
           const a = remoteAnalysers.get(participant.identity)
           if (a) { a.cleanup().catch(() => {}); remoteAnalysers.delete(participant.identity) }
+        } else if (track.kind === Track.Kind.Video) {
+          const isScreen = pub.source === Track.Source.ScreenShare
+          setVideoTiles(prev => prev.filter(t => !(t.participantId === participant.identity && t.isScreen === isScreen)))
         }
       })
 
@@ -549,19 +568,39 @@ export default function Main({ auth, onLogout }: Props) {
         if (a) { a.cleanup().catch(() => {}); remoteAnalysers.delete(participant.identity) }
       })
 
-      // Local mic analyser — set up when the mic track is published
+      // Local track published — mic analyser + video tile
       room.on(RoomEvent.LocalTrackPublished, (pub) => {
         if (pub.source === Track.Source.Microphone && pub.audioTrack) {
           try {
             localAnalyser?.cleanup().catch(() => {})
             localAnalyser = createAudioAnalyser(pub.audioTrack)
           } catch { /* ignore */ }
+        } else if (pub.source === Track.Source.Camera && pub.videoTrack) {
+          setVideoTiles(prev => {
+            const filtered = prev.filter(t => !(t.participantId === room.localParticipant.identity && !t.isScreen))
+            return [...filtered, { participantId: room.localParticipant.identity, track: pub.videoTrack as LocalVideoTrack, isScreen: false, isLocal: true }]
+          })
+        } else if (pub.source === Track.Source.ScreenShare && pub.videoTrack) {
+          setVideoTiles(prev => {
+            const filtered = prev.filter(t => !(t.participantId === room.localParticipant.identity && t.isScreen))
+            return [...filtered, { participantId: room.localParticipant.identity, track: pub.videoTrack as LocalVideoTrack, isScreen: true, isLocal: true }]
+          })
         }
       })
       room.on(RoomEvent.LocalTrackUnpublished, (pub) => {
         if (pub.source === Track.Source.Microphone) {
           localAnalyser?.cleanup().catch(() => {})
           localAnalyser = null
+        } else if (pub.source === Track.Source.Camera) {
+          setIsCameraOn(false)
+          isCameraOnRef.current = false
+          setVideoTiles(prev => prev.filter(t => !(t.participantId === room.localParticipant.identity && !t.isScreen)))
+          wsRef.current?.send({ type: 'voice:state', payload: { muted: isMutedRef.current, deafened: isDeafenedRef.current, videoEnabled: false, screenSharing: isScreenSharingRef.current } })
+        } else if (pub.source === Track.Source.ScreenShare) {
+          setIsScreenSharing(false)
+          isScreenSharingRef.current = false
+          setVideoTiles(prev => prev.filter(t => !(t.participantId === room.localParticipant.identity && t.isScreen)))
+          wsRef.current?.send({ type: 'voice:state', payload: { muted: isMutedRef.current, deafened: isDeafenedRef.current, videoEnabled: isCameraOnRef.current, screenSharing: false } })
         }
       })
 
@@ -657,6 +696,9 @@ export default function Main({ auth, onLogout }: Props) {
     setVoiceChannelId(null)
     setIsMuted(false)
     setIsDeafened(false)
+    setIsCameraOn(false)
+    setIsScreenSharing(false)
+    setVideoTiles([])
     setIsSpeaking(false)
     setIsReceiving(false)
     setSpeakingUserIds(new Set())
@@ -676,9 +718,9 @@ export default function Main({ auth, onLogout }: Props) {
         const multiplier = participantVolumesRef.current[p.identity] ?? 1.0
         p.setVolume(Math.min(2, outputVolumeRef.current * multiplier))
       }
-      wsRef.current?.send({ type: 'voice:state', payload: { muted: next, deafened: false } })
+      wsRef.current?.send({ type: 'voice:state', payload: { muted: next, deafened: false, videoEnabled: isCameraOnRef.current, screenSharing: isScreenSharingRef.current } })
     } else {
-      wsRef.current?.send({ type: 'voice:state', payload: { muted: next, deafened: isDeafened } })
+      wsRef.current?.send({ type: 'voice:state', payload: { muted: next, deafened: isDeafened, videoEnabled: isCameraOnRef.current, screenSharing: isScreenSharingRef.current } })
     }
   }
 
@@ -698,7 +740,33 @@ export default function Main({ auth, onLogout }: Props) {
       const multiplier = participantVolumesRef.current[p.identity] ?? 1.0
       p.setVolume(next ? 0 : Math.min(2, outputVolumeRef.current * multiplier))
     }
-    wsRef.current?.send({ type: 'voice:state', payload: { muted: nextMuted, deafened: next } })
+    wsRef.current?.send({ type: 'voice:state', payload: { muted: nextMuted, deafened: next, videoEnabled: isCameraOnRef.current, screenSharing: isScreenSharingRef.current } })
+  }
+
+  async function handleToggleCamera() {
+    const room = voiceRoomRef.current
+    if (!room) return
+    const next = !isCameraOn
+    await room.localParticipant.setCameraEnabled(next)
+    setIsCameraOn(next)
+    isCameraOnRef.current = next
+    wsRef.current?.send({ type: 'voice:state', payload: { muted: isMutedRef.current, deafened: isDeafenedRef.current, videoEnabled: next, screenSharing: isScreenSharingRef.current } })
+  }
+
+  async function handleToggleScreenShare() {
+    const room = voiceRoomRef.current
+    if (!room) return
+    const next = !isScreenSharing
+    try {
+      await room.localParticipant.setScreenShareEnabled(next)
+      setIsScreenSharing(next)
+      isScreenSharingRef.current = next
+      wsRef.current?.send({ type: 'voice:state', payload: { muted: isMutedRef.current, deafened: isDeafenedRef.current, videoEnabled: isCameraOnRef.current, screenSharing: next } })
+    } catch (err) {
+      // User cancelled the screen picker — swallow silently
+      if (err instanceof Error && err.name === 'NotAllowedError') return
+      throw err
+    }
   }
 
   async function handleChangePttMode(ptt: boolean) {
@@ -1002,6 +1070,10 @@ export default function Main({ auth, onLogout }: Props) {
         onLeaveVoice={handleLeaveVoice}
         onToggleMute={handleToggleMute}
         onToggleDeafen={handleToggleDeafen}
+        isCameraOn={isCameraOn}
+        isScreenSharing={isScreenSharing}
+        onToggleCamera={handleToggleCamera}
+        onToggleScreenShare={handleToggleScreenShare}
         voiceStats={voiceStats}
         onOpenVoiceSettings={() => setSettingsOpen(true)}
         onOpenDM={openChannel}
@@ -1024,6 +1096,13 @@ export default function Main({ auth, onLogout }: Props) {
         >
           [≡]
         </button>
+        {videoTiles.length > 0 && (
+          <VideoGrid
+            tiles={videoTiles}
+            users={users}
+            currentUserId={auth.userId}
+          />
+        )}
         {activeChannel && wsRef.current ? (
           <ChannelView
             key={activeChannel.id}

@@ -37,6 +37,10 @@ interface Props {
   onLeaveVoice: () => void
   onToggleMute: () => void
   onToggleDeafen: () => void
+  isCameraOn: boolean
+  isScreenSharing: boolean
+  onToggleCamera: () => void
+  onToggleScreenShare: () => void
   voiceStats: VoiceStats | null
   onOpenVoiceSettings: () => void
   onOpenDM: (channel: Channel) => void
@@ -46,7 +50,7 @@ interface Props {
   onLogout: () => void
   participantVolumes: Record<string, number>
   onSetParticipantVolume: (userId: string, vol: number) => void
-  participantVoiceState: Record<string, { muted: boolean; deafened: boolean }>
+  participantVoiceState: Record<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }>
   isOpen: boolean
   onClose: () => void
 }
@@ -64,7 +68,7 @@ interface ParticipantVolumeState {
   userName: string
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, onOpenVoiceSettings, onOpenDM, onHideDM, onSetTopic, displayName, onLogout, participantVolumes, onSetParticipantVolume, participantVoiceState, isOpen, onClose }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenVoiceSettings, onOpenDM, onHideDM, onSetTopic, displayName, onLogout, participantVolumes, onSetParticipantVolume, participantVoiceState, isOpen, onClose }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -370,8 +374,12 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
             isSpeaking={isSpeaking}
             isReceiving={isReceiving}
             voiceStats={voiceStats}
+            isCameraOn={isCameraOn}
+            isScreenSharing={isScreenSharing}
             onToggleMute={onToggleMute}
             onToggleDeafen={onToggleDeafen}
+            onToggleCamera={onToggleCamera}
+            onToggleScreenShare={onToggleScreenShare}
             onOpenSettings={onOpenVoiceSettings}
             onLeave={onLeaveVoice}
           />

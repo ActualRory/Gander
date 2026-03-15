@@ -15,8 +15,8 @@ const voiceRooms = new Map<string, Set<string>>()
 // userId → channelId (which voice channel they're currently in)
 const userVoiceChannel = new Map<string, string>()
 
-// userId → current mute/deafen state
-const userVoiceState = new Map<string, { muted: boolean; deafened: boolean }>()
+// userId → current mute/deafen/video state
+const userVoiceState = new Map<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }>()
 
 export function broadcast(channelId: string, event: ServerEvent, exclude?: WebSocket) {
   const room = rooms.get(channelId)
@@ -76,7 +76,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         for (const [channelId, members] of voiceRooms) {
           if (members.size > 0) voiceRoomsSnapshot[channelId] = [...members]
         }
-        const voiceStatesSnapshot: Record<string, { muted: boolean; deafened: boolean }> = {}
+        const voiceStatesSnapshot: Record<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }> = {}
         for (const [uid, state] of userVoiceState) {
           voiceStatesSnapshot[uid] = state
         }
@@ -147,9 +147,9 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
       }
 
       case 'voice:state': {
-        const { muted, deafened } = event.payload
-        userVoiceState.set(userId, { muted, deafened })
-        broadcastAll({ type: 'voice:state', payload: { userId, muted, deafened } })
+        const { muted, deafened, videoEnabled = false, screenSharing = false } = event.payload
+        userVoiceState.set(userId, { muted, deafened, videoEnabled, screenSharing })
+        broadcastAll({ type: 'voice:state', payload: { userId, muted, deafened, videoEnabled, screenSharing } })
         break
       }
 
