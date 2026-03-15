@@ -203,7 +203,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         const typers = channelTyping.get(channelId)!
         const existing = typers.get(userId)
         if (existing) clearTimeout(existing)
-        const timer = setTimeout(() => clearTyping(channelId, userId), 5000)
+        const timer = setTimeout(() => clearTyping(channelId, userId!), 5000)
         typers.set(userId, timer)
         broadcast(channelId, { type: 'typing:update', payload: { channelId, userIds: [...typers.keys()] } })
         break
