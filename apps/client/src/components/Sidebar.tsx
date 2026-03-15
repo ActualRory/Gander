@@ -54,6 +54,8 @@ interface Props {
   onWatchStream: (userId: string, type: 'screen' | 'camera') => void
   isOpen: boolean
   onClose: () => void
+  hasUpdate: boolean
+  onShowUpdate: () => void
 }
 
 interface ContextState {
@@ -69,7 +71,7 @@ interface ParticipantVolumeState {
   userName: string
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hasUpdate, onShowUpdate }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -375,7 +377,19 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
     <>
       {isOpen && <div className={styles.backdrop} onClick={onClose} />}
       <nav className={`${styles.root}${isOpen ? ` ${styles.open}` : ''}`}>
-        <div className={styles.serverName}>GANDER</div>
+        <div className={styles.serverName}>
+          GANDER
+          {hasUpdate && (
+            <button
+              type="button"
+              className={styles.updateBtn}
+              onClick={onShowUpdate}
+              title="update available"
+            >
+              [!]
+            </button>
+          )}
+        </div>
 
         <div className={styles.channelList}>
           {visibleDMs.length > 0 && (

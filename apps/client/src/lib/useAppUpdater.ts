@@ -70,12 +70,17 @@ export function useAppUpdater() {
     setDismissed(true)
   }
 
-  const visible =
-    !dismissed &&
-    (state.phase === 'available' ||
-      state.phase === 'downloading' ||
-      state.phase === 'ready' ||
-      state.phase === 'error')
+  function show() {
+    setDismissed(false)
+  }
 
-  return { state, visible, install, dismiss }
+  const hasUpdate =
+    state.phase === 'available' ||
+    state.phase === 'downloading' ||
+    state.phase === 'ready' ||
+    state.phase === 'error'
+
+  const visible = !dismissed && hasUpdate
+
+  return { state, visible, hasUpdate, install, dismiss, show }
 }
