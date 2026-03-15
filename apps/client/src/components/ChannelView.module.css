@@ -793,3 +793,36 @@
   color: var(--text-muted);
   font-size: 12px;
 }
+
+/* ---- System messages (pin notifications, topic changes) ---- */
+.systemMsg {
+  padding: 2px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.systemMsgActor {
+  color: var(--text-secondary);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.systemMsgLink {
+  background: none;
+  border: none;
+  color: var(--accent-dim);
+  font: inherit;
+  font-size: inherit;
+  font-style: italic;
+  cursor: pointer;
+  padding: 0;
+}
+
+.systemMsgLink:hover {
+  color: var(--accent);
+}
+
+.systemMsgQuote {
+  color: var(--text-secondary);
+}
