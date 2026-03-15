@@ -10,6 +10,13 @@
   flex-shrink: 0;
 }
 
+/* Pinned layout: big tile + filmstrip */
+.grid.hasPinned {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  overflow-y: hidden;
+}
+
 .tile {
   position: relative;
   background: var(--bg-surface);
@@ -19,6 +26,35 @@
   max-width: 480px;
   aspect-ratio: 16 / 9;
   overflow: hidden;
+  cursor: pointer;
+}
+
+.tile.pinned {
+  flex: 0 0 auto;
+  width: calc(100% - 164px);
+  max-width: none;
+  min-width: 0;
+  aspect-ratio: 16 / 9;
+  border-color: var(--text-accent);
+  cursor: default;
+}
+
+.filmstrip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 156px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  max-height: calc(40vh - 16px);
+}
+
+.filmstrip .tile {
+  min-width: 0;
+  width: 100%;
+  flex: 0 0 auto;
+  max-width: none;
+  cursor: pointer;
 }
 
 .video {
@@ -42,4 +78,22 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.unpinBtn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(26, 26, 14, 0.8);
+  color: var(--text-accent);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 5px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.unpinBtn:hover {
+  background: var(--bg-surface);
 }
