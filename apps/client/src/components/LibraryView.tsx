@@ -518,7 +518,7 @@ export default function LibraryView({ token }: Props) {
                   title={`open ${book.title}`}
                 >
                   {book.coverUrl
-                    ? <img src={resolveAttachmentUrl(book.coverUrl)} alt={book.title} className={styles.bookCover} />
+                    ? <img src={book.coverUrl.startsWith('http') ? book.coverUrl : resolveAttachmentUrl(book.coverUrl)} alt={book.title} className={styles.bookCover} />
                     : (
                       <div className={styles.bookCoverPlaceholder}>
                         <span className={styles.mimeLabel}>{mimeLabel(book.mimeType)}</span>
