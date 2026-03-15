@@ -214,7 +214,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   // Lazily load pins when the panel opens
   useEffect(() => {
     if (!pinsOpen || pinsLoaded) return
-    api.getPins(token, channel.id).then(data => { setPins(data); setPinsLoaded(true) }).catch(() => {})
+    api.getPins(token, channel.id).then(data => { setPins(data); setPinsLoaded(true) }).catch(() => { setPinsLoaded(true) })
   }, [pinsOpen, pinsLoaded, token, channel.id])
 
   // Close pins panel on Escape / click-outside
