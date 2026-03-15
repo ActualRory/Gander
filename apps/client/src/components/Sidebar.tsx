@@ -413,7 +413,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
               onClick={onToggleDeafen}
               title={isDeafened ? 'undeafen' : 'deafen'}
             >
-              {isDeafened ? '[d]' : '[ear]'}
+              {isDeafened ? '[h]' : '[hear]'}
             </button>
             <button
               type="button"

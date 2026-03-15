@@ -750,16 +750,17 @@ export default function Main({ auth, onLogout }: Props) {
 
   async function handleToggleMute() {
     const room = voiceRoomRef.current
-    if (!room) return
     const next = !isMuted
-    await room.localParticipant.setMicrophoneEnabled(!next)
+    if (room) await room.localParticipant.setMicrophoneEnabled(!next)
     setIsMuted(next)
     // Unmuting while deafened also undeafens (Discord behaviour)
     if (!next && isDeafened) {
       setIsDeafened(false)
-      for (const p of room.remoteParticipants.values()) {
-        const multiplier = participantVolumesRef.current[p.identity] ?? 1.0
-        p.setVolume(Math.min(2, outputVolumeRef.current * multiplier))
+      if (room) {
+        for (const p of room.remoteParticipants.values()) {
+          const multiplier = participantVolumesRef.current[p.identity] ?? 1.0
+          p.setVolume(Math.min(2, outputVolumeRef.current * multiplier))
+        }
       }
       wsRef.current?.send({ type: 'voice:state', payload: { muted: next, deafened: false, videoEnabled: isCameraOnRef.current, screenSharing: isScreenSharingRef.current } })
     } else {
@@ -769,19 +770,20 @@ export default function Main({ auth, onLogout }: Props) {
 
   async function handleToggleDeafen() {
     const room = voiceRoomRef.current
-    if (!room) return
     const next = !isDeafened
     setIsDeafened(next)
     // Deafening also mutes mic
     let nextMuted = isMuted
     if (next && !isMuted) {
-      await room.localParticipant.setMicrophoneEnabled(false)
+      if (room) await room.localParticipant.setMicrophoneEnabled(false)
       setIsMuted(true)
       nextMuted = true
     }
-    for (const p of room.remoteParticipants.values()) {
-      const multiplier = participantVolumesRef.current[p.identity] ?? 1.0
-      p.setVolume(next ? 0 : Math.min(2, outputVolumeRef.current * multiplier))
+    if (room) {
+      for (const p of room.remoteParticipants.values()) {
+        const multiplier = participantVolumesRef.current[p.identity] ?? 1.0
+        p.setVolume(next ? 0 : Math.min(2, outputVolumeRef.current * multiplier))
+      }
     }
     wsRef.current?.send({ type: 'voice:state', payload: { muted: nextMuted, deafened: next, videoEnabled: isCameraOnRef.current, screenSharing: isScreenSharingRef.current } })
   }
