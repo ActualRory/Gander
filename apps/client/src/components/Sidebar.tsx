@@ -50,6 +50,7 @@ interface Props {
   participantVolumes: Record<string, number>
   onSetParticipantVolume: (userId: string, vol: number) => void
   participantVoiceState: Record<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }>
+  onWatchStream: (userId: string) => void
   isOpen: boolean
   onClose: () => void
 }
@@ -67,7 +68,7 @@ interface ParticipantVolumeState {
   userName: string
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, isOpen, onClose }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -265,11 +266,15 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
             ? { muted: isMuted, deafened: isDeafened }
             : (participantVoiceState[uid] ?? { muted: false, deafened: false })
           const badge = voiceState.deafened ? '[deaf]' : voiceState.muted ? '[m]' : null
+          const streaming = uid === currentUserId
+            ? isScreenSharing
+            : (participantVoiceState[uid]?.screenSharing ?? false)
           if (uid === currentUserId) {
             return (
               <div key={uid} className={`${styles.voiceParticipant} ${isTalking ? styles.voiceParticipantSpeaking : ''}`}>
                 <span className={styles.participantName}>{name}</span>
                 {badge && <span className={styles.voiceStateBadge}>{badge}</span>}
+                {streaming && <span className={styles.liveBadge}>[LIVE]</span>}
               </div>
             )
           }
@@ -285,6 +290,9 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
             >
               <span className={styles.participantName}>{name}</span>
               {badge && <span className={styles.voiceStateBadge}>{badge}</span>}
+              {streaming && (
+                <button type="button" className={styles.liveBadge} onClick={() => onWatchStream(uid)}>[LIVE]</button>
+              )}
             </div>
           )
         })}
