@@ -168,7 +168,7 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
       ])
       if (pinner && pinnedMsg) {
         const sysMsg = await prisma.message.create({
-          data: { content: '', channelId, authorId: userId, replyToId: messageId, isSystem: true },
+          data: { content: 'pinned', channelId, authorId: userId, replyToId: messageId, isSystem: true },
         })
         const isDm = channel?.type === 'DM' || channel?.type === 'GROUP'
         const outEvent = {
