@@ -161,6 +161,9 @@ model LibraryShelf {
 model LibraryBook {
   id         String   @id @default(cuid())
   title      String
+  author     String?
+  series     String?
+  genre      String?
   filename   String
   storedName String   @unique
   mimeType   String

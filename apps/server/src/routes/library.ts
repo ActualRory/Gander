@@ -49,8 +49,25 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
     if (!name?.trim()) return reply.status(400).send({ error: 'name required' })
     const shelf = await prisma.libraryShelf.create({
       data: { name: name.trim(), creatorId: userId },
+      include: { _count: { select: { books: true } } },
     })
     return reply.status(201).send(shelf)
+  })
+
+  // PATCH /api/library/shelves/:shelfId (rename)
+  app.patch<{ Params: { shelfId: string }; Body: { name: string } }>('/shelves/:shelfId', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
+    const { name } = req.body as { name: string }
+    if (!name?.trim()) return reply.status(400).send({ error: 'name required' })
+    const shelf = await prisma.libraryShelf.findUnique({ where: { id: req.params.shelfId } })
+    if (!shelf) return reply.status(404).send({ error: 'Not found' })
+    if (shelf.creatorId !== userId) return reply.status(403).send({ error: 'Forbidden' })
+    const updated = await prisma.libraryShelf.update({
+      where: { id: req.params.shelfId },
+      data: { name: name.trim() },
+      include: { _count: { select: { books: true } } },
+    })
+    return updated
   })
 
   // DELETE /api/library/shelves/:shelfId
@@ -61,6 +78,31 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
     if (shelf.creatorId !== userId) return reply.status(403).send({ error: 'Forbidden' })
     await prisma.libraryShelf.delete({ where: { id: req.params.shelfId } })
     return reply.status(204).send()
+  })
+
+  // GET /api/library/books/search?q=&genre=
+  app.get<{ Querystring: { q?: string; genre?: string } }>('/books/search', async (req) => {
+    const { q, genre } = req.query as { q?: string; genre?: string }
+    const term = q?.trim()
+    const books = await prisma.libraryBook.findMany({
+      where: {
+        ...(genre ? { genre } : {}),
+        ...(term ? {
+          OR: [
+            { title: { contains: term, mode: 'insensitive' } },
+            { author: { contains: term, mode: 'insensitive' } },
+            { series: { contains: term, mode: 'insensitive' } },
+          ],
+        } : {}),
+      },
+      orderBy: { uploadedAt: 'desc' },
+      include: {
+        uploader: { select: { displayName: true } },
+        shelf: { select: { id: true, name: true } },
+      },
+      take: 200,
+    })
+    return books
   })
 
   // GET /api/library/shelves/:shelfId/books
@@ -84,18 +126,33 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
     if (!shelf) return reply.status(404).send({ error: 'Not found' })
 
     let title: string | null = null
+    let author: string | null = null
+    let series: string | null = null
+    let genre: string | null = null
     let bookStoredName: string | null = null
     let bookFilename: string | null = null
     let bookMimeType: string | null = null
     let bookSize = 0
     let coverUrl: string | null = null
 
-    // Override global fields:0 limit to allow the title field
-    const parts = req.parts({ limits: { fields: 5, fileSize: 50 * 1024 * 1024 } })
+    // Override global fields:0 limit to allow the title/author/series fields
+    const parts = req.parts({ limits: { fields: 10, fileSize: 50 * 1024 * 1024 } })
 
     for await (const part of parts) {
       if (part.type === 'field' && part.fieldname === 'title') {
         title = String(part.value).trim()
+        continue
+      }
+      if (part.type === 'field' && part.fieldname === 'author') {
+        author = String(part.value).trim() || null
+        continue
+      }
+      if (part.type === 'field' && part.fieldname === 'series') {
+        series = String(part.value).trim() || null
+        continue
+      }
+      if (part.type === 'field' && part.fieldname === 'genre') {
+        genre = String(part.value).trim() || null
         continue
       }
       if (part.type !== 'file') continue
@@ -134,6 +191,9 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
       const book = await prisma.libraryBook.create({
         data: {
           title,
+          author,
+          series,
+          genre,
           filename: bookFilename,
           storedName: bookStoredName,
           mimeType: bookMimeType,
@@ -151,6 +211,35 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
       throw err
     }
   })
+
+  // PATCH /api/library/shelves/:shelfId/books/:bookId (move shelf or update metadata)
+  app.patch<{ Params: { shelfId: string; bookId: string }; Body: { shelfId?: string; title?: string; author?: string; series?: string; genre?: string } }>(
+    '/shelves/:shelfId/books/:bookId',
+    async (req, reply) => {
+      const { userId } = req.user as { userId: string }
+      const book = await prisma.libraryBook.findUnique({
+        where: { id: req.params.bookId },
+        include: { shelf: true },
+      })
+      if (!book || book.shelfId !== req.params.shelfId) return reply.status(404).send({ error: 'Not found' })
+      if (book.uploaderId !== userId && book.shelf.creatorId !== userId) {
+        return reply.status(403).send({ error: 'Forbidden' })
+      }
+      const body = req.body as { shelfId?: string; title?: string; author?: string; series?: string; genre?: string }
+      const data: Record<string, unknown> = {}
+      if (body.shelfId) data.shelfId = body.shelfId
+      if (body.title !== undefined) data.title = body.title
+      if (body.author !== undefined) data.author = body.author || null
+      if (body.series !== undefined) data.series = body.series || null
+      if (body.genre !== undefined) data.genre = body.genre || null
+      const updated = await prisma.libraryBook.update({
+        where: { id: req.params.bookId },
+        data,
+        include: { uploader: { select: { displayName: true } } },
+      })
+      return updated
+    },
+  )
 
   // DELETE /api/library/shelves/:shelfId/books/:bookId
   app.delete<{ Params: { shelfId: string; bookId: string } }>(

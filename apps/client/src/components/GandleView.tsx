@@ -46,7 +46,9 @@ export default function GandleView({ token, currentUserId }: Props) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [viewingEntry, setViewingEntry] = useState<LeaderboardEntry | null>(null)
 
-  // Load today's state from server
+  const progressKey = `gander:gandle-progress:${date}`
+
+  // Load today's state from server, fall back to localStorage for in-progress guesses
   useEffect(() => {
     api.gandleToday(token).then(res => {
       if (res.played && res.result) {
@@ -54,6 +56,17 @@ export default function GandleView({ token, currentUserId }: Props) {
         setCompletedRows(rows)
         setGameOver(true)
         setSolved(res.result.solved)
+        localStorage.removeItem(progressKey)
+      } else {
+        // Restore in-progress guesses from localStorage
+        try {
+          const saved = localStorage.getItem(progressKey)
+          if (saved) {
+            const { guesses } = JSON.parse(saved) as { guesses: string[] }
+            const rows = guesses.map(g => evaluateGuess(g, answer))
+            setCompletedRows(rows)
+          }
+        } catch { /* ignore */ }
       }
     }).catch(() => {}).finally(() => setLoading(false))
   }, [token, answer])
@@ -80,7 +93,7 @@ export default function GandleView({ token, currentUserId }: Props) {
     if (guess.length !== WORD_LENGTH) { showMessage(`need ${WORD_LENGTH} letters`); return }
     if (!isValidGuess(guess)) {
       setShake(true)
-      showMessage('not in word list')
+      showMessage('letters only')
       setTimeout(() => setShake(false), 500)
       return
     }
@@ -92,6 +105,7 @@ export default function GandleView({ token, currentUserId }: Props) {
 
     const didSolve = guess === answer
     const isLast = newRows.length >= MAX_GUESSES
+    const wordList = newRows.map(r => r.letters.map(l => l.char).join(''))
 
     if (didSolve || isLast) {
       setGameOver(true)
@@ -99,14 +113,18 @@ export default function GandleView({ token, currentUserId }: Props) {
       if (didSolve) showMessage(newRows.length === 1 ? 'genius!' : newRows.length <= 3 ? 'great!' : 'got it!', 2000)
       else showMessage(answer.toUpperCase(), 4000)
 
-      // Submit to server
+      // Submit to server and clear local progress
       try {
-        await api.gandleSubmit(token, date, newRows.map(r => r.letters.map(l => l.char).join('')), didSolve)
+        await api.gandleSubmit(token, date, wordList, didSolve)
+        localStorage.removeItem(progressKey)
         const lb = await api.gandleLeaderboard(token, date)
         setLeaderboard(lb)
       } catch { /* ignore submission errors */ }
+    } else {
+      // Persist in-progress guesses
+      localStorage.setItem(progressKey, JSON.stringify({ guesses: wordList }))
     }
-  }, [currentInput, completedRows, answer, token, date, showMessage])
+  }, [currentInput, completedRows, answer, token, date, progressKey, showMessage])
 
   // Physical keyboard handler
   useEffect(() => {

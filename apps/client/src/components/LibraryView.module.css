@@ -165,6 +165,59 @@
   color: #c87060;
 }
 
+.shelfDragOver {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  outline: 1px solid var(--accent);
+}
+
+.renameForm {
+  flex: 1;
+  min-width: 0;
+}
+
+.renameInput {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--accent);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 3px 5px;
+  box-sizing: border-box;
+}
+
+.renameInput:focus {
+  outline: none;
+}
+
+/* ─── Genre panel ─── */
+.genrePanel {
+  border-top: 1px solid var(--border);
+  padding: 0 0 8px;
+  flex-shrink: 0;
+}
+
+.genreBtn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 4px 12px;
+  text-align: left;
+}
+
+.genreBtn:hover {
+  color: var(--text-primary);
+}
+
+.genreActive {
+  color: var(--accent) !important;
+}
+
 /* ─── Book panel ─── */
 .bookPanel {
   flex: 1;
@@ -177,9 +230,82 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px 8px;
+  padding: 10px 16px 8px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  gap: 12px;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.sortBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sortLabel {
+  color: var(--text-muted);
+  font-size: 0.78em;
+}
+
+.sortBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78em;
+  padding: 1px 4px;
+}
+
+.sortBtn:hover {
+  color: var(--text-primary);
+}
+
+.sortActive {
+  color: var(--accent) !important;
+  border-bottom: 1px solid var(--accent);
+}
+
+/* ─── Search ─── */
+.searchWrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.searchInput {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.82em;
+  padding: 3px 7px;
+  width: 180px;
+}
+
+.searchInput:focus {
+  outline: 1px solid var(--accent);
+}
+
+.searchClear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78em;
+  padding: 0;
+}
+
+.searchClear:hover {
+  color: #c87060;
 }
 
 .headerLeft {
@@ -303,6 +429,20 @@
   color: #c87060;
 }
 
+.bookGenreTag {
+  font-size: 0.72em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 0 4px;
+  align-self: flex-start;
+  margin-top: 1px;
+}
+
+.bookDragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
 /* ─── Upload modal ─── */
 .modalOverlay {
   position: fixed;
@@ -412,4 +552,25 @@
 
 .cancelBtn:hover {
   color: var(--text-primary);
+}
+
+.genreRadios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.genreRadio {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.9em;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.genreRadio input {
+  accent-color: var(--accent);
+  cursor: pointer;
 }

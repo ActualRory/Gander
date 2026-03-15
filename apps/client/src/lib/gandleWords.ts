@@ -95,6 +95,3 @@ export const GANDLE_WORDS: readonly string[] = [
   'wreathe', 'writhe', 'zealot', 'zenith',
 ]
 
-// All valid 6-letter guess words (superset of answer words — used for validation)
-// For now, same as GANDLE_WORDS. Extend this list to allow more valid guesses.
-export const GANDLE_VALID_GUESSES: ReadonlySet<string> = new Set(GANDLE_WORDS)

@@ -1,11 +1,10 @@
-import { GANDLE_WORDS, GANDLE_VALID_GUESSES } from './gandleWords.ts'
+import { GANDLE_WORDS } from './gandleWords.ts'
 
 export const WORD_LENGTH = 6
 export const MAX_GUESSES = 6
 
 // Filter to only valid 6-letter words (guards against typos in the word list)
 const ANSWER_WORDS = GANDLE_WORDS.filter(w => w.length === WORD_LENGTH && /^[a-z]+$/.test(w))
-const VALID_GUESSES = new Set([...GANDLE_VALID_GUESSES].filter(w => w.length === WORD_LENGTH && /^[a-z]+$/.test(w)))
 
 /** Returns today's puzzle date as "YYYY-MM-DD" (local time) */
 export function todayDate(): string {
@@ -61,7 +60,7 @@ export function evaluateGuess(guess: string, answer: string): EvaluatedRow {
 
 /** Returns whether a word is an acceptable guess */
 export function isValidGuess(word: string): boolean {
-  return word.length === WORD_LENGTH && VALID_GUESSES.has(word.toLowerCase())
+  return word.length === WORD_LENGTH && /^[a-z]+$/.test(word.toLowerCase())
 }
 
 /** Compute keyboard letter states from evaluated rows */

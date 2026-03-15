@@ -144,6 +144,9 @@ export const api = {
       '/api/library/shelves', { method: 'POST', body: JSON.stringify({ name }), ...authed(token) }
     ),
 
+  renameLibraryShelf: (token: string, shelfId: string, name: string) =>
+    request<unknown>(`/api/library/shelves/${shelfId}`, { method: 'PATCH', body: JSON.stringify({ name }), ...authed(token) }),
+
   deleteLibraryShelf: (token: string, shelfId: string) =>
     request<void>(`/api/library/shelves/${shelfId}`, { method: 'DELETE', ...authed(token) }),
 
@@ -155,11 +158,25 @@ export const api = {
   deleteLibraryBook: (token: string, shelfId: string, bookId: string) =>
     request<void>(`/api/library/shelves/${shelfId}/books/${bookId}`, { method: 'DELETE', ...authed(token) }),
 
-  uploadLibraryBook: async (token: string, shelfId: string, file: File, title: string, cover?: File | null) => {
+  moveLibraryBook: (token: string, shelfId: string, bookId: string, targetShelfId: string) =>
+    request<unknown>(`/api/library/shelves/${shelfId}/books/${bookId}`, { method: 'PATCH', body: JSON.stringify({ shelfId: targetShelfId }), ...authed(token) }),
+
+  searchLibraryBooks: (token: string, params?: { q?: string; genre?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.genre) qs.set('genre', params.genre)
+    const query = qs.toString() ? `?${qs}` : ''
+    return request<unknown[]>(`/api/library/books/search${query}`, authed(token))
+  },
+
+  uploadLibraryBook: async (token: string, shelfId: string, file: File, title: string, cover?: File | null, author?: string, series?: string, genre?: string) => {
     const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
     const form = new FormData()
     form.append('file', file)
     form.append('title', title || file.name)
+    if (author) form.append('author', author)
+    if (series) form.append('series', series)
+    if (genre) form.append('genre', genre)
     if (cover) form.append('cover', cover)
     const res = await fetch(`${base}/api/library/shelves/${shelfId}/books`, {
       method: 'POST',
