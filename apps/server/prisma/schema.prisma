@@ -25,6 +25,9 @@ model User {
   attachments     Attachment[]
   pinnedMessages  PinnedMessage[]
   voiceSessions   VoiceSession[]
+  libraryShelves  LibraryShelf[]
+  libraryBooks    LibraryBook[]
+  gandleResults   GandleResult[]
 }
 
 model Channel {
@@ -130,6 +133,45 @@ model VoiceSession {
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+}
+
+model GandleResult {
+  id        String   @id @default(cuid())
+  userId    String
+  date      String   // "YYYY-MM-DD"
+  guesses   String   // JSON array of guess strings
+  solved    Boolean
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+model LibraryShelf {
+  id        String      @id @default(cuid())
+  name      String
+  createdAt DateTime    @default(now())
+  creatorId String
+
+  creator User        @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  books   LibraryBook[]
+}
+
+model LibraryBook {
+  id         String   @id @default(cuid())
+  title      String
+  filename   String
+  storedName String   @unique
+  mimeType   String
+  size       Int
+  coverUrl   String?
+  uploadedAt DateTime @default(now())
+  uploaderId String
+  shelfId    String
+
+  uploader User         @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  shelf    LibraryShelf @relation(fields: [shelfId], references: [id], onDelete: Cascade)
 }
 
 model Reaction {

@@ -13,6 +13,9 @@ import { api } from '../lib/api.ts'
 import { GanderWS } from '../lib/ws.ts'
 import Sidebar from '../components/Sidebar.tsx'
 import ChannelView from '../components/ChannelView.tsx'
+import LibraryView from '../components/LibraryView.tsx'
+import FileManagerView from '../components/FileManagerView.tsx'
+import GandleView from '../components/GandleView.tsx'
 import SocialPanel from '../components/SocialPanel.tsx'
 import ErrorModal from '../components/ErrorModal.tsx'
 import SettingsModal from '../components/SettingsModal.tsx'
@@ -75,6 +78,17 @@ function loadHidden(userId: string): Set<string> {
 
 function saveHidden(userId: string, hidden: Set<string>) {
   localStorage.setItem(`gander:hidden:${userId}`, JSON.stringify([...hidden]))
+}
+
+function loadHiddenUtilities(userId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(`gander:hidden-utilities:${userId}`)
+    return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+  } catch { return new Set() }
+}
+
+function saveHiddenUtilities(userId: string, hidden: Set<string>) {
+  localStorage.setItem(`gander:hidden-utilities:${userId}`, JSON.stringify([...hidden]))
 }
 
 function loadMuted(userId: string): Set<string> {
@@ -169,6 +183,8 @@ export default function Main({ auth, onLogout }: Props) {
   const [userContextMenu, setUserContextMenu] = useState<{ userId: string; x: number; y: number } | null>(null)
   const [pendingJump, setPendingJump] = useState<{ messageId: string; anchorTime: string } | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [activeUtilityId, setActiveUtilityId] = useState<'library' | 'file-manager' | 'gandle' | null>(null)
+  const [hiddenUtilityIds, setHiddenUtilityIds] = useState<Set<string>>(() => loadHiddenUtilities(auth.userId))
   const wsRef = useRef<GanderWS | null>(null)
   const activeChannelRef = useRef<Channel | null>(null)
   const channelsRef = useRef<Channel[]>([])
@@ -1054,8 +1070,25 @@ export default function Main({ auth, onLogout }: Props) {
   function openChannel(channel: Channel) {
     setPendingJump(null)
     setActiveChannel(channel)
+    setActiveUtilityId(null)
     markChannelRead(channel.id)
     setSidebarOpen(false)
+  }
+
+  function openUtility(id: 'library' | 'file-manager' | 'gandle') {
+    setActiveUtilityId(id)
+    setActiveChannel(null)
+    setSidebarOpen(false)
+  }
+
+  function handleToggleUtilityVisibility(id: string) {
+    setHiddenUtilityIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      saveHiddenUtilities(auth.userId, next)
+      return next
+    })
   }
 
   function handleNavigateToMessage(channelId: string, messageId: string, createdAt: string) {
@@ -1253,7 +1286,10 @@ export default function Main({ auth, onLogout }: Props) {
         onWatchStream={handleWatchStream}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-
+        hiddenUtilityIds={hiddenUtilityIds}
+        onToggleUtilityVisibility={handleToggleUtilityVisibility}
+        onOpenUtility={openUtility}
+        activeUtilityId={activeUtilityId}
       />
       <main className={styles.content}>
         <button
@@ -1290,6 +1326,18 @@ export default function Main({ auth, onLogout }: Props) {
                 onClose={handleCloseStream}
               />
             )
+          }
+
+          if (activeUtilityId === 'library') {
+            return <LibraryView token={auth.token} />
+          }
+
+          if (activeUtilityId === 'file-manager') {
+            return <FileManagerView token={auth.token} />
+          }
+
+          if (activeUtilityId === 'gandle') {
+            return <GandleView token={auth.token} currentUserId={auth.userId} />
           }
 
           if (activeChannel && wsRef.current) {

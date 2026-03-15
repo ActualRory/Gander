@@ -133,6 +133,80 @@ export const api = {
   deleteAvatar: (token: string) =>
     request<void>('/api/users/me/avatar', { method: 'DELETE', ...authed(token) }),
 
+  // Library
+  getLibraryShelves: (token: string) =>
+    request<{ id: string; name: string; createdAt: string; creatorId: string; _count: { books: number } }[]>(
+      '/api/library/shelves', authed(token)
+    ),
+
+  createLibraryShelf: (token: string, name: string) =>
+    request<{ id: string; name: string; createdAt: string; creatorId: string; _count: { books: number } }>(
+      '/api/library/shelves', { method: 'POST', body: JSON.stringify({ name }), ...authed(token) }
+    ),
+
+  deleteLibraryShelf: (token: string, shelfId: string) =>
+    request<void>(`/api/library/shelves/${shelfId}`, { method: 'DELETE', ...authed(token) }),
+
+  getLibraryBooks: (token: string, shelfId: string) =>
+    request<{ id: string; title: string; filename: string; storedName: string; mimeType: string; size: number; coverUrl: string | null; uploadedAt: string; uploaderId: string; uploader: { displayName: string } }[]>(
+      `/api/library/shelves/${shelfId}/books`, authed(token)
+    ),
+
+  deleteLibraryBook: (token: string, shelfId: string, bookId: string) =>
+    request<void>(`/api/library/shelves/${shelfId}/books/${bookId}`, { method: 'DELETE', ...authed(token) }),
+
+  uploadLibraryBook: async (token: string, shelfId: string, file: File, title: string, cover?: File | null) => {
+    const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+    const form = new FormData()
+    form.append('file', file)
+    form.append('title', title || file.name)
+    if (cover) form.append('cover', cover)
+    const res = await fetch(`${base}/api/library/shelves/${shelfId}/books`, {
+      method: 'POST',
+      body: form,
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string }
+      throw new Error(body?.error ?? `HTTP ${res.status}`)
+    }
+    return res.json()
+  },
+
+  // File Manager
+  getFileManagerStats: (token: string) =>
+    request<{ totalSize: number; fileCount: number; byChannel: { channelId: string; channelName: string; fileCount: number; totalSize: number }[]; limitBytes: number | null }>(
+      '/api/file-manager/stats', authed(token)
+    ),
+
+  getFileManagerFiles: (token: string, params?: { sort?: string; limit?: number; cursor?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.sort) qs.set('sort', params.sort)
+    if (params?.limit) qs.set('limit', String(params.limit))
+    if (params?.cursor) qs.set('cursor', params.cursor)
+    const query = qs.toString() ? `?${qs}` : ''
+    return request<{
+      files: { id: string; filename: string; mimeType: string; size: number; uploadedAt: string; storedName: string; uploader: { displayName: string }; message: { channel: { id: string; name: string; type: string } } | null }[]
+      nextCursor: string | null
+    }>(`/api/file-manager/files${query}`, authed(token))
+  },
+
+  // Gandle
+  gandleToday: (token: string) =>
+    request<{ date: string; played: boolean; result: { guesses: string[]; solved: boolean } | null }>(
+      '/api/gandle/today', authed(token)
+    ),
+
+  gandleSubmit: (token: string, date: string, guesses: string[], solved: boolean) =>
+    request<{ date: string; guesses: string[]; solved: boolean }>(
+      '/api/gandle/submit', { method: 'POST', body: JSON.stringify({ date, guesses, solved }), ...authed(token) }
+    ),
+
+  gandleLeaderboard: (token: string, date: string) =>
+    request<{ userId: string; displayName: string; avatarUrl: string | null; solved: boolean; guessCount: number; guesses: string[] | null; completedAt: string }[]>(
+      `/api/gandle/leaderboard?date=${encodeURIComponent(date)}`, authed(token)
+    ),
+
   uploadAttachments: async (token: string, files: File[]): Promise<AttachmentInfo[]> => {
     const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
     const form = new FormData()

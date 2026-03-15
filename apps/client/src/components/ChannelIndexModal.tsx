@@ -4,6 +4,12 @@ import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import CreateChannelModal from './CreateChannelModal.tsx'
 import styles from './ChannelIndexModal.module.css'
 
+const UTILITIES = [
+  { id: 'library', label: 'the library' },
+  { id: 'file-manager', label: 'file manager' },
+  { id: 'gandle', label: 'gandle' },
+]
+
 interface ContextState {
   x: number
   y: number
@@ -18,6 +24,8 @@ interface Props {
   onCreateChannel: (name: string, type: 'TEXT' | 'VOICE') => void
   onDeleteChannel: (channelId: string) => void
   onClose: () => void
+  hiddenUtilityIds: Set<string>
+  onToggleUtilityVisibility: (id: string) => void
 }
 
 export default function ChannelIndexModal({
@@ -28,6 +36,8 @@ export default function ChannelIndexModal({
   onCreateChannel,
   onDeleteChannel,
   onClose,
+  hiddenUtilityIds,
+  onToggleUtilityVisibility,
 }: Props) {
   const [createOpen, setCreateOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
@@ -98,6 +108,22 @@ export default function ChannelIndexModal({
             {channels.length === 0 && (
               <div className={styles.empty}>no channels yet</div>
             )}
+            <div className={styles.section}>
+              <div className={styles.sectionLabel}>utilities</div>
+              {UTILITIES.map(u => {
+                const visible = !hiddenUtilityIds.has(u.id)
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    className={`${styles.channel} ${visible ? styles.channelVisible : styles.channelHidden}`}
+                    onClick={() => onToggleUtilityVisibility(u.id)}
+                  >
+                    {u.label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
       </div>

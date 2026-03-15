@@ -1,0 +1,222 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.header {
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.title {
+  color: var(--accent);
+  font-size: 1em;
+  letter-spacing: 0.1em;
+}
+
+.errorBanner {
+  background: #5a3030;
+  color: #e8d5a3;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85em;
+  flex-shrink: 0;
+}
+
+.errorBanner button {
+  background: none;
+  border: none;
+  color: #c87060;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
+  margin-left: auto;
+}
+
+/* ─── Storage bar ─── */
+.storageSection {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.storageLabel {
+  font-size: 0.82em;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.fileCount {
+  color: var(--text-muted);
+}
+
+.storageBarTrack {
+  height: 6px;
+  background: color-mix(in srgb, var(--border) 60%, var(--bg));
+  width: 100%;
+  max-width: 400px;
+}
+
+.storageBarFill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.storageBarDanger {
+  background: #c87060;
+}
+
+/* ─── Sort bar ─── */
+.sortBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sortLabel {
+  color: var(--text-muted);
+  font-size: 0.8em;
+  margin-right: 4px;
+}
+
+.sortBtn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8em;
+  padding: 2px 8px;
+}
+
+.sortBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.sortBtnActive {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ─── Content ─── */
+.loading {
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 0.88em;
+}
+
+.empty {
+  padding: 24px 16px;
+  color: var(--text-muted);
+  font-size: 0.88em;
+}
+
+.channelGroups {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.channelGroup {
+  margin-bottom: 16px;
+}
+
+.channelGroupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+
+.channelGroupName {
+  color: var(--text-secondary);
+  font-size: 0.82em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.channelGroupMeta {
+  color: var(--text-muted);
+  font-size: 0.78em;
+}
+
+/* ─── File table ─── */
+.fileTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+
+.fileRow {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
+
+.fileRow:hover {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.fileRow td {
+  padding: 5px 8px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.fileNameCell {
+  padding-left: 16px !important;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileLink {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.fileLink:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.fileTypeCell {
+  color: var(--text-muted);
+  width: 60px;
+  text-align: right;
+  font-size: 0.8em;
+}
+
+.fileSizeCell {
+  color: var(--text-secondary);
+  width: 80px;
+  text-align: right;
+}
+
+.fileUploaderCell {
+  color: var(--text-muted);
+  width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fileDateCell {
+  color: var(--text-muted);
+  width: 110px;
+  text-align: right;
+  padding-right: 16px !important;
+}

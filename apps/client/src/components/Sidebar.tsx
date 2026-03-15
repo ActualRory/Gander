@@ -55,6 +55,10 @@ interface Props {
   onWatchStream: (userId: string, type: 'screen' | 'camera') => void
   isOpen: boolean
   onClose: () => void
+  hiddenUtilityIds: Set<string>
+  onToggleUtilityVisibility: (id: string) => void
+  onOpenUtility: (id: 'library' | 'file-manager' | 'gandle') => void
+  activeUtilityId: string | null
 }
 
 interface ContextState {
@@ -70,7 +74,13 @@ interface ParticipantVolumeState {
   userName: string
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose }: Props) {
+const UTILITIES = [
+  { id: 'library' as const, label: 'the library' },
+  { id: 'file-manager' as const, label: 'file manager' },
+  { id: 'gandle' as const, label: 'gandle' },
+]
+
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -96,6 +106,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
   const visibleText = channels.filter(c => c.type === 'TEXT' && !hiddenChannelIds.has(c.id))
   const visibleVoice = channels.filter(c => c.type === 'VOICE' && !hiddenChannelIds.has(c.id))
   const visibleDMs = dmChannels.filter(c => !hiddenChannelIds.has(c.id))
+  const visibleUtilities = UTILITIES.filter(u => !hiddenUtilityIds.has(u.id))
 
   // Long-press: single timer + channel ref handles all channel buttons
   const lpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -412,6 +423,25 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
             </div>
             {visibleVoice.map(c => renderVoiceChannel(c))}
           </div>
+
+          {visibleUtilities.length > 0 && (
+            <div className={styles.section}>
+              <div className={styles.sectionHeader}>
+                <span>utilities</span>
+                <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)}>[+]</button>
+              </div>
+              {visibleUtilities.map(u => (
+                <button
+                  key={u.id}
+                  type="button"
+                  className={`${styles.channel} ${activeUtilityId === u.id ? styles.active : ''}`}
+                  onClick={() => onOpenUtility(u.id)}
+                >
+                  <span className={styles.channelLabel}>{u.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {voiceChannel && (
@@ -443,7 +473,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
               onClick={onToggleDeafen}
               title={isDeafened ? 'undeafen' : 'deafen'}
             >
-              {isDeafened ? '[deafened]' : '[hear]'}
+              {isDeafened ? '[deaf]' : '[hear]'}
             </button>
             <button
               type="button"
@@ -487,6 +517,8 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           onCreateChannel={(name, type) => { onCreateChannel(name, type) }}
           onDeleteChannel={(id) => { onDeleteChannel(id); setIndexOpen(false) }}
           onClose={() => setIndexOpen(false)}
+          hiddenUtilityIds={hiddenUtilityIds}
+          onToggleUtilityVisibility={onToggleUtilityVisibility}
         />
       )}
 

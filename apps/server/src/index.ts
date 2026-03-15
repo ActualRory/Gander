@@ -16,6 +16,9 @@ import { reactionRoutes } from './routes/reactions.js'
 import { attachmentRoutes } from './routes/attachments.js'
 import { ogRoutes } from './routes/og.js'
 import { searchRoutes } from './routes/search.js'
+import { libraryRoutes } from './routes/library.js'
+import { fileManagerRoutes } from './routes/fileManager.js'
+import { gandleRoutes } from './routes/gandle.js'
 import { wsHandler } from './ws/handler.js'
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads')
@@ -45,6 +48,9 @@ await server.register(reactionRoutes, { prefix: '/api/reactions' })
 await server.register(attachmentRoutes, { prefix: '/api/attachments' })
 await server.register(ogRoutes, { prefix: '/api/og' })
 await server.register(searchRoutes, { prefix: '/api/search' })
+await server.register(libraryRoutes, { prefix: '/api/library' })
+await server.register(fileManagerRoutes, { prefix: '/api/file-manager' })
+await server.register(gandleRoutes, { prefix: '/api/gandle' })
 
 await server.register(async (app) => {
   app.get('/ws', { websocket: true }, wsHandler)
