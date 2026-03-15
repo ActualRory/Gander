@@ -151,7 +151,7 @@ export const api = {
     request<void>(`/api/library/shelves/${shelfId}`, { method: 'DELETE', ...authed(token) }),
 
   getLibraryBooks: (token: string, shelfId: string) =>
-    request<{ id: string; title: string; filename: string; storedName: string; mimeType: string; size: number; coverUrl: string | null; uploadedAt: string; uploaderId: string; uploader: { displayName: string } }[]>(
+    request<{ id: string; title: string; author: string | null; series: string | null; genre: string | null; filename: string; storedName: string; mimeType: string; size: number; coverUrl: string | null; uploadedAt: string; uploaderId: string; uploader: { displayName: string } }[]>(
       `/api/library/shelves/${shelfId}/books`, authed(token)
     ),
 
