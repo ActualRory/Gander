@@ -59,6 +59,10 @@ interface Props {
 export default function VideoGrid({ tiles, users, currentUserId }: Props) {
   const [pinnedKey, setPinnedKey] = useState<string | null>(null)
 
+  function keyFor(tile: VideoTile) {
+    return `${tile.participantId}-${tile.isScreen ? 'screen' : 'camera'}`
+  }
+
   // Auto-pin the first screen share that appears
   useEffect(() => {
     const screenTile = tiles.find(t => t.isScreen)
@@ -70,10 +74,6 @@ export default function VideoGrid({ tiles, users, currentUserId }: Props) {
   function labelFor(tile: VideoTile) {
     if (tile.participantId === currentUserId) return 'you'
     return users.find(u => u.id === tile.participantId)?.displayName ?? tile.participantId
-  }
-
-  function keyFor(tile: VideoTile) {
-    return `${tile.participantId}-${tile.isScreen ? 'screen' : 'camera'}`
   }
 
   const pinnedTile = pinnedKey ? tiles.find(t => keyFor(t) === pinnedKey) ?? null : null
