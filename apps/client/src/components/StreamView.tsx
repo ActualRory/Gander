@@ -8,7 +8,7 @@ function VideoTileEl({ tile, label, className, videoRef: externalVideoRef }: {
   tile: VideoTile
   label: string
   className?: string
-  videoRef?: React.RefObject<HTMLVideoElement>
+  videoRef?: React.RefObject<HTMLVideoElement | null>
 }) {
   const internalRef = useRef<HTMLVideoElement>(null)
   const videoRef = externalVideoRef ?? internalRef
