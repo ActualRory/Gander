@@ -95,3 +95,90 @@
   aspect-ratio: 16 / 9;
   border: 1px solid var(--border);
 }
+
+/* Context menu */
+.contextMenu {
+  position: fixed;
+  z-index: 200;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  min-width: 200px;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.menuItem {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+  padding: 5px 12px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.menuItem:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.menuVolRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px 2px;
+}
+
+.menuVolLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.menuVolValue {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  min-width: 36px;
+  text-align: right;
+}
+
+.menuSlider {
+  margin: 0 12px;
+  width: calc(100% - 24px);
+  appearance: none;
+  -webkit-appearance: none;
+  height: 4px;
+  border: 1px solid var(--border);
+  background: linear-gradient(to right,
+    var(--accent) calc(var(--val, 0) * 100%),
+    var(--bg-elevated) calc(var(--val, 0) * 100%));
+  cursor: pointer;
+}
+
+.menuSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 14px;
+  background: var(--accent);
+  border: 1px solid var(--accent-dim);
+  cursor: pointer;
+}
+
+.menuSliderHints {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 12px 6px;
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.menuDivider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}

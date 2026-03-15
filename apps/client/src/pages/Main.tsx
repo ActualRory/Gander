@@ -1185,6 +1185,8 @@ export default function Main({ auth, onLogout }: Props) {
                 users={users}
                 currentUserId={auth.userId}
                 streamerName={streamerName}
+                streamVolume={participantVolumes[streamViewUserId] ?? 1}
+                onSetStreamVolume={vol => handleSetParticipantVolume(streamViewUserId, vol)}
                 onClose={handleCloseStream}
               />
             )
