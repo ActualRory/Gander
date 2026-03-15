@@ -2,6 +2,23 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import styles from './SettingsModal.module.css'
 
+export type CameraQuality = '360p' | '720p' | '1080p'
+export type ScreenShareQuality = '720p15' | '720p30' | '1080p15' | '1080p30' | '4K30'
+
+export const CAMERA_QUALITY_OPTIONS: { value: CameraQuality; label: string }[] = [
+  { value: '360p',  label: '360p' },
+  { value: '720p',  label: '720p (HD)' },
+  { value: '1080p', label: '1080p (FHD)' },
+]
+
+export const SCREEN_SHARE_QUALITY_OPTIONS: { value: ScreenShareQuality; label: string }[] = [
+  { value: '720p15',  label: '720p / 15 fps' },
+  { value: '720p30',  label: '720p / 30 fps' },
+  { value: '1080p15', label: '1080p / 15 fps' },
+  { value: '1080p30', label: '1080p / 30 fps' },
+  { value: '4K30',    label: '4K / 30 fps' },
+]
+
 interface Props {
   displayName: string
   isMuted: boolean
@@ -15,6 +32,9 @@ interface Props {
   autoGainControl: boolean
   rnnoiseEnabled: boolean
   rnnoiseSupported: boolean
+  cameraQuality: CameraQuality
+  screenShareQuality: ScreenShareQuality
+  screenShareAudio: boolean
   onLogout: () => void
   onToggleMute: () => void
   onChangePttMode: (ptt: boolean) => void
@@ -24,6 +44,9 @@ interface Props {
   onSwitchOutputDevice: (deviceId: string) => Promise<void>
   onChangeAudioProcessing: (ns: boolean, ec: boolean, agc: boolean) => void
   onChangeRnnoise: (enabled: boolean) => void
+  onChangeCameraQuality: (q: CameraQuality) => void
+  onChangeScreenShareQuality: (q: ScreenShareQuality) => void
+  onChangeScreenShareAudio: (enabled: boolean) => void
   onClose: () => void
 }
 
@@ -35,9 +58,11 @@ export default function SettingsModal({
   selectedInput, selectedOutput,
   noiseSuppression, echoCancellation, autoGainControl,
   rnnoiseEnabled, rnnoiseSupported,
+  cameraQuality, screenShareQuality, screenShareAudio,
   onLogout, onToggleMute, onChangePttMode, onChangePttKey,
   onChangeOutputVolume, onSwitchInputDevice, onSwitchOutputDevice,
-  onChangeAudioProcessing, onChangeRnnoise, onClose,
+  onChangeAudioProcessing, onChangeRnnoise,
+  onChangeCameraQuality, onChangeScreenShareQuality, onChangeScreenShareAudio, onClose,
 }: Props) {
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([])
   const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([])
@@ -311,6 +336,42 @@ export default function SettingsModal({
               <span>rnnoise suppression</span>
             </label>
           )}
+        </section>
+
+        <div className={styles.groupLabel}>video</div>
+
+        <section className={styles.section}>
+          <div className={styles.sectionLabel}>quality</div>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>camera</span>
+            <select
+              className={styles.select}
+              value={cameraQuality}
+              onChange={e => onChangeCameraQuality(e.target.value as CameraQuality)}
+            >
+              {CAMERA_QUALITY_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>screen</span>
+            <select
+              className={styles.select}
+              value={screenShareQuality}
+              onChange={e => onChangeScreenShareQuality(e.target.value as ScreenShareQuality)}
+            >
+              {SCREEN_SHARE_QUALITY_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className={styles.toggleRow}>
+            <input type="checkbox" checked={screenShareAudio}
+              onChange={e => onChangeScreenShareAudio(e.target.checked)} />
+            <span>capture system audio</span>
+          </label>
+          <span className={styles.testNote}>takes effect on next toggle</span>
         </section>
 
         <section className={styles.section}>

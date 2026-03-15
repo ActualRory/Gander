@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import goosehonkUrl from '../../sounds/goosehonk1.mp3?url'
 import hangupUrl from '../../sounds/goosebell_hangup1.mp3?url'
-import { Room, RoomEvent, Track, AudioPresets, LocalAudioTrack, ConnectionQuality, createAudioAnalyser, type RemoteAudioTrack, type RemoteVideoTrack, type LocalVideoTrack } from 'livekit-client'
+import { Room, RoomEvent, Track, AudioPresets, VideoPresets, ScreenSharePresets, LocalAudioTrack, ConnectionQuality, createAudioAnalyser, type RemoteAudioTrack, type RemoteVideoTrack, type LocalVideoTrack } from 'livekit-client'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { Image as TauriImage } from '@tauri-apps/api/image'
@@ -17,7 +17,8 @@ import SocialPanel from '../components/SocialPanel.tsx'
 import ErrorModal from '../components/ErrorModal.tsx'
 import SettingsModal from '../components/SettingsModal.tsx'
 import type { VoiceStats } from '../components/VoiceControls.tsx'
-import { type VideoTile } from '../components/VideoGrid.tsx'
+import type { CameraQuality, ScreenShareQuality } from '../components/SettingsModal.tsx'
+import VideoGrid, { type VideoTile } from '../components/VideoGrid.tsx'
 import StreamView from '../components/StreamView.tsx'
 import UserProfilePopup from '../components/UserProfilePopup.tsx'
 import UserProfileModal from '../components/UserProfileModal.tsx'
@@ -105,6 +106,9 @@ interface VoiceSettings {
   selectedInputDevice: string
   selectedOutputDevice: string
   rnnoiseEnabled: boolean
+  cameraQuality: CameraQuality
+  screenShareQuality: ScreenShareQuality
+  screenShareAudio: boolean
 }
 
 const VOICE_SETTINGS_DEFAULTS: VoiceSettings = {
@@ -117,6 +121,27 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettings = {
   selectedInputDevice: '',
   selectedOutputDevice: '',
   rnnoiseEnabled: false,
+  cameraQuality: '1080p',
+  screenShareQuality: '1080p30',
+  screenShareAudio: true,
+}
+
+function cameraPreset(q: CameraQuality) {
+  switch (q) {
+    case '360p':  return VideoPresets.h360
+    case '720p':  return VideoPresets.h720
+    case '1080p': return VideoPresets.h1080
+  }
+}
+
+function screenSharePreset(q: ScreenShareQuality) {
+  switch (q) {
+    case '720p15':  return ScreenSharePresets.h720fps15
+    case '720p30':  return ScreenSharePresets.h720fps30
+    case '1080p15': return ScreenSharePresets.h1080fps15
+    case '1080p30': return ScreenSharePresets.h1080fps30
+    case '4K30':    return ScreenSharePresets.h2160fps30
+  }
 }
 
 function loadVoiceSettings(userId: string): VoiceSettings {
@@ -188,6 +213,9 @@ export default function Main({ auth, onLogout }: Props) {
   const [selectedInputDevice, setSelectedInputDevice] = useState(() => loadVoiceSettings(auth.userId).selectedInputDevice)
   const [selectedOutputDevice, setSelectedOutputDevice] = useState(() => loadVoiceSettings(auth.userId).selectedOutputDevice)
   const [rnnoiseEnabled, setRnnoiseEnabled] = useState(() => loadVoiceSettings(auth.userId).rnnoiseEnabled)
+  const [cameraQuality, setCameraQuality] = useState<CameraQuality>(() => loadVoiceSettings(auth.userId).cameraQuality)
+  const [screenShareQuality, setScreenShareQuality] = useState<ScreenShareQuality>(() => loadVoiceSettings(auth.userId).screenShareQuality)
+  const [screenShareAudio, setScreenShareAudio] = useState(() => loadVoiceSettings(auth.userId).screenShareAudio)
   const outputVolumeRef = useRef(1)
   const rnnoiseEnabledRef = useRef(false)
   const rnnoiseProcessorRef = useRef<RNNoiseProcessor | null>(null)
@@ -212,9 +240,11 @@ export default function Main({ auth, onLogout }: Props) {
       pttMode, pttKey, outputVolume,
       noiseSuppression, echoCancellation, autoGainControl,
       selectedInputDevice, selectedOutputDevice, rnnoiseEnabled,
+      cameraQuality, screenShareQuality, screenShareAudio,
     })
   }, [pttMode, pttKey, outputVolume, noiseSuppression, echoCancellation, autoGainControl,
-    selectedInputDevice, selectedOutputDevice, rnnoiseEnabled, auth.userId])
+    selectedInputDevice, selectedOutputDevice, rnnoiseEnabled,
+    cameraQuality, screenShareQuality, screenShareAudio, auth.userId])
 
   // Keep refs in sync for use inside LiveKit event callbacks
   useEffect(() => { isDeafenedRef.current = isDeafened }, [isDeafened])
@@ -759,7 +789,12 @@ export default function Main({ auth, onLogout }: Props) {
     const room = voiceRoomRef.current
     if (!room) return
     const next = !isCameraOn
-    await room.localParticipant.setCameraEnabled(next)
+    const preset = cameraPreset(cameraQuality)
+    await room.localParticipant.setCameraEnabled(
+      next,
+      { resolution: preset.resolution },
+      { videoEncoding: preset.encoding },
+    )
     setIsCameraOn(next)
     isCameraOnRef.current = next
     wsRef.current?.send({ type: 'voice:state', payload: { muted: isMutedRef.current, deafened: isDeafenedRef.current, videoEnabled: next, screenSharing: isScreenSharingRef.current } })
@@ -770,7 +805,12 @@ export default function Main({ auth, onLogout }: Props) {
     if (!room) return
     const next = !isScreenSharing
     try {
-      await room.localParticipant.setScreenShareEnabled(next)
+      const ssPreset = screenSharePreset(screenShareQuality)
+      await room.localParticipant.setScreenShareEnabled(
+        next,
+        { resolution: ssPreset.resolution, audio: screenShareAudio },
+        { screenShareEncoding: ssPreset.encoding },
+      )
       setIsScreenSharing(next)
       isScreenSharingRef.current = next
       wsRef.current?.send({ type: 'voice:state', payload: { muted: isMutedRef.current, deafened: isDeafenedRef.current, videoEnabled: isCameraOnRef.current, screenSharing: next } })
@@ -1063,6 +1103,12 @@ export default function Main({ auth, onLogout }: Props) {
           rnnoiseEnabled={rnnoiseEnabled}
           rnnoiseSupported={rnnoiseSupported}
           onChangeRnnoise={handleToggleRnnoise}
+          cameraQuality={cameraQuality}
+          screenShareQuality={screenShareQuality}
+          screenShareAudio={screenShareAudio}
+          onChangeCameraQuality={setCameraQuality}
+          onChangeScreenShareQuality={setScreenShareQuality}
+          onChangeScreenShareAudio={setScreenShareAudio}
           onClose={() => setSettingsOpen(false)}
         />
       )}
@@ -1147,22 +1193,27 @@ export default function Main({ auth, onLogout }: Props) {
 
           if (activeChannel && wsRef.current) {
             return (
-              <ChannelView
-                key={activeChannel.id}
-                channel={activeChannel}
-                token={auth.token}
-                ws={wsRef.current}
-                users={users}
-                channels={channels}
-                currentUserId={auth.userId}
-                onUserRightClick={handleUserRightClick}
-                lastReadAt={loadLastRead(auth.userId, activeChannel.id)}
-                onMarkRead={() => markChannelRead(activeChannel.id)}
-                onNavigateToChannel={handleNavigateToChannel}
-                jumpToMessageId={pendingJump?.messageId ?? null}
-                jumpAnchorTime={pendingJump?.anchorTime ?? null}
-                onNavigateToMessage={handleNavigateToMessage}
-              />
+              <>
+                {cameraTiles.length > 0 && (
+                  <VideoGrid tiles={cameraTiles} users={users} currentUserId={auth.userId} />
+                )}
+                <ChannelView
+                  key={activeChannel.id}
+                  channel={activeChannel}
+                  token={auth.token}
+                  ws={wsRef.current}
+                  users={users}
+                  channels={channels}
+                  currentUserId={auth.userId}
+                  onUserRightClick={handleUserRightClick}
+                  lastReadAt={loadLastRead(auth.userId, activeChannel.id)}
+                  onMarkRead={() => markChannelRead(activeChannel.id)}
+                  onNavigateToChannel={handleNavigateToChannel}
+                  jumpToMessageId={pendingJump?.messageId ?? null}
+                  jumpAnchorTime={pendingJump?.anchorTime ?? null}
+                  onNavigateToMessage={handleNavigateToMessage}
+                />
+              </>
             )
           }
 

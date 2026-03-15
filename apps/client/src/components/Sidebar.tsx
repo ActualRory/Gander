@@ -274,7 +274,9 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
               <div key={uid} className={`${styles.voiceParticipant} ${isTalking ? styles.voiceParticipantSpeaking : ''}`}>
                 <span className={styles.participantName}>{name}</span>
                 {badge && <span className={styles.voiceStateBadge}>{badge}</span>}
-                {streaming && <span className={styles.liveBadge}>[LIVE]</span>}
+                {streaming && (
+                  <button type="button" className={styles.liveBadge} onClick={() => onWatchStream(uid)}>[LIVE]</button>
+                )}
               </div>
             )
           }
