@@ -20,7 +20,6 @@ import type { VoiceStats } from '../components/VoiceControls.tsx'
 import type { CameraQuality, ScreenShareQuality } from '../components/SettingsModal.tsx'
 import { type VideoTile } from '../components/VideoGrid.tsx'
 import StreamView from '../components/StreamView.tsx'
-import ScreenPickerModal, { type CaptureSource } from '../components/ScreenPickerModal.tsx'
 import UserProfilePopup from '../components/UserProfilePopup.tsx'
 import UserProfileModal from '../components/UserProfileModal.tsx'
 import ContextMenu from '../components/ContextMenu.tsx'
@@ -201,7 +200,7 @@ export default function Main({ auth, onLogout }: Props) {
   const isCameraOnRef = useRef(false)
   const isScreenSharingRef = useRef(false)
   const screenShareAudioTrackRef = useRef<LocalAudioTrack | null>(null)
-  const [showScreenPicker, setShowScreenPicker] = useState(false)
+
   const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const intentionalDisconnectRef = useRef(false)
   const participantVolumesRef = useRef<Record<string, number>>({})
@@ -844,80 +843,17 @@ export default function Main({ auth, onLogout }: Props) {
       return
     }
 
-    // Start screen share — use custom picker on desktop, system picker on other platforms
-    if (platform.isDesktop) {
-      setShowScreenPicker(true)
-    } else {
-      try {
-        const ssPreset = screenSharePreset(screenShareQuality)
-        await room.localParticipant.setScreenShareEnabled(
-          true,
-          { resolution: ssPreset.resolution, audio: screenShareAudio },
-          { screenShareEncoding: ssPreset.encoding },
-        )
-        setIsScreenSharing(true)
-        isScreenSharingRef.current = true
-        wsRef.current?.send({ type: 'voice:state', payload: { muted: isMutedRef.current, deafened: isDeafenedRef.current, videoEnabled: isCameraOnRef.current, screenSharing: true } })
-      } catch (err) {
-        if (err instanceof Error && err.name === 'NotAllowedError') return
-        throw err
-      }
-    }
-  }
-
-  async function handleScreenPickerSelect(source: CaptureSource) {
-    setShowScreenPicker(false)
-    const room = voiceRoomRef.current
-    if (!room) return
-
+    // Start screen share
     try {
       const ssPreset = screenSharePreset(screenShareQuality)
-
-      // Capture video from the selected source via Chromium desktop capture
-      const videoStream = await navigator.mediaDevices.getUserMedia({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: source.id } } as any,
-        audio: false,
-      })
-
-      // Temporarily override getDisplayMedia so LiveKit's setScreenShareEnabled uses our stream
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const originalGDM = (navigator.mediaDevices as any).getDisplayMedia
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(navigator.mediaDevices as any).getDisplayMedia = () => Promise.resolve(videoStream)
-      try {
-        await room.localParticipant.setScreenShareEnabled(
-          true,
-          { audio: false },
-          { screenShareEncoding: ssPreset.encoding },
-        )
-      } finally {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(navigator.mediaDevices as any).getDisplayMedia = originalGDM
-      }
-
+      await room.localParticipant.setScreenShareEnabled(
+        true,
+        { resolution: ssPreset.resolution, audio: screenShareAudio },
+        { screenShareEncoding: ssPreset.encoding },
+      )
       setIsScreenSharing(true)
       isScreenSharingRef.current = true
       wsRef.current?.send({ type: 'voice:state', payload: { muted: isMutedRef.current, deafened: isDeafenedRef.current, videoEnabled: isCameraOnRef.current, screenSharing: true } })
-
-      // Capture system audio loopback separately if enabled
-      if (screenShareAudio) {
-        try {
-          const audioStream = await navigator.mediaDevices.getUserMedia({
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            audio: { mandatory: { chromeMediaSource: 'desktop' } } as any,
-            video: false,
-          })
-          const audioMST = audioStream.getAudioTracks()[0]
-          if (audioMST) {
-            const audioTrack = new LocalAudioTrack(audioMST)
-            await room.localParticipant.publishTrack(audioTrack, { source: Track.Source.ScreenShareAudio })
-            screenShareAudioTrackRef.current = audioTrack
-          }
-        } catch {
-          // System audio unavailable (e.g. user declined) — non-fatal
-        }
-      }
     } catch (err) {
       if (err instanceof Error && err.name === 'NotAllowedError') return
       throw err
@@ -1184,12 +1120,7 @@ export default function Main({ auth, onLogout }: Props) {
         />
       )}
       {errorMessage && <ErrorModal message={errorMessage} onClose={() => setErrorMessage(null)} />}
-      {showScreenPicker && (
-        <ScreenPickerModal
-          onSelect={handleScreenPickerSelect}
-          onCancel={() => setShowScreenPicker(false)}
-        />
-      )}
+
       {settingsOpen && (
         <SettingsModal
           displayName={auth.displayName}
