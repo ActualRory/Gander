@@ -250,34 +250,63 @@
 .userBar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   height: 42px;
-  padding: 0 16px;
+  padding: 0 8px 0 16px;
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
   flex-shrink: 0;
 }
 
 .username {
+  flex: 1;
   color: var(--text-secondary);
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
-.logoutBtn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 12px;
-  padding: 0;
+.userControls {
+  display: flex;
+  gap: 2px;
   flex-shrink: 0;
 }
 
-.logoutBtn:hover {
-  color: var(--text-secondary);
+.userBtn {
   background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 2px 5px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.userBtn:hover {
+  color: var(--text-primary);
+  background: var(--border);
+}
+
+.userBtnActive {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.userBtnSpeaking {
+  color: #5aaa5a;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.userBtnReceiving {
+  color: #5aaa5a;
 }
 
 /* Touch: larger tap targets */
@@ -293,6 +322,6 @@
   }
 
   .userBar {
-    height: 56px;
+    height: 52px;
   }
 }

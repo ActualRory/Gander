@@ -11,31 +11,22 @@ export interface VoiceStats {
 
 interface Props {
   channelName: string
-  isMuted: boolean
-  isDeafened: boolean
-  isSpeaking: boolean
-  isReceiving: boolean
   voiceStats: VoiceStats | null
   isCameraOn: boolean
   isScreenSharing: boolean
-  onToggleMute: () => void
-  onToggleDeafen: () => void
   onToggleCamera: () => void
   onToggleScreenShare: () => void
-  onOpenSettings: () => void
   onLeave: () => void
 }
 
-export default function VoiceControls({ channelName, isMuted, isDeafened, isSpeaking, isReceiving, voiceStats, isCameraOn, isScreenSharing, onToggleMute, onToggleDeafen, onToggleCamera, onToggleScreenShare, onOpenSettings, onLeave }: Props) {
+export default function VoiceControls({ channelName, voiceStats, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onLeave }: Props) {
   const iconRef = useRef<HTMLSpanElement>(null)
   const [tooltipAnchor, setTooltipAnchor] = useState<DOMRect | null>(null)
-
-  const anchor = tooltipAnchor
 
   return (
     <>
       <div className={styles.root}>
-        <div className={styles.status}>
+        <div className={styles.header}>
           <div className={styles.labelRow}>
             <span className={styles.label}>voice connected</span>
             {voiceStats && (
@@ -49,25 +40,17 @@ export default function VoiceControls({ channelName, isMuted, isDeafened, isSpea
               </span>
             )}
           </div>
-          <span className={styles.channel}>▸ {channelName}</span>
+          <button
+            type="button"
+            className={styles.leaveBtn}
+            onClick={onLeave}
+            title="disconnect from voice"
+          >
+            [x]
+          </button>
         </div>
+        <span className={styles.channel}>▸ {channelName}</span>
         <div className={styles.controls}>
-          <button
-            type="button"
-            className={`${styles.btn} ${isMuted ? styles.btnActive : isSpeaking ? styles.speaking : ''}`}
-            onClick={onToggleMute}
-            title={isMuted ? 'unmute mic' : 'mute mic'}
-          >
-            {isMuted ? '[muted]' : '[mic]'}
-          </button>
-          <button
-            type="button"
-            className={`${styles.btn} ${isDeafened ? styles.btnActive : isReceiving ? styles.receiving : ''}`}
-            onClick={onToggleDeafen}
-            title={isDeafened ? 'undeafen' : 'deafen'}
-          >
-            {isDeafened ? '[deaf]' : '[hear]'}
-          </button>
           <button
             type="button"
             className={`${styles.btn} ${isCameraOn ? styles.btnActive : ''}`}
@@ -84,28 +67,12 @@ export default function VoiceControls({ channelName, isMuted, isDeafened, isSpea
           >
             [scr]
           </button>
-          <button
-            type="button"
-            className={`${styles.btn} ${styles.settingsBtn}`}
-            onClick={onOpenSettings}
-            title="voice settings"
-          >
-            [⚙]
-          </button>
-          <button
-            type="button"
-            className={`${styles.btn} ${styles.leaveBtn}`}
-            onClick={onLeave}
-            title="disconnect from voice"
-          >
-            [x]
-          </button>
         </div>
       </div>
-      {anchor && voiceStats && createPortal(
+      {tooltipAnchor && voiceStats && createPortal(
         <div
           className={styles.statsTooltip}
-          style={{ left: anchor.left, bottom: window.innerHeight - anchor.top + 6 }}
+          style={{ left: tooltipAnchor.left, bottom: window.innerHeight - tooltipAnchor.top + 6 }}
         >
           <div>quality:  {voiceStats.quality}</div>
           {voiceStats.ping != null && <div>ping:     {voiceStats.ping}ms</div>}

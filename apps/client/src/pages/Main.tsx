@@ -15,7 +15,7 @@ import Sidebar from '../components/Sidebar.tsx'
 import ChannelView from '../components/ChannelView.tsx'
 import SocialPanel from '../components/SocialPanel.tsx'
 import ErrorModal from '../components/ErrorModal.tsx'
-import VoiceSettingsModal from '../components/VoiceSettingsModal.tsx'
+import SettingsModal from '../components/SettingsModal.tsx'
 import type { VoiceStats } from '../components/VoiceControls.tsx'
 import VideoGrid, { type VideoTile } from '../components/VideoGrid.tsx'
 import UserProfilePopup from '../components/UserProfilePopup.tsx'
@@ -1015,8 +1015,10 @@ export default function Main({ auth, onLogout }: Props) {
         />
       )}
       {errorMessage && <ErrorModal message={errorMessage} onClose={() => setErrorMessage(null)} />}
-      {settingsOpen && voiceRoomRef.current && (
-        <VoiceSettingsModal
+      {settingsOpen && (
+        <SettingsModal
+          displayName={auth.displayName}
+          onLogout={onLogout}
           isMuted={isMuted}
           pttMode={pttMode}
           pttKey={pttKey}
@@ -1075,12 +1077,11 @@ export default function Main({ auth, onLogout }: Props) {
         onToggleCamera={handleToggleCamera}
         onToggleScreenShare={handleToggleScreenShare}
         voiceStats={voiceStats}
-        onOpenVoiceSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
         onOpenDM={openChannel}
         onHideDM={handleHideDM}
         onSetTopic={handleSetTopic}
         displayName={auth.displayName}
-        onLogout={onLogout}
         participantVolumes={participantVolumes}
         onSetParticipantVolume={handleSetParticipantVolume}
         participantVoiceState={participantVoiceState}

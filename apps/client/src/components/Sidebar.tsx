@@ -42,12 +42,11 @@ interface Props {
   onToggleCamera: () => void
   onToggleScreenShare: () => void
   voiceStats: VoiceStats | null
-  onOpenVoiceSettings: () => void
+  onOpenSettings: () => void
   onOpenDM: (channel: Channel) => void
   onHideDM: (channelId: string) => void
   onSetTopic: (channelId: string, topic: string) => void
   displayName: string
-  onLogout: () => void
   participantVolumes: Record<string, number>
   onSetParticipantVolume: (userId: string, vol: number) => void
   participantVoiceState: Record<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }>
@@ -68,7 +67,7 @@ interface ParticipantVolumeState {
   userName: string
 }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenVoiceSettings, onOpenDM, onHideDM, onSetTopic, displayName, onLogout, participantVolumes, onSetParticipantVolume, participantVoiceState, isOpen, onClose }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, isOpen, onClose }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -369,25 +368,43 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
         {voiceChannel && (
           <VoiceControls
             channelName={voiceChannel.name}
-            isMuted={isMuted}
-            isDeafened={isDeafened}
-            isSpeaking={isSpeaking}
-            isReceiving={isReceiving}
             voiceStats={voiceStats}
             isCameraOn={isCameraOn}
             isScreenSharing={isScreenSharing}
-            onToggleMute={onToggleMute}
-            onToggleDeafen={onToggleDeafen}
             onToggleCamera={onToggleCamera}
             onToggleScreenShare={onToggleScreenShare}
-            onOpenSettings={onOpenVoiceSettings}
             onLeave={onLeaveVoice}
           />
         )}
 
         <div className={styles.userBar}>
           <span className={styles.username}>{displayName}</span>
-          <button type="button" className={styles.logoutBtn} onClick={onLogout}>logout</button>
+          <div className={styles.userControls}>
+            <button
+              type="button"
+              className={`${styles.userBtn} ${isMuted ? styles.userBtnActive : isSpeaking ? styles.userBtnSpeaking : ''}`}
+              onClick={onToggleMute}
+              title={isMuted ? 'unmute mic' : 'mute mic'}
+            >
+              {isMuted ? '[m]' : '[mic]'}
+            </button>
+            <button
+              type="button"
+              className={`${styles.userBtn} ${isDeafened ? styles.userBtnActive : isReceiving ? styles.userBtnReceiving : ''}`}
+              onClick={onToggleDeafen}
+              title={isDeafened ? 'undeafen' : 'deafen'}
+            >
+              {isDeafened ? '[d]' : '[ear]'}
+            </button>
+            <button
+              type="button"
+              className={styles.userBtn}
+              onClick={onOpenSettings}
+              title="settings"
+            >
+              [⚙]
+            </button>
+          </div>
         </div>
       </nav>
 

@@ -3,19 +3,23 @@
   padding: 8px 12px;
   background: var(--bg-elevated);
   flex-shrink: 0;
-}
-
-.status {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-bottom: 6px;
+  gap: 4px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
 }
 
 .labelRow {
   display: flex;
   align-items: center;
   gap: 5px;
+  min-width: 0;
 }
 
 .label {
@@ -23,16 +27,17 @@
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 
 .statsIcon {
   font-size: 10px;
   color: var(--text-muted);
   cursor: default;
-  position: relative;
   font-family: var(--font-mono);
   letter-spacing: 0;
   text-transform: none;
+  flex-shrink: 0;
 }
 
 .statsTooltip {
@@ -90,32 +95,15 @@
   border-color: var(--accent-dim);
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.speaking {
-  color: #5aaa5a;
-  border-color: #2a5a2a;
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-.receiving {
-  color: #5aaa5a;
-  border-color: #2a5a2a;
-}
-
-.settingsBtn {
-  flex: 0;
-  padding: 2px 6px;
-}
-
 .leaveBtn {
-  flex: 0;
-  padding: 2px 8px;
+  background: none;
+  border: 1px solid #5a3030;
   color: #c87060;
-  border-color: #5a3030;
+  padding: 1px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
 }
 
 .leaveBtn:hover {
