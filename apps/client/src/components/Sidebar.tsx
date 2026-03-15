@@ -386,7 +386,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
               onClick={onShowUpdate}
               title="update available"
             >
-              [!]
+              [Update!]
             </button>
           )}
         </div>
