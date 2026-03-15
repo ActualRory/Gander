@@ -3,7 +3,10 @@ import { api, resolveAttachmentUrl } from '../lib/api.ts'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import styles from './LibraryView.module.css'
 
-type LibraryShelf = { id: string; name: string; createdAt: string; creatorId: string; _count: { books: number } }
+type LibraryShelf = {
+  id: string; name: string; description: string | null; createdAt: string; creatorId: string
+  _count: { books: number }
+}
 type LibraryBook = {
   id: string; title: string; author: string | null; series: string | null; genre: string | null
   filename: string; storedName: string; mimeType: string; size: number
@@ -62,9 +65,14 @@ export default function LibraryView({ token }: Props) {
   const [newShelfName, setNewShelfName] = useState('')
   const [creatingShelf, setCreatingShelf] = useState(false)
 
-  // Shelf rename
-  const [renamingShelfId, setRenamingShelfId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
+  // Shelf edit modal (rename + description)
+  const [editingShelf, setEditingShelf] = useState<LibraryShelf | null>(null)
+  const [editShelfName, setEditShelfName] = useState('')
+  const [editShelfDescription, setEditShelfDescription] = useState('')
+  const [savingShelf, setSavingShelf] = useState(false)
+
+  // Shelf context menu
+  const [shelfMenu, setShelfMenu] = useState<{ shelf: LibraryShelf; x: number; y: number } | null>(null)
 
   // Drag-and-drop
   const [dragBookId, setDragBookId] = useState<string | null>(null)
@@ -83,6 +91,10 @@ export default function LibraryView({ token }: Props) {
 
   // Book context menu
   const [bookMenu, setBookMenu] = useState<{ book: LibraryBook; x: number; y: number } | null>(null)
+
+  // Book delete confirm (type-title modal)
+  const [deleteBookConfirm, setDeleteBookConfirm] = useState<LibraryBook | null>(null)
+  const [deleteBookInput, setDeleteBookInput] = useState('')
 
   // Edit book
   const [editBook, setEditBook] = useState<LibraryBook | null>(null)
@@ -166,31 +178,42 @@ export default function LibraryView({ token }: Props) {
     }
   }
 
-  async function handleRenameShelf(shelfId: string) {
-    const name = renameValue.trim()
-    if (!name) { cancelRename(); return }
+  function openEditShelf(shelf: LibraryShelf) {
+    setEditingShelf(shelf)
+    setEditShelfName(shelf.name)
+    setEditShelfDescription(shelf.description ?? '')
+    setShelfMenu(null)
+  }
+
+  function closeEditShelf() {
+    setEditingShelf(null)
+    setEditShelfName('')
+    setEditShelfDescription('')
+  }
+
+  async function handleSaveShelf(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingShelf || !editShelfName.trim()) return
+    setSavingShelf(true)
     try {
-      const updated = await api.renameLibraryShelf(token, shelfId, name) as LibraryShelf
-      setShelves(prev => prev.map(s => s.id === shelfId ? { ...s, name: updated.name } : s))
+      const updated = await api.updateLibraryShelf(token, editingShelf.id, {
+        name: editShelfName.trim(),
+        description: editShelfDescription.trim() || null,
+      }) as LibraryShelf
+      setShelves(prev => prev.map(s => s.id === editingShelf.id
+        ? { ...s, name: updated.name, description: updated.description }
+        : s))
+      closeEditShelf()
     } catch {
-      setError('failed to rename shelf')
+      setError('failed to save shelf')
     } finally {
-      cancelRename()
+      setSavingShelf(false)
     }
   }
 
-  function startRename(shelf: LibraryShelf) {
-    setRenamingShelfId(shelf.id)
-    setRenameValue(shelf.name)
-  }
-
-  function cancelRename() {
-    setRenamingShelfId(null)
-    setRenameValue('')
-  }
-
   async function handleDeleteShelf(shelfId: string) {
-    if (!confirm('delete this shelf and all its books?')) return
+    const shelf = shelves.find(s => s.id === shelfId)
+    if (!shelf || shelf._count.books > 0) return
     try {
       await api.deleteLibraryShelf(token, shelfId)
       setShelves(prev => prev.filter(s => s.id !== shelfId))
@@ -231,16 +254,26 @@ export default function LibraryView({ token }: Props) {
     }
   }
 
-  async function handleDeleteBook(bookId: string, shelfId?: string) {
-    const targetShelfId = shelfId ?? selectedShelfId
+  function openDeleteBookConfirm(book: LibraryBook) {
+    setDeleteBookConfirm(book)
+    setDeleteBookInput('')
+    setBookMenu(null)
+  }
+
+  async function handleDeleteBook() {
+    if (!deleteBookConfirm) return
+    const book = deleteBookConfirm
+    const targetShelfId = book.shelf?.id ?? selectedShelfId
     if (!targetShelfId) return
     try {
-      await api.deleteLibraryBook(token, targetShelfId, bookId)
-      setBooks(prev => prev.filter(b => b.id !== bookId))
-      if (searchResults) setSearchResults(prev => prev?.filter(b => b.id !== bookId) ?? null)
+      await api.deleteLibraryBook(token, targetShelfId, book.id)
+      setBooks(prev => prev.filter(b => b.id !== book.id))
+      if (searchResults) setSearchResults(prev => prev?.filter(b => b.id !== book.id) ?? null)
       setShelves(prev => prev.map(s => s.id === targetShelfId
         ? { ...s, _count: { books: Math.max(0, s._count.books - 1) } }
         : s))
+      setDeleteBookConfirm(null)
+      setDeleteBookInput('')
     } catch {
       setError('failed to delete book')
     }
@@ -254,6 +287,7 @@ export default function LibraryView({ token }: Props) {
     setEditGenre((book.genre as Genre | null) ?? '')
     setEditCoverFile(null)
     setEditCoverUrl('')
+    setBookMenu(null)
   }
 
   function closeEditBook() {
@@ -270,7 +304,6 @@ export default function LibraryView({ token }: Props) {
       const shelfId = editBook.shelf?.id ?? selectedShelfId
       if (!shelfId) return
 
-      // Update metadata + optional cover URL
       const updated = await api.updateLibraryBook(token, shelfId, editBook.id, {
         title: editTitle || editBook.title,
         author: editAuthor || undefined,
@@ -279,7 +312,6 @@ export default function LibraryView({ token }: Props) {
         ...(editCoverUrl && !editCoverFile ? { coverUrl: editCoverUrl } : {}),
       }) as LibraryBook
 
-      // If a cover file was chosen, upload it separately
       let finalBook: LibraryBook = updated
       if (editCoverFile) {
         finalBook = await api.updateLibraryBookCover(token, shelfId, editBook.id, editCoverFile) as LibraryBook
@@ -376,39 +408,15 @@ export default function LibraryView({ token }: Props) {
                 onDragOver={e => { e.preventDefault(); setDragOverShelfId(shelf.id) }}
                 onDragLeave={() => setDragOverShelfId(null)}
                 onDrop={() => handleDrop(shelf.id)}
+                onContextMenu={e => { e.preventDefault(); setShelfMenu({ shelf, x: e.clientX, y: e.clientY }) }}
               >
-                {renamingShelfId === shelf.id ? (
-                  <form
-                    className={styles.renameForm}
-                    onSubmit={e => { e.preventDefault(); handleRenameShelf(shelf.id) }}
-                  >
-                    <input
-                      autoFocus
-                      value={renameValue}
-                      onChange={e => setRenameValue(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Escape') cancelRename() }}
-                      onBlur={() => handleRenameShelf(shelf.id)}
-                      className={styles.renameInput}
-                    />
-                  </form>
-                ) : (
-                  <button
-                    type="button"
-                    className={`${styles.shelfBtn} ${shelf.id === selectedShelfId && !isSearchMode ? styles.shelfActive : ''}`}
-                    onClick={() => { setSelectedShelfId(shelf.id); clearSearch() }}
-                    onDoubleClick={() => startRename(shelf)}
-                  >
-                    <span className={styles.shelfName}>{shelf.name}</span>
-                    <span className={styles.shelfCount}>[{shelf._count.books}]</span>
-                  </button>
-                )}
                 <button
                   type="button"
-                  className={styles.deleteShelfBtn}
-                  onClick={() => handleDeleteShelf(shelf.id)}
-                  title="delete shelf"
+                  className={`${styles.shelfBtn} ${shelf.id === selectedShelfId && !isSearchMode ? styles.shelfActive : ''}`}
+                  onClick={() => { setSelectedShelfId(shelf.id); clearSearch() }}
                 >
-                  [x]
+                  <span className={styles.shelfName}>{shelf.name}</span>
+                  <span className={styles.shelfCount}>[{shelf._count.books}]</span>
                 </button>
               </div>
             ))}
@@ -443,7 +451,14 @@ export default function LibraryView({ token }: Props) {
               <span className={styles.libraryTitle}>THE LIBRARY</span>
               {isSearchMode
                 ? <span className={styles.shelfLabel}>/ search results ({bookCount})</span>
-                : selectedShelf && <span className={styles.shelfLabel}>/ {selectedShelf.name}</span>
+                : selectedShelf && (
+                  <>
+                    <span className={styles.shelfLabel}>/ {selectedShelf.name}</span>
+                    {selectedShelf.description && (
+                      <span className={styles.shelfDescription}>{selectedShelf.description}</span>
+                    )}
+                  </>
+                )
               }
             </div>
             <div className={styles.headerRight}>
@@ -537,7 +552,7 @@ export default function LibraryView({ token }: Props) {
                   <button
                     type="button"
                     className={styles.deleteBookBtn}
-                    onClick={() => handleDeleteBook(book.id, book.shelf?.id ?? selectedShelfId ?? undefined)}
+                    onClick={() => openDeleteBookConfirm(book)}
                   >
                     [delete]
                   </button>
@@ -548,6 +563,26 @@ export default function LibraryView({ token }: Props) {
         </main>
       </div>
 
+      {/* Shelf context menu */}
+      {shelfMenu && (
+        <ContextMenu
+          x={shelfMenu.x}
+          y={shelfMenu.y}
+          onClose={() => setShelfMenu(null)}
+          items={[
+            { label: 'edit shelf', action: () => openEditShelf(shelfMenu.shelf) },
+            {
+              label: shelfMenu.shelf._count.books > 0
+                ? `delete (remove all ${shelfMenu.shelf._count.books} book${shelfMenu.shelf._count.books === 1 ? '' : 's'} first)`
+                : 'delete shelf',
+              danger: shelfMenu.shelf._count.books === 0,
+              disabled: shelfMenu.shelf._count.books > 0,
+              action: () => { handleDeleteShelf(shelfMenu.shelf.id); setShelfMenu(null) },
+            },
+          ] satisfies ContextMenuItem[]}
+        />
+      )}
+
       {/* Book context menu */}
       {bookMenu && (
         <ContextMenu
@@ -556,9 +591,80 @@ export default function LibraryView({ token }: Props) {
           onClose={() => setBookMenu(null)}
           items={[
             { label: 'edit', action: () => openEditBook(bookMenu.book) },
-            { label: 'delete', danger: true, action: () => handleDeleteBook(bookMenu.book.id, bookMenu.book.shelf?.id ?? selectedShelfId ?? undefined) },
+            { label: 'delete', danger: true, action: () => openDeleteBookConfirm(bookMenu.book) },
           ] satisfies ContextMenuItem[]}
         />
+      )}
+
+      {/* Delete book confirm modal */}
+      {deleteBookConfirm && (
+        <div className={styles.modalOverlay} onClick={e => e.target === e.currentTarget && (setDeleteBookConfirm(null), setDeleteBookInput(''))}>
+          <div className={styles.modal}>
+            <div className={styles.modalTitle}>delete book</div>
+            <p className={styles.deleteWarning}>
+              this cannot be undone. type <span className={styles.deleteTarget}>{deleteBookConfirm.title}</span> to confirm.
+            </p>
+            <form onSubmit={e => { e.preventDefault(); if (deleteBookInput === deleteBookConfirm.title) handleDeleteBook() }} className={styles.uploadForm}>
+              <input
+                autoFocus
+                className={styles.formInput}
+                placeholder={deleteBookConfirm.title}
+                value={deleteBookInput}
+                onChange={e => setDeleteBookInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') { setDeleteBookConfirm(null); setDeleteBookInput('') } }}
+              />
+              <div className={styles.formActions}>
+                <button type="submit" className={styles.dangerBtn} disabled={deleteBookInput !== deleteBookConfirm.title}>
+                  [delete]
+                </button>
+                <button type="button" className={styles.cancelBtn} onClick={() => { setDeleteBookConfirm(null); setDeleteBookInput('') }}>
+                  [cancel]
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit shelf modal */}
+      {editingShelf && (
+        <div className={styles.modalOverlay} onClick={e => e.target === e.currentTarget && closeEditShelf()}>
+          <div className={styles.modal}>
+            <div className={styles.modalTitle}>edit shelf</div>
+            <form onSubmit={handleSaveShelf} className={styles.uploadForm}>
+              <label className={styles.formLabel}>
+                name
+                <input
+                  autoFocus
+                  type="text"
+                  value={editShelfName}
+                  onChange={e => setEditShelfName(e.target.value)}
+                  className={styles.formInput}
+                  onKeyDown={e => { if (e.key === 'Escape') closeEditShelf() }}
+                />
+              </label>
+              <label className={styles.formLabel}>
+                description
+                <input
+                  type="text"
+                  value={editShelfDescription}
+                  onChange={e => setEditShelfDescription(e.target.value)}
+                  placeholder="optional description..."
+                  className={styles.formInput}
+                  onKeyDown={e => { if (e.key === 'Escape') closeEditShelf() }}
+                />
+              </label>
+              <div className={styles.formActions}>
+                <button type="submit" className={styles.submitBtn} disabled={savingShelf || !editShelfName.trim()}>
+                  {savingShelf ? 'saving...' : '[save]'}
+                </button>
+                <button type="button" className={styles.cancelBtn} onClick={closeEditShelf}>
+                  [cancel]
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Edit book modal */}

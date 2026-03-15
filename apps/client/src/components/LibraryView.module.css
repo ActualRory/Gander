@@ -325,6 +325,17 @@
   font-size: 0.88em;
 }
 
+.shelfDescription {
+  color: var(--text-muted);
+  font-size: 0.82em;
+  border-left: 1px solid var(--border);
+  padding-left: 10px;
+  margin-left: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .loading {
   padding: 16px;
   color: var(--text-muted);
@@ -552,6 +563,37 @@
 
 .cancelBtn:hover {
   color: var(--text-primary);
+}
+
+.dangerBtn {
+  background: none;
+  border: 1px solid #c87060;
+  color: #c87060;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9em;
+  padding: 5px 14px;
+}
+
+.dangerBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dangerBtn:not(:disabled):hover {
+  background: color-mix(in srgb, #c87060 15%, transparent);
+}
+
+.deleteWarning {
+  font-size: 0.85em;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.deleteTarget {
+  color: var(--accent);
+  font-style: italic;
 }
 
 .genreRadios {

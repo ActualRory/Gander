@@ -135,17 +135,17 @@ export const api = {
 
   // Library
   getLibraryShelves: (token: string) =>
-    request<{ id: string; name: string; createdAt: string; creatorId: string; _count: { books: number } }[]>(
+    request<{ id: string; name: string; description: string | null; createdAt: string; creatorId: string; _count: { books: number } }[]>(
       '/api/library/shelves', authed(token)
     ),
 
   createLibraryShelf: (token: string, name: string) =>
-    request<{ id: string; name: string; createdAt: string; creatorId: string; _count: { books: number } }>(
+    request<{ id: string; name: string; description: string | null; createdAt: string; creatorId: string; _count: { books: number } }>(
       '/api/library/shelves', { method: 'POST', body: JSON.stringify({ name }), ...authed(token) }
     ),
 
-  renameLibraryShelf: (token: string, shelfId: string, name: string) =>
-    request<unknown>(`/api/library/shelves/${shelfId}`, { method: 'PATCH', body: JSON.stringify({ name }), ...authed(token) }),
+  updateLibraryShelf: (token: string, shelfId: string, data: { name?: string; description?: string | null }) =>
+    request<unknown>(`/api/library/shelves/${shelfId}`, { method: 'PATCH', body: JSON.stringify(data), ...authed(token) }),
 
   deleteLibraryShelf: (token: string, shelfId: string) =>
     request<void>(`/api/library/shelves/${shelfId}`, { method: 'DELETE', ...authed(token) }),

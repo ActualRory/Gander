@@ -54,28 +54,37 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(201).send(shelf)
   })
 
-  // PATCH /api/library/shelves/:shelfId (rename)
-  app.patch<{ Params: { shelfId: string }; Body: { name: string } }>('/shelves/:shelfId', async (req, reply) => {
+  // PATCH /api/library/shelves/:shelfId (rename / set description)
+  app.patch<{ Params: { shelfId: string }; Body: { name?: string; description?: string | null } }>('/shelves/:shelfId', async (req, reply) => {
     const { userId } = req.user as { userId: string }
-    const { name } = req.body as { name: string }
-    if (!name?.trim()) return reply.status(400).send({ error: 'name required' })
+    const body = req.body as { name?: string; description?: string | null }
     const shelf = await prisma.libraryShelf.findUnique({ where: { id: req.params.shelfId } })
     if (!shelf) return reply.status(404).send({ error: 'Not found' })
     if (shelf.creatorId !== userId) return reply.status(403).send({ error: 'Forbidden' })
+    const data: { name?: string; description?: string | null } = {}
+    if (body.name !== undefined) {
+      if (!body.name.trim()) return reply.status(400).send({ error: 'name required' })
+      data.name = body.name.trim()
+    }
+    if (body.description !== undefined) data.description = body.description?.trim() || null
     const updated = await prisma.libraryShelf.update({
       where: { id: req.params.shelfId },
-      data: { name: name.trim() },
+      data,
       include: { _count: { select: { books: true } } },
     })
     return updated
   })
 
-  // DELETE /api/library/shelves/:shelfId
+  // DELETE /api/library/shelves/:shelfId (only allowed when shelf is empty)
   app.delete<{ Params: { shelfId: string } }>('/shelves/:shelfId', async (req, reply) => {
     const { userId } = req.user as { userId: string }
-    const shelf = await prisma.libraryShelf.findUnique({ where: { id: req.params.shelfId } })
+    const shelf = await prisma.libraryShelf.findUnique({
+      where: { id: req.params.shelfId },
+      include: { _count: { select: { books: true } } },
+    })
     if (!shelf) return reply.status(404).send({ error: 'Not found' })
     if (shelf.creatorId !== userId) return reply.status(403).send({ error: 'Forbidden' })
+    if (shelf._count.books > 0) return reply.status(409).send({ error: 'shelf not empty' })
     await prisma.libraryShelf.delete({ where: { id: req.params.shelfId } })
     return reply.status(204).send()
   })
