@@ -18,7 +18,7 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         const since = new Date(lastReadAt)
         const [count, mentionCount] = await Promise.all([
           prisma.message.count({
-            where: { channelId, authorId: { not: userId }, createdAt: { gt: since } },
+            where: { channelId, authorId: { not: userId }, createdAt: { gt: since }, isSystem: false },
           }),
           prisma.mention.count({
             where: { userId, message: { channelId, createdAt: { gt: since } } },
@@ -93,6 +93,7 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
           filename: a.filename,
           size: a.size,
         })),
+        isSystem: m.isSystem,
       }
     })
   })
@@ -150,6 +151,7 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         filename: a.filename,
         size: a.size,
       })),
+      isSystem: updated.isSystem,
     }
 
     const isDm = existing.channel.type === 'DM' || existing.channel.type === 'GROUP'

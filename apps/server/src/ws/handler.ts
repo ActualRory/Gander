@@ -246,6 +246,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
               filename: a.filename,
               size: a.size,
             })),
+            isSystem: false,
           },
         }
 

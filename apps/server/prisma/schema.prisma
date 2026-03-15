@@ -63,6 +63,7 @@ model Message {
   content    String
   createdAt  DateTime @default(now())
   editedAt   DateTime?
+  isSystem   Boolean  @default(false)
 
   authorId  String
   channelId String

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { prisma } from '../lib/prisma.js'
-import { broadcastAll } from '../ws/handler.js'
+import { broadcastAll, broadcastToUser } from '../ws/handler.js'
 
 export const channelRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', async (req, reply) => {
@@ -58,6 +58,37 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
       },
     })
     broadcastAll({ type: 'channel:updated', payload: { ...updated, createdAt: updated.createdAt.toISOString() } })
+
+    if (topic !== undefined && (topic.trim() || null) !== channel.topic) {
+      const actor = await prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } })
+      if (actor) {
+        const oldTopic = channel.topic ?? null
+        const newTopic = topic.trim() || null
+        const content = JSON.stringify({ type: 'topic_changed', from: oldTopic, to: newTopic })
+        const sysMsg = await prisma.message.create({
+          data: { content, channelId, authorId: userId, isSystem: true },
+        })
+        broadcastAll({
+          type: 'message:new',
+          payload: {
+            id: sysMsg.id,
+            channelId,
+            authorId: userId,
+            authorName: actor.displayName,
+            content,
+            createdAt: sysMsg.createdAt.toISOString(),
+            editedAt: null,
+            postNumber: null,
+            replyTo: null,
+            reactions: [],
+            mentions: [],
+            attachments: [],
+            isSystem: true,
+          },
+        })
+      }
+    }
+
     return updated
   })
 
@@ -118,11 +149,55 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
   app.post('/:channelId/pins/:messageId', async (req, reply) => {
     const { userId } = req.user as { userId: string }
     const { channelId, messageId } = req.params as { channelId: string; messageId: string }
+
+    const existing = await prisma.pinnedMessage.findUnique({
+      where: { channelId_messageId: { channelId, messageId } },
+    })
+
     await prisma.pinnedMessage.upsert({
       where: { channelId_messageId: { channelId, messageId } },
       create: { channelId, messageId, pinnedBy: userId },
       update: {},
     })
+
+    if (!existing) {
+      const [pinner, pinnedMsg, channel] = await Promise.all([
+        prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } }),
+        prisma.message.findUnique({ where: { id: messageId }, select: { content: true, author: { select: { displayName: true } } } }),
+        prisma.channel.findUnique({ where: { id: channelId }, select: { type: true } }),
+      ])
+      if (pinner && pinnedMsg) {
+        const sysMsg = await prisma.message.create({
+          data: { content: '', channelId, authorId: userId, replyToId: messageId, isSystem: true },
+        })
+        const isDm = channel?.type === 'DM' || channel?.type === 'GROUP'
+        const outEvent = {
+          type: 'message:new' as const,
+          payload: {
+            id: sysMsg.id,
+            channelId,
+            authorId: userId,
+            authorName: pinner.displayName,
+            content: 'pinned',
+            createdAt: sysMsg.createdAt.toISOString(),
+            editedAt: null,
+            postNumber: null,
+            replyTo: { id: messageId, authorName: pinnedMsg.author.displayName, content: pinnedMsg.content.slice(0, 100) || '[image]' },
+            reactions: [],
+            mentions: [],
+            attachments: [],
+            isSystem: true,
+          },
+        }
+        if (isDm) {
+          const members = await prisma.channelMember.findMany({ where: { channelId }, select: { userId: true } })
+          for (const { userId: memberId } of members) broadcastToUser(memberId, outEvent)
+        } else {
+          broadcastAll(outEvent)
+        }
+      }
+    }
+
     return reply.status(204).send()
   })
 

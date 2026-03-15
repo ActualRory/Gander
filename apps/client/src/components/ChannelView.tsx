@@ -467,7 +467,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   let firstUnreadId: string | null = null
   if (lastReadTime !== null) {
     for (const msg of messages) {
-      if (new Date(msg.createdAt).getTime() > lastReadTime && msg.authorId !== currentUserId) {
+      if (new Date(msg.createdAt).getTime() > lastReadTime && msg.authorId !== currentUserId && !msg.isSystem) {
         firstUnreadId = msg.id
         break
       }
@@ -563,7 +563,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
               data-msg-id={msg.id}
               ref={isFirstUnread ? el => { firstUnreadRef.current = el } : undefined}
               className={styles.message}
-              onContextMenu={e => { e.preventDefault(); setMsgMenu({ msgId: msg.id, x: e.clientX, y: e.clientY }) }}
+              onContextMenu={msg.isSystem ? e => e.preventDefault() : e => { e.preventDefault(); setMsgMenu({ msgId: msg.id, x: e.clientX, y: e.clientY }) }}
             >
               {showDateSep && (
                 <div className={styles.dateSeparator}>
@@ -575,6 +575,47 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                   <span>new messages</span>
                 </div>
               )}
+              {msg.isSystem ? (
+                <div className={styles.systemMsg}>
+                  {msg.content === 'pinned' && (
+                    <>
+                      {msg.replyTo && (
+                        <div
+                          className={styles.replyQuote}
+                          onClick={() => jumpToMessage(msg.replyTo!.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={e => { if (e.key === 'Enter') jumpToMessage(msg.replyTo!.id) }}
+                        >
+                          <span className={styles.replyQuoteAuthor}>↩ @{msg.replyTo.authorName}</span>
+                          <span className={styles.replyQuoteContent}>{msg.replyTo.content}</span>
+                        </div>
+                      )}
+                      <span className={styles.systemMsgActor}>{msg.authorName}</span>
+                      {' '}pinned a message to this channel.{' '}
+                      <button className={styles.systemMsgLink} onClick={() => setPinsOpen(true)}>[see all pins]</button>
+                    </>
+                  )}
+                  {msg.content !== 'pinned' && (() => {
+                    try {
+                      const d = JSON.parse(msg.content) as { type: string; from: string | null; to: string | null }
+                      if (d.type === 'topic_changed') {
+                        return (
+                          <>
+                            <span className={styles.systemMsgActor}>{msg.authorName}</span>
+                            {d.to
+                              ? <>{' '}changed the channel topic{d.from ? <> from <span className={styles.systemMsgQuote}>"{d.from}"</span></> : ''} to <span className={styles.systemMsgQuote}>"{d.to}"</span>.</>
+                              : <>{' '}cleared the channel topic{d.from ? <> (was <span className={styles.systemMsgQuote}>"{d.from}"</span>)</> : ''}.</>
+                            }
+                          </>
+                        )
+                      }
+                    } catch { /* unknown system message type */ }
+                    return null
+                  })()}
+                </div>
+              ) : (
+              <>
               <div className={styles.meta}>
                 <span
                   className={styles.author}
@@ -708,6 +749,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                     )
                   })}
                 </div>
+              )}
+              </>
               )}
             </div>
           )

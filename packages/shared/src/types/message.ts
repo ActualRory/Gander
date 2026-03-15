@@ -31,6 +31,7 @@ export interface Message {
   reactions: ReactionSummary[]
   mentions: string[]
   attachments: AttachmentInfo[]
+  isSystem: boolean
 }
 
 export interface PinnedMessageEntry {
