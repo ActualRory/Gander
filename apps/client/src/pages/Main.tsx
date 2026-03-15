@@ -844,20 +844,63 @@ export default function Main({ auth, onLogout }: Props) {
     }
 
     // Start screen share
-    try {
-      const ssPreset = screenSharePreset(screenShareQuality)
-      await room.localParticipant.setScreenShareEnabled(
-        true,
-        { resolution: ssPreset.resolution, audio: screenShareAudio },
-        { screenShareEncoding: ssPreset.encoding },
-      )
-      setIsScreenSharing(true)
-      isScreenSharingRef.current = true
-      wsRef.current?.send({ type: 'voice:state', payload: { muted: isMutedRef.current, deafened: isDeafenedRef.current, videoEnabled: isCameraOnRef.current, screenSharing: true } })
-    } catch (err) {
-      if (err instanceof Error && err.name === 'NotAllowedError') return
-      throw err
+    // Intercept getDisplayMedia to separate audio from video: on Windows/WebView2,
+    // audio track failure (driver issue, nothing playing, etc.) can end the entire
+    // MediaStream including the video track. By stripping audio out before LiveKit
+    // sees it and publishing it as a separate ScreenShareAudio track, audio failure
+    // can't kill the video stream.
+    const ssPreset = screenSharePreset(screenShareQuality)
+    // Use an object so TypeScript doesn't narrow the property to `never` across
+    // async closures — TS control-flow narrowing only applies to local `let` vars.
+    const captured = { audioTrack: null as MediaStreamTrack | null }
+    if (screenShareAudio) {
+      const origGDM = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices)
+      navigator.mediaDevices.getDisplayMedia = async (constraints?: DisplayMediaStreamOptions) => {
+        const stream = await origGDM({ ...constraints, audio: true })
+        const audioTracks = stream.getAudioTracks()
+        if (audioTracks.length > 0) {
+          captured.audioTrack = audioTracks[0]
+          stream.removeTrack(captured.audioTrack)
+        }
+        return stream
+      }
+      try {
+        await room.localParticipant.setScreenShareEnabled(
+          true,
+          { resolution: ssPreset.resolution, audio: false },
+          { screenShareEncoding: ssPreset.encoding },
+        )
+      } catch (err) {
+        navigator.mediaDevices.getDisplayMedia = origGDM
+        captured.audioTrack?.stop()
+        if (err instanceof Error && err.name === 'NotAllowedError') return
+        throw err
+      }
+      navigator.mediaDevices.getDisplayMedia = origGDM
+      if (captured.audioTrack) {
+        try {
+          const lkAudioTrack = new LocalAudioTrack(captured.audioTrack, undefined, false)
+          await room.localParticipant.publishTrack(lkAudioTrack, { source: Track.Source.ScreenShareAudio })
+          screenShareAudioTrackRef.current = lkAudioTrack
+        } catch {
+          captured.audioTrack?.stop()
+        }
+      }
+    } else {
+      try {
+        await room.localParticipant.setScreenShareEnabled(
+          true,
+          { resolution: ssPreset.resolution, audio: false },
+          { screenShareEncoding: ssPreset.encoding },
+        )
+      } catch (err) {
+        if (err instanceof Error && err.name === 'NotAllowedError') return
+        throw err
+      }
     }
+    setIsScreenSharing(true)
+    isScreenSharingRef.current = true
+    wsRef.current?.send({ type: 'voice:state', payload: { muted: isMutedRef.current, deafened: isDeafenedRef.current, videoEnabled: isCameraOnRef.current, screenSharing: true } })
   }
 
   async function handleChangePttMode(ptt: boolean) {
