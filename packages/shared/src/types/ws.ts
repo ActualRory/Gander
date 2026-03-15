@@ -22,6 +22,7 @@ export type ServerEvent =
   | { type: 'channel:updated'; payload: Channel }
   | { type: 'channel:deleted'; payload: { channelId: string } }
   | { type: 'user:updated'; payload: User }
+  | { type: 'typing:update'; payload: { channelId: string; userIds: string[] } }
 
 // Events sent from client → server
 export type ClientEvent =
@@ -31,3 +32,4 @@ export type ClientEvent =
   | { type: 'voice:join'; payload: { channelId: string } }
   | { type: 'voice:leave'; payload: { channelId: string } }
   | { type: 'voice:state'; payload: { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean } }
+  | { type: 'typing:start'; payload: { channelId: string } }

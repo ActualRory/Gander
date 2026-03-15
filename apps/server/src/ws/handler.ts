@@ -24,6 +24,19 @@ const voiceChannelStartTimes = new Map<string, number>()
 // userId → current VoiceSession DB id
 const userVoiceSessionId = new Map<string, string>()
 
+// channelId → Map<userId, expiry timer>
+const channelTyping = new Map<string, Map<string, ReturnType<typeof setTimeout>>>()
+
+function clearTyping(channelId: string, userId: string) {
+  const typers = channelTyping.get(channelId)
+  if (!typers) return
+  const timer = typers.get(userId)
+  if (timer) clearTimeout(timer)
+  typers.delete(userId)
+  if (typers.size === 0) channelTyping.delete(channelId)
+  broadcast(channelId, { type: 'typing:update', payload: { channelId, userIds: [...(channelTyping.get(channelId)?.keys() ?? [])] } })
+}
+
 export function broadcast(channelId: string, event: ServerEvent, exclude?: WebSocket) {
   const room = rooms.get(channelId)
   if (!room) return
@@ -184,8 +197,22 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         break
       }
 
+      case 'typing:start': {
+        const { channelId } = event.payload
+        if (!channelTyping.has(channelId)) channelTyping.set(channelId, new Map())
+        const typers = channelTyping.get(channelId)!
+        const existing = typers.get(userId)
+        if (existing) clearTimeout(existing)
+        const timer = setTimeout(() => clearTyping(channelId, userId), 5000)
+        typers.set(userId, timer)
+        broadcast(channelId, { type: 'typing:update', payload: { channelId, userIds: [...typers.keys()] } })
+        break
+      }
+
       case 'message:send': {
         const { channelId, content, replyToId, attachmentIds } = event.payload
+        // Clear typing indicator when message is sent
+        clearTyping(channelId, userId)
         const hasContent = content.trim().length > 0
         const hasAttachments = Array.isArray(attachmentIds) && attachmentIds.length > 0
         if (!hasContent && !hasAttachments) return
@@ -302,6 +329,10 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
   socket.on('close', async () => {
     if (userId) {
       connectedUsers.delete(userId)
+      // Clean up any typing indicators for this user
+      for (const [channelId] of channelTyping) {
+        clearTyping(channelId, userId)
+      }
       const now = new Date()
       await prisma.user.update({ where: { id: userId }, data: { lastSeenAt: now } }).catch(() => {})
       broadcastAll({ type: 'user:offline', payload: { userId, lastSeenAt: now.toISOString() } })

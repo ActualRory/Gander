@@ -98,6 +98,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   }>>([])
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editInput, setEditInput] = useState('')
+  const [typingUserIds, setTypingUserIds] = useState<string[]>([])
+  const lastTypingSentRef = useRef(0)
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [ogData, setOgData] = useState<Map<string, OgData>>(new Map())
   const [pinsOpen, setPinsOpen] = useState(false)
@@ -197,6 +199,9 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         setMessages(prev => prev.map(m =>
           m.id === event.payload.messageId ? { ...m, reactions: event.payload.reactions } : m
         ))
+      }
+      if (event.type === 'typing:update' && event.payload.channelId === channel.id) {
+        setTypingUserIds(event.payload.userIds.filter(id => id !== currentUserId))
       }
     })
   }, [channel.id, ws])
@@ -380,6 +385,13 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     const val = e.target.value
     setInput(val)
     resize()
+    if (val.length > 0) {
+      const now = Date.now()
+      if (now - lastTypingSentRef.current > 2000) {
+        lastTypingSentRef.current = now
+        ws.send({ type: 'typing:start', payload: { channelId: channel.id } })
+      }
+    }
     const pos = e.target.selectionStart ?? val.length
     const before = val.slice(0, pos)
     const mentionMatch = before.match(/@(\S*)$/)
@@ -947,6 +959,17 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
               <button type="button" className={styles.pendingThumbRemove} onClick={() => removePending(i)}>[x]</button>
             </div>
           ))}
+        </div>
+      )}
+
+      {typingUserIds.length > 0 && (
+        <div className={styles.typingBar}>
+          {(() => {
+            const names = typingUserIds.map(id => users.find(u => u.id === id)?.displayName ?? '…')
+            if (names.length === 1) return <><span className={styles.typingName}>{names[0]}</span> is typing...</>
+            if (names.length === 2) return <><span className={styles.typingName}>{names[0]}</span> and <span className={styles.typingName}>{names[1]}</span> are typing...</>
+            return 'Several people are typing...'
+          })()}
         </div>
       )}
 
