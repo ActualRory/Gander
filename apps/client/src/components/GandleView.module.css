@@ -35,6 +35,12 @@
   font-size: 0.78em;
 }
 
+.countdown {
+  color: var(--text-muted);
+  font-size: 0.78em;
+  margin-left: auto;
+}
+
 /* ─── Flash message ─── */
 .message {
   position: absolute;

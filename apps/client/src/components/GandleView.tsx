@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api.ts'
 import {
   WORD_LENGTH, MAX_GUESSES,
-  todayDate, getDailyWord,
+  todayDate, getDailyWord, msUntilNextUTCMidnight,
   evaluateGuess, isValidGuess, getKeyboardStates, formatScore,
   type EvaluatedRow,
 } from '../lib/gandle.ts'
@@ -45,6 +45,13 @@ export default function GandleView({ token, currentUserId }: Props) {
   // Leaderboard state
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [viewingEntry, setViewingEntry] = useState<LeaderboardEntry | null>(null)
+
+  // Countdown to next UTC midnight
+  const [countdown, setCountdown] = useState(() => msUntilNextUTCMidnight())
+  useEffect(() => {
+    const interval = setInterval(() => setCountdown(msUntilNextUTCMidnight()), 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   const progressKey = `gander:gandle-progress:${date}`
 
@@ -163,6 +170,7 @@ export default function GandleView({ token, currentUserId }: Props) {
       <div className={styles.header}>
         <span className={styles.title}>GANDLE</span>
         <span className={styles.dateLabel}>{date}</span>
+        <span className={styles.countdown}>next: {String(Math.floor(countdown / 3_600_000)).padStart(2, '0')}:{String(Math.floor((countdown % 3_600_000) / 60_000)).padStart(2, '0')}:{String(Math.floor((countdown % 60_000) / 1000)).padStart(2, '0')} UTC</span>
       </div>
 
       {message && <div className={styles.message}>{message}</div>}

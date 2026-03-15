@@ -6,13 +6,20 @@ export const MAX_GUESSES = 6
 // Filter to only valid 6-letter words (guards against typos in the word list)
 const ANSWER_WORDS = GANDLE_WORDS.filter(w => w.length === WORD_LENGTH && /^[a-z]+$/.test(w))
 
-/** Returns today's puzzle date as "YYYY-MM-DD" (local time) */
+/** Returns today's puzzle date as "YYYY-MM-DD" (UTC) */
 export function todayDate(): string {
   const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
+  const y = d.getUTCFullYear()
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(d.getUTCDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+/** Returns milliseconds until the next UTC midnight */
+export function msUntilNextUTCMidnight(): number {
+  const now = new Date()
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1))
+  return next.getTime() - now.getTime()
 }
 
 /** Returns the answer word for a given date string "YYYY-MM-DD" */
