@@ -1,4 +1,4 @@
-import type { Channel, Message, AuthResponse, User, AttachmentInfo, OgData, PinnedMessageEntry, SearchResult } from '@gander/shared'
+import type { Channel, Message, AuthResponse, User, UserStats, AttachmentInfo, OgData, PinnedMessageEntry, SearchResult } from '@gander/shared'
 import { getServerUrl } from './config.ts'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -67,6 +67,9 @@ export const api = {
 
   updateSubtitle: (token: string, subtitle: string | null) =>
     request<User>('/api/users/me', { method: 'PATCH', body: JSON.stringify({ subtitle }), ...authed(token) }),
+
+  getUserStats: (token: string, userId: string) =>
+    request<UserStats>(`/api/users/${userId}/stats`, authed(token)),
 
   getDMs: (token: string) =>
     request<Channel[]>('/api/dm', authed(token)),

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { User } from '@gander/shared'
+import type { User, UserStats } from '@gander/shared'
 import { api } from '../lib/api.ts'
 import styles from './UserProfileModal.module.css'
 
@@ -24,6 +24,11 @@ export default function UserProfileModal({
   const ref = useRef<HTMLDivElement>(null)
   const [editingSubtitle, setEditingSubtitle] = useState(false)
   const [subtitleDraft, setSubtitleDraft] = useState(user.subtitle ?? '')
+  const [stats, setStats] = useState<UserStats | null>(null)
+
+  useEffect(() => {
+    api.getUserStats(token, user.id).then(setStats).catch(() => {})
+  }, [token, user.id])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -100,6 +105,19 @@ export default function UserProfileModal({
           )}
         </div>
 
+        {stats && (
+          <div className={styles.stats}>
+            <div className={styles.stat}>
+              <span className={styles.statValue}>{stats.messageCount.toLocaleString()}</span>
+              <span className={styles.statLabel}>messages sent</span>
+            </div>
+            <div className={styles.stat}>
+              <span className={styles.statValue}>{formatVoiceTime(stats.voiceSeconds)}</span>
+              <span className={styles.statLabel}>in voice</span>
+            </div>
+          </div>
+        )}
+
         <div className={styles.footer}>
           <span>member since {formatDate(user.createdAt)}</span>
           <button type="button" className={styles.closeBtn} onClick={onClose}>✕</button>
@@ -125,4 +143,13 @@ function formatLastSeen(lastSeenAt: string | null): string {
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function formatVoiceTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
 }

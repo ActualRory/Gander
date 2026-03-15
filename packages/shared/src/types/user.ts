@@ -11,3 +11,8 @@ export interface AuthResponse {
   token: string
   user: User
 }
+
+export interface UserStats {
+  messageCount: number
+  voiceSeconds: number
+}

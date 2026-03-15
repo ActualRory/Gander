@@ -21,6 +21,9 @@ const userVoiceState = new Map<string, { muted: boolean; deafened: boolean; vide
 // channelId → epoch ms when first user joined (cleared when last user leaves)
 const voiceChannelStartTimes = new Map<string, number>()
 
+// userId → current VoiceSession DB id
+const userVoiceSessionId = new Map<string, string>()
+
 export function broadcast(channelId: string, event: ServerEvent, exclude?: WebSocket) {
   const room = rooms.get(channelId)
   if (!room) return
@@ -139,6 +142,11 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
             voiceChannelStartTimes.delete(prevChannelId)
           }
           broadcastAll({ type: 'voice:leave', payload: { userId, channelId: prevChannelId } })
+          const prevSessionId = userVoiceSessionId.get(userId)
+          if (prevSessionId) {
+            await prisma.voiceSession.update({ where: { id: prevSessionId }, data: { leftAt: new Date() } }).catch(() => {})
+            userVoiceSessionId.delete(userId)
+          }
         }
         if (!voiceRooms.has(channelId)) voiceRooms.set(channelId, new Set())
         const wasEmpty = voiceRooms.get(channelId)!.size === 0
@@ -147,6 +155,8 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         if (wasEmpty) voiceChannelStartTimes.set(channelId, Date.now())
         const startTime = voiceChannelStartTimes.get(channelId)!
         broadcastAll({ type: 'voice:join', payload: { userId, channelId, startTime } })
+        const session = await prisma.voiceSession.create({ data: { userId, channelId } }).catch(() => null)
+        if (session) userVoiceSessionId.set(userId, session.id)
         break
       }
 
@@ -159,6 +169,11 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         userVoiceChannel.delete(userId)
         userVoiceState.delete(userId)
         broadcastAll({ type: 'voice:leave', payload: { userId, channelId } })
+        const sessionId = userVoiceSessionId.get(userId)
+        if (sessionId) {
+          await prisma.voiceSession.update({ where: { id: sessionId }, data: { leftAt: new Date() } }).catch(() => {})
+          userVoiceSessionId.delete(userId)
+        }
         break
       }
 
@@ -300,6 +315,11 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         userVoiceChannel.delete(userId)
         userVoiceState.delete(userId)
         broadcastAll({ type: 'voice:leave', payload: { userId, channelId: voiceChannelId } })
+        const sessionId = userVoiceSessionId.get(userId)
+        if (sessionId) {
+          await prisma.voiceSession.update({ where: { id: sessionId }, data: { leftAt: new Date() } }).catch(() => {})
+          userVoiceSessionId.delete(userId)
+        }
       }
     }
     for (const channelId of joinedChannels) {

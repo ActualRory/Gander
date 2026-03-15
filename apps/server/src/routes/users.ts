@@ -27,6 +27,21 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
+  app.get('/:id/stats', async (req) => {
+    const { id } = req.params as { id: string }
+    const [messageCount, sessions] = await Promise.all([
+      prisma.message.count({ where: { authorId: id } }),
+      prisma.voiceSession.findMany({
+        where: { userId: id, leftAt: { not: null } },
+        select: { joinedAt: true, leftAt: true },
+      }),
+    ])
+    const voiceSeconds = sessions.reduce((sum, s) => {
+      return sum + Math.floor((s.leftAt!.getTime() - s.joinedAt.getTime()) / 1000)
+    }, 0)
+    return { messageCount, voiceSeconds }
+  })
+
   app.patch('/me', async (req) => {
     const { subtitle } = req.body as { subtitle: string | null }
     const updated = await prisma.user.update({

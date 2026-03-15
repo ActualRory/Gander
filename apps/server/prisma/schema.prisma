@@ -23,6 +23,7 @@ model User {
   mentions        Mention[]
   attachments     Attachment[]
   pinnedMessages  PinnedMessage[]
+  voiceSessions   VoiceSession[]
 }
 
 model Channel {
@@ -33,10 +34,11 @@ model Channel {
   createdAt DateTime    @default(now())
   creatorId String?
 
-  creator  User?          @relation("ChannelCreator", fields: [creatorId], references: [id])
-  members  ChannelMember[]
-  messages Message[]
-  pins     PinnedMessage[]
+  creator       User?          @relation("ChannelCreator", fields: [creatorId], references: [id])
+  members       ChannelMember[]
+  messages      Message[]
+  pins          PinnedMessage[]
+  voiceSessions VoiceSession[]
 }
 
 enum ChannelType {
@@ -116,6 +118,17 @@ model Mention {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([messageId, userId])
+}
+
+model VoiceSession {
+  id        String    @id @default(cuid())
+  userId    String
+  channelId String
+  joinedAt  DateTime  @default(now())
+  leftAt    DateTime?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 }
 
 model Reaction {
