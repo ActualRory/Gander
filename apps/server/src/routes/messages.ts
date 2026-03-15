@@ -43,12 +43,13 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/:channelId', async (req) => {
     const { channelId } = req.params as { channelId: string }
-    const { before, limit = '50' } = req.query as { before?: string; limit?: string }
+    const { before, after, limit = '50' } = req.query as { before?: string; after?: string; limit?: string }
 
-    const messages = await prisma.message.findMany({
+    const rawMessages = await prisma.message.findMany({
       where: {
         channelId,
         ...(before ? { createdAt: { lt: new Date(before) } } : {}),
+        ...(after ? { createdAt: { gt: new Date(after) } } : {}),
       },
       include: {
         author: { select: { id: true, displayName: true } },
@@ -57,11 +58,13 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         mentions: { select: { userId: true } },
         attachments: { select: { id: true, storedName: true, mimeType: true, filename: true, size: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: after ? 'asc' : 'desc' },
       take: Number(limit),
     })
 
-    return messages.reverse().map((m) => {
+    const messages = after ? rawMessages : rawMessages.reverse()
+
+    return messages.map((m) => {
       const reactionMap = new Map<string, string[]>()
       for (const r of m.reactions) {
         if (!reactionMap.has(r.reaction)) reactionMap.set(r.reaction, [])

@@ -133,8 +133,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   }
 
   // Load history and join channel.
-  // If jumpAnchorTime is set, load the 50 messages ending at that timestamp so
-  // the target message appears at/near the bottom of the loaded batch.
+  // If jumpAnchorTime is set, load messages both before and after the anchor so
+  // the target message is visible with full context (50 before + 50 after).
   useEffect(() => {
     setLoading(true)
     setMessages([])
@@ -143,17 +143,33 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     isAtBottomRef.current = true
 
     let cancelled = false
-    const before = jumpAnchorTime
-      ? new Date(new Date(jumpAnchorTime).getTime() + 1000).toISOString()
-      : undefined
-    api.getMessages(token, channel.id, before ? { before } : undefined).then(msgs => {
-      if (!cancelled) {
-        setMessages(msgs)
-        setLoading(false)
-      }
-    }).catch(() => {
-      if (!cancelled) setLoading(false)
-    })
+    if (jumpAnchorTime) {
+      // Load messages both before and after the anchor so the target message is
+      // visible in context with newer messages that came after it.
+      const anchorMs = new Date(jumpAnchorTime).getTime()
+      const before = new Date(anchorMs + 1000).toISOString()
+      const after = new Date(anchorMs).toISOString()
+      Promise.all([
+        api.getMessages(token, channel.id, { before }),
+        api.getMessages(token, channel.id, { after }),
+      ]).then(([beforeMsgs, afterMsgs]) => {
+        if (!cancelled) {
+          setMessages([...beforeMsgs, ...afterMsgs])
+          setLoading(false)
+        }
+      }).catch(() => {
+        if (!cancelled) setLoading(false)
+      })
+    } else {
+      api.getMessages(token, channel.id).then(msgs => {
+        if (!cancelled) {
+          setMessages(msgs)
+          setLoading(false)
+        }
+      }).catch(() => {
+        if (!cancelled) setLoading(false)
+      })
+    }
 
     ws.send({ type: 'channel:join', payload: { channelId: channel.id } })
 

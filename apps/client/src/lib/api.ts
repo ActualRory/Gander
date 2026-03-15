@@ -43,11 +43,13 @@ export const api = {
   deleteChannel: (token: string, channelId: string) =>
     request<void>(`/api/channels/${channelId}`, { method: 'DELETE', ...authed(token) }),
 
-  getMessages: (token: string, channelId: string, params?: { before?: string }) =>
-    request<Message[]>(
-      `/api/messages/${channelId}${params?.before ? `?before=${encodeURIComponent(params.before)}` : ''}`,
-      authed(token)
-    ),
+  getMessages: (token: string, channelId: string, params?: { before?: string; after?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.before) qs.set('before', params.before)
+    if (params?.after) qs.set('after', params.after)
+    const query = qs.toString() ? `?${qs}` : ''
+    return request<Message[]>(`/api/messages/${channelId}${query}`, authed(token))
+  },
 
   getUnreadCounts: (token: string, channelLastReadAt: Record<string, string>) =>
     request<{ channelId: string; count: number; mentionCount: number }[]>('/api/messages/unread', {
