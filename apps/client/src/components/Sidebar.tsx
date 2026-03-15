@@ -285,7 +285,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           const voiceState = uid === currentUserId
             ? { muted: isMuted, deafened: isDeafened }
             : (participantVoiceState[uid] ?? { muted: false, deafened: false })
-          const badge = voiceState.deafened ? '[deaf]' : voiceState.muted ? '[m]' : null
+          const badge = voiceState.deafened ? '[deaf]' : voiceState.muted ? '[muted]' : null
           const streaming = uid === currentUserId
             ? isScreenSharing
             : (participantVoiceState[uid]?.screenSharing ?? false)
@@ -425,7 +425,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
               onClick={onToggleMute}
               title={isMuted ? 'unmute mic' : 'mute mic'}
             >
-              {isMuted ? '[m]' : '[mic]'}
+              {isMuted ? '[muted]' : '[mic]'}
             </button>
             <button
               type="button"
