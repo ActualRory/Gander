@@ -6,18 +6,16 @@ import styles from './SocialPanel.module.css'
 interface Props {
   users: User[]
   onlineUserIds: Set<string>
-  voiceParticipants: Record<string, string[]>
+  userActivities: Record<string, string>
   onUserClick: (userId: string, x: number, y: number) => void
   onUserRightClick: (userId: string, x: number, y: number) => void
   token: string
   onNavigateToMessage: (channelId: string, messageId: string, createdAt: string) => void
 }
 
-function getStatus(userId: string, onlineUserIds: Set<string>, voiceParticipants: Record<string, string[]>): string {
-  const inVoice = Object.values(voiceParticipants).some(ids => ids.includes(userId))
-  if (inVoice) return 'Chatting'
-  if (onlineUserIds.has(userId)) return 'Online'
-  return 'Offline'
+function getStatus(userId: string, onlineUserIds: Set<string>, userActivities: Record<string, string>): string {
+  if (!onlineUserIds.has(userId)) return 'Offline'
+  return userActivities[userId] ?? 'Online'
 }
 
 function parseQuery(raw: string): { q: string; from?: string } {
@@ -27,7 +25,7 @@ function parseQuery(raw: string): { q: string; from?: string } {
   return { q, from }
 }
 
-export default function SocialPanel({ users, onlineUserIds, voiceParticipants, onUserClick, onUserRightClick, token, onNavigateToMessage }: Props) {
+export default function SocialPanel({ users, onlineUserIds, userActivities, onUserClick, onUserRightClick, token, onNavigateToMessage }: Props) {
   const [panelOpen, setPanelOpen] = useState(true)
   const [onlineOpen, setOnlineOpen] = useState(true)
   const [offlineOpen, setOfflineOpen] = useState(true)
@@ -73,7 +71,7 @@ export default function SocialPanel({ users, onlineUserIds, voiceParticipants, o
   }
 
   function renderUser(u: User, isOffline: boolean) {
-    const status = getStatus(u.id, onlineUserIds, voiceParticipants)
+    const status = getStatus(u.id, onlineUserIds, userActivities)
     const initials = u.displayName.slice(0, 2).toUpperCase()
     return (
       <li

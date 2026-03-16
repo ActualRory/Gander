@@ -27,6 +27,9 @@ const userVoiceSessionId = new Map<string, string>()
 // channelId → Map<userId, expiry timer>
 const channelTyping = new Map<string, Map<string, ReturnType<typeof setTimeout>>>()
 
+// userId → current rich presence activity string
+const userActivity = new Map<string, string>()
+
 function clearTyping(channelId: string, userId: string) {
   const typers = channelTyping.get(channelId)
   if (!typers) return
@@ -106,6 +109,11 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         socket.send(JSON.stringify({
           type: 'voice:init',
           payload: { voiceRooms: voiceRoomsSnapshot, voiceStates: voiceStatesSnapshot, voiceChannelStartTimes: voiceStartTimesSnapshot },
+        }))
+        // Send current activity strings to the newly connected client
+        socket.send(JSON.stringify({
+          type: 'activity:init',
+          payload: { activities: Object.fromEntries(userActivity) },
         }))
         // Notify all other clients this user came online (include user data so new users are discoverable)
         const connectedUser = await prisma.user.findUnique({
@@ -194,6 +202,13 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         const { muted, deafened, videoEnabled = false, screenSharing = false } = event.payload
         userVoiceState.set(userId, { muted, deafened, videoEnabled, screenSharing })
         broadcastAll({ type: 'voice:state', payload: { userId, muted, deafened, videoEnabled, screenSharing } })
+        break
+      }
+
+      case 'activity:update': {
+        const { activity } = event.payload
+        userActivity.set(userId, activity)
+        broadcastAll({ type: 'activity:update', payload: { userId, activity } }, socket)
         break
       }
 
@@ -329,6 +344,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
   socket.on('close', async () => {
     if (userId) {
       connectedUsers.delete(userId)
+      userActivity.delete(userId)
       // Clean up any typing indicators for this user
       for (const [channelId] of channelTyping) {
         clearTyping(channelId, userId)

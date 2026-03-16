@@ -174,6 +174,7 @@ export default function Main({ auth, onLogout }: Props) {
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set())
+  const [userActivities, setUserActivities] = useState<Record<string, string>>({})
   const [hiddenChannelIds, setHiddenChannelIds] = useState<Set<string>>(() => loadHidden(auth.userId))
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [mentionCounts, setMentionCounts] = useState<Record<string, number>>({})
@@ -281,6 +282,25 @@ export default function Main({ auth, onLogout }: Props) {
   useEffect(() => { dmChannelsRef.current = dmChannels }, [dmChannels])
   useEffect(() => { mutedChannelIdsRef.current = mutedChannelIds }, [mutedChannelIds])
 
+  // Broadcast own rich presence activity whenever context changes
+  useEffect(() => {
+    if (!wsRef.current) return
+    let activity = 'Online'
+    if (voiceChannelId) {
+      const ch = channels.find(c => c.id === voiceChannelId)
+      activity = ch ? `Chatting in #${ch.name}` : 'In voice'
+    } else if (activeUtilityId === 'gandle') {
+      activity = 'Doing the Gandle'
+    } else if (activeUtilityId === 'library') {
+      activity = 'Browsing the library'
+    } else if (activeUtilityId === 'file-manager') {
+      activity = 'Browsing files'
+    } else if (activeChannel) {
+      activity = activeChannel.isDm ? 'In a DM' : `In #${activeChannel.name}`
+    }
+    wsRef.current.send({ type: 'activity:update', payload: { activity } })
+  }, [voiceChannelId, activeUtilityId, activeChannel, channels])
+
   // Auto-close stream view if the streamer stops sharing
   useEffect(() => {
     if (!streamViewUserId) return
@@ -385,6 +405,7 @@ export default function Main({ auth, onLogout }: Props) {
           return next
         })
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, lastSeenAt } : u))
+        setUserActivities(prev => { const n = { ...prev }; delete n[userId]; return n })
       } else if (event.type === 'message:new') {
         const { channelId, authorName, content, authorId, mentions } = event.payload
         const isActiveChannel = channelId === activeChannelRef.current?.id
@@ -416,6 +437,10 @@ export default function Main({ auth, onLogout }: Props) {
             }
           }
         }
+      } else if (event.type === 'activity:init') {
+        setUserActivities(event.payload.activities)
+      } else if (event.type === 'activity:update') {
+        setUserActivities(prev => ({ ...prev, [event.payload.userId]: event.payload.activity }))
       } else if (event.type === 'voice:init') {
         setVoiceParticipants(event.payload.voiceRooms)
         setParticipantVoiceState(event.payload.voiceStates)
@@ -1368,7 +1393,7 @@ export default function Main({ auth, onLogout }: Props) {
       <SocialPanel
         users={users}
         onlineUserIds={onlineUserIds}
-        voiceParticipants={voiceParticipants}
+        userActivities={userActivities}
         onUserClick={handleUserLeftClick}
         onUserRightClick={handleUserRightClick}
         token={auth.token}
