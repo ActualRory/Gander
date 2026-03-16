@@ -186,6 +186,7 @@ export default function Main({ auth, onLogout }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeUtilityId, setActiveUtilityId] = useState<'library' | 'file-manager' | 'gandle' | null>(null)
   const [hiddenUtilityIds, setHiddenUtilityIds] = useState<Set<string>>(() => loadHiddenUtilities(auth.userId))
+  const [windowFocused, setWindowFocused] = useState(true)
   const wsRef = useRef<GanderWS | null>(null)
   const activeChannelRef = useRef<Channel | null>(null)
   const channelsRef = useRef<Channel[]>([])
@@ -289,18 +290,20 @@ export default function Main({ auth, onLogout }: Props) {
     if (voiceChannelId) {
       const ch = channels.find(c => c.id === voiceChannelId)
       activity = ch ? `Chatting in #${ch.name}` : 'In voice'
-    } else if (activeUtilityId === 'gandle') {
-      activity = 'Doing the Gandle'
-    } else if (activeUtilityId === 'library') {
-      activity = 'Browsing the library'
-    } else if (activeUtilityId === 'file-manager') {
-      activity = 'Browsing files'
-    } else if (activeChannel) {
-      if (activeChannel.type !== 'DM') activity = `In #${activeChannel.name}`
+    } else if (windowFocused) {
+      if (activeUtilityId === 'gandle') {
+        activity = 'Doing the Gandle'
+      } else if (activeUtilityId === 'library') {
+        activity = 'Browsing the library'
+      } else if (activeUtilityId === 'file-manager') {
+        activity = 'Browsing files'
+      } else if (activeChannel) {
+        if (activeChannel.type !== 'DM') activity = `In #${activeChannel.name}`
+      }
     }
     wsRef.current.send({ type: 'activity:update', payload: { activity } })
     setUserActivities(prev => ({ ...prev, [auth.userId]: activity }))
-  }, [voiceChannelId, activeUtilityId, activeChannel, channels, auth.userId])
+  }, [voiceChannelId, windowFocused, activeUtilityId, activeChannel, channels, auth.userId])
 
   // Auto-close stream view if the streamer stops sharing
   useEffect(() => {
@@ -521,6 +524,15 @@ export default function Main({ auth, onLogout }: Props) {
   // Disconnect from voice on unmount
   useEffect(() => {
     return () => { voiceRoomRef.current?.disconnect() }
+  }, [])
+
+  // Track window focus for rich presence
+  useEffect(() => {
+    const win = getCurrentWindow()
+    let unlistenFocus: (() => void) | null = null
+    win.isFocused().then(focused => setWindowFocused(focused))
+    win.onFocusChanged(({ payload: focused }) => setWindowFocused(focused)).then(fn => { unlistenFocus = fn })
+    return () => { unlistenFocus?.() }
   }, [])
 
   // Send voice:leave + disconnect LiveKit before the Tauri window closes (desktop only)
