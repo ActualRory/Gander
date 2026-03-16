@@ -835,6 +835,7 @@
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+  background: var(--bg-secondary);
 }
 
 .bookDetailAuthor {
