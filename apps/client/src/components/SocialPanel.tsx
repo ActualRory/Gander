@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { User, SearchResult } from '@gander/shared'
 import { api } from '../lib/api'
+import Avatar from './Avatar.tsx'
 import styles from './SocialPanel.module.css'
 
 interface Props {
@@ -72,7 +73,6 @@ export default function SocialPanel({ users, onlineUserIds, userActivities, onUs
 
   function renderUser(u: User, isOffline: boolean) {
     const status = getStatus(u.id, onlineUserIds, userActivities)
-    const initials = u.displayName.slice(0, 2).toUpperCase()
     return (
       <li
         key={u.id}
@@ -80,12 +80,7 @@ export default function SocialPanel({ users, onlineUserIds, userActivities, onUs
         onClick={e => onUserClick(u.id, e.clientX, e.clientY)}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onUserRightClick(u.id, e.clientX, e.clientY) }}
       >
-        <span className={styles.avatar}>
-          {u.avatarUrl
-            ? <img src={u.avatarUrl} alt="" className={styles.avatarImg} />
-            : <span className={styles.avatarInitials}>{initials}</span>
-          }
-        </span>
+        <Avatar displayName={u.displayName} userId={u.id} avatarUrl={u.avatarUrl} size={28} />
         <span className={styles.userInfo}>
           <span className={styles.userName}>{u.displayName}</span>
           <span className={styles.status}>{status}</span>
