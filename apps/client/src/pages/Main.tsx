@@ -296,7 +296,7 @@ export default function Main({ auth, onLogout }: Props) {
     } else if (activeUtilityId === 'file-manager') {
       activity = 'Browsing files'
     } else if (activeChannel) {
-      activity = activeChannel.isDm ? 'In a DM' : `In #${activeChannel.name}`
+      if (activeChannel.type !== 'DM') activity = `In #${activeChannel.name}`
     }
     wsRef.current.send({ type: 'activity:update', payload: { activity } })
   }, [voiceChannelId, activeUtilityId, activeChannel, channels])
