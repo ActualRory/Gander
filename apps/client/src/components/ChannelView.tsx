@@ -889,6 +889,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         <ReactionPicker
           x={reactionPicker.x}
           y={reactionPicker.y}
+          existingReactions={messages.find(m => m.id === reactionPicker.msgId)?.reactions.map(r => r.reaction) ?? []}
           onSelect={reaction => handleToggleReaction(reactionPicker.msgId, reaction)}
           onClose={() => setReactionPicker(null)}
         />

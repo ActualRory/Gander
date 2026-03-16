@@ -4,16 +4,23 @@ import styles from './ReactionPicker.module.css'
 
 export const REACTIONS = [
   '+1', '-1', 'lol', 'rip', 'gg', '<3', 'o7', 'wtf', 'F', 'nice', 'lmao', 'yikes', 'pog', 'based', 'honk',
+  'done', 'rad', 'yes', 'no', 'maybe', 'idk', 'owo',
 ]
+
+const EASTER_EGG_REACTION = 'can you repeat the question?'
+const EASTER_EGG_TRIGGERS = new Set(['yes', 'no', 'maybe', 'idk'])
 
 interface Props {
   x: number
   y: number
+  existingReactions?: string[]
   onSelect: (reaction: string) => void
   onClose: () => void
 }
 
-export default function ReactionPicker({ x, y, onSelect, onClose }: Props) {
+export default function ReactionPicker({ x, y, existingReactions = [], onSelect, onClose }: Props) {
+  const showEasterEgg = EASTER_EGG_TRIGGERS.size > 0 &&
+    [...EASTER_EGG_TRIGGERS].every(r => existingReactions.includes(r))
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -40,7 +47,7 @@ export default function ReactionPicker({ x, y, onSelect, onClose }: Props) {
     <div ref={ref} className={styles.picker} style={{ top: clampedY, left: clampedX }}>
       <div className={styles.label}>add reaction</div>
       <div className={styles.grid}>
-        {REACTIONS.map(r => (
+        {[...REACTIONS, ...(showEasterEgg ? [EASTER_EGG_REACTION] : [])].map(r => (
           <button
             key={r}
             type="button"

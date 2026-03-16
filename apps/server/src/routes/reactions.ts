@@ -5,6 +5,7 @@ import { broadcast } from '../ws/handler.js'
 
 const ALLOWED_REACTIONS = new Set([
   '+1', '-1', 'lol', 'rip', 'gg', '<3', 'o7', 'wtf', 'F', 'nice', 'lmao', 'yikes', 'pog', 'based', 'honk',
+  'done', 'rad', 'yes', 'no', 'maybe', 'idk', 'owo', 'can you repeat the question?',
 ])
 
 async function broadcastReactionUpdate(channelId: string, messageId: string) {
