@@ -504,6 +504,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           x={utilityContext.x}
           y={utilityContext.y}
           items={[
+            { label: 'hide', action: () => onToggleUtilityVisibility(utilityContext.id) },
             { label: 'copy link', action: () => void navigator.clipboard.writeText(`#${utilityContext.id}`) },
           ]}
           onClose={() => setUtilityContext(null)}
