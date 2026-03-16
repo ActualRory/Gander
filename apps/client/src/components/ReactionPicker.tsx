@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import styles from './ReactionPicker.module.css'
 
@@ -22,6 +22,7 @@ export default function ReactionPicker({ x, y, existingReactions = [], onSelect,
   const showEasterEgg = EASTER_EGG_TRIGGERS.size > 0 &&
     [...EASTER_EGG_TRIGGERS].every(r => existingReactions.includes(r))
   const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ top: y, left: x })
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -38,13 +39,17 @@ export default function ReactionPicker({ x, y, existingReactions = [], onSelect,
     }
   }, [onClose])
 
-  // Clamp to viewport
-  const W = 252
-  const clampedX = Math.min(x, window.innerWidth - W - 8)
-  const clampedY = Math.min(y, window.innerHeight - 100)
+  useLayoutEffect(() => {
+    if (!ref.current) return
+    const W = 252
+    const h = ref.current.offsetHeight
+    const clampedX = Math.min(x, window.innerWidth - W - 8)
+    const clampedY = y + h > window.innerHeight - 8 ? Math.max(8, y - h) : y
+    setPos({ top: clampedY, left: clampedX })
+  }, [x, y])
 
   return createPortal(
-    <div ref={ref} className={styles.picker} style={{ top: clampedY, left: clampedX }}>
+    <div ref={ref} className={styles.picker} style={{ top: pos.top, left: pos.left }}>
       <div className={styles.label}>add reaction</div>
       <div className={styles.grid}>
         {[...REACTIONS, ...(showEasterEgg ? [EASTER_EGG_REACTION] : [])].map(r => (
