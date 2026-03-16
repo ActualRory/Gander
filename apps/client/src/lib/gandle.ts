@@ -2,7 +2,7 @@ import { GANDLE_WORDS } from './gandleWords.ts'
 
 export const WORD_LENGTH = 6
 export const MAX_GUESSES = 6
-export const GANDLE_EPOCH = '2024-01-01'
+export const GANDLE_EPOCH = '2026-03-14'
 
 // Filter to only valid 6-letter words (guards against typos in the word list)
 const ANSWER_WORDS = GANDLE_WORDS.filter(w => w.length === WORD_LENGTH && /^[a-z]+$/.test(w))
@@ -40,7 +40,7 @@ export function msUntilNextUTCMidnight(): number {
 /** Returns the answer word for a given date string "YYYY-MM-DD" */
 export function getDailyWord(date: string): string {
   // Deterministic index from date — days since a fixed epoch
-  const epoch = new Date('2024-01-01').getTime()
+  const epoch = new Date(GANDLE_EPOCH).getTime()
   const ms = new Date(date).getTime()
   const dayIndex = Math.floor((ms - epoch) / 86_400_000)
   return ANSWER_WORDS[((dayIndex % ANSWER_WORDS.length) + ANSWER_WORDS.length) % ANSWER_WORDS.length]
