@@ -729,7 +729,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                   <span className={styles.editHint}>[enter] save  [esc] cancel</span>
                 </div>
               ) : (
-                msg.content && <p className={styles.content}>{renderContent(msg.content, currentUsername, channels, token, jumpToPost, onNavigateToChannel, onNavigateToUtility)}</p>
+                msg.content && <p className={styles.content}>{renderContent(msg.content, currentUsername, channels, users, token, jumpToPost, onNavigateToChannel, onNavigateToUtility)}</p>
               )}
               {msg.attachments.length > 0 && (
                 <div className={styles.messageAttachments}>
@@ -1125,6 +1125,7 @@ function renderContent(
   text: string,
   currentUsername: string,
   channels: Channel[],
+  users: User[],
   token: string,
   onJumpToPost: (n: number) => void,
   onNavigateToChannel: (channelId: string) => void,
@@ -1150,9 +1151,11 @@ function renderContent(
       // @mention
       const handle = match[3]
       const isSelf = handle.toLowerCase() === currentUsername.toLowerCase()
+      const mentionUser = users.find(u => u.username.toLowerCase() === handle.toLowerCase())
+      const displayHandle = mentionUser?.displayName ?? handle
       parts.push(
         <span key={match.index} className={`${styles.mention} ${isSelf ? styles.mentionSelf : ''}`}>
-          @{handle}
+          @{displayHandle}
         </span>
       )
     } else if (match[4] !== undefined) {
