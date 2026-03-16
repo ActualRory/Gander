@@ -97,3 +97,23 @@
 .unpinBtn:hover {
   background: var(--bg-surface);
 }
+
+/* On mobile, abandon the pinned filmstrip — stack tiles in a single row instead */
+@media (max-width: 640px) {
+  .grid.hasPinned {
+    flex-wrap: wrap;
+  }
+
+  .tile.pinned {
+    width: 100%;
+    max-width: none;
+  }
+
+  .filmstrip {
+    flex-direction: row;
+    width: 100%;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+}

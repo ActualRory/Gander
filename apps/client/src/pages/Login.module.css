@@ -8,7 +8,7 @@
 }
 
 .box {
-  width: 320px;
+  width: min(90vw, 320px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -115,6 +115,12 @@
 .toggle:hover {
   color: var(--text-secondary);
   background: none;
+}
+
+@media (max-width: 640px) {
+  .logo {
+    display: none;
+  }
 }
 
 .credit {

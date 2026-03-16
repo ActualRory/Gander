@@ -53,6 +53,11 @@
   --accent:       #c8a96e;
   --accent-dim:   #7a6a4a;
 
+  --text-bright:  #f0e0b0;
+  --text-dim:     #a08850;
+  --text-accent:  #c8a96e;
+  --bg-hover:     rgba(255, 255, 255, 0.04);
+
   --font-mono: 'Fira Code', 'Cascadia Code', monospace;
 }
 

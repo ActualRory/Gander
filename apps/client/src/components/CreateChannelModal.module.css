@@ -11,7 +11,7 @@
 .modal {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  width: 340px;
+  width: min(90vw, 340px);
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -61,7 +61,6 @@
 
 .form input {
   width: 100%;
-  font-size: 13px;
 }
 
 .actions {

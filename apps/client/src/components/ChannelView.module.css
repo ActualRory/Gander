@@ -164,6 +164,7 @@
   color: #e07840;
   text-decoration: none;
   cursor: pointer;
+  word-break: break-all;
 }
 
 .link:hover {
@@ -501,7 +502,7 @@
 
 .messageImage {
   display: block;
-  max-width: 400px;
+  max-width: min(85vw, 400px);
   max-height: 300px;
   width: auto;
   height: auto;
@@ -516,7 +517,7 @@
 
 .messageVideo {
   display: block;
-  max-width: 400px;
+  max-width: min(85vw, 400px);
   max-height: 300px;
   width: auto;
   height: auto;
@@ -563,7 +564,7 @@
   font-size: 13px;
   cursor: pointer;
   text-align: left;
-  max-width: 400px;
+  max-width: min(85vw, 400px);
 }
 
 .fileChip:hover {
@@ -635,7 +636,7 @@
   background: var(--bg-surface);
   padding: 8px 12px;
   margin-top: 6px;
-  max-width: 480px;
+  max-width: min(85vw, 480px);
   cursor: pointer;
 }
 
@@ -769,8 +770,8 @@
   position: fixed;
   background: var(--bg-secondary, var(--bg-surface));
   border: 1px solid var(--border);
-  min-width: 320px;
-  max-width: 480px;
+  min-width: min(90vw, 320px);
+  max-width: min(90vw, 480px);
   max-height: 400px;
   overflow-y: auto;
   z-index: 200;

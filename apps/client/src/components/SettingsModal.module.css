@@ -11,7 +11,7 @@
 .modal {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  width: 480px;
+  width: min(90vw, 480px);
   display: flex;
   flex-direction: column;
   max-height: 90vh;

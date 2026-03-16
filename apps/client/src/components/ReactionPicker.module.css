@@ -4,7 +4,7 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   padding: 8px;
-  width: 252px;
+  width: min(85vw, 252px);
   font-family: var(--font-mono);
 }
 

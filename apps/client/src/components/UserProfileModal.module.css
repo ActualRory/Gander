@@ -9,7 +9,7 @@
 }
 
 .modal {
-  width: 320px;
+  width: min(90vw, 320px);
   background: var(--bg-surface);
   border: 1px solid var(--border);
   display: flex;
@@ -140,7 +140,7 @@
 .subtitleInput {
   all: unset;
   font-family: inherit;
-  font-size: 13px;
+  font-size: max(16px, 1em);
   color: var(--text-dim);
   border-bottom: 1px solid var(--border);
   padding-bottom: 2px;

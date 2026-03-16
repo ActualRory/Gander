@@ -31,6 +31,11 @@
   display: none;
 }
 
+@keyframes backdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 @media (max-width: 640px) {
   .backdrop {
     display: block;
@@ -38,6 +43,7 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
     z-index: 99;
+    animation: backdropIn 0.15s ease;
   }
 }
 
@@ -291,7 +297,6 @@
 
 .renameForm input {
   width: 100%;
-  font-size: 13px;
   padding: 3px 6px;
   background: var(--bg-elevated);
   border-color: var(--accent-dim);
