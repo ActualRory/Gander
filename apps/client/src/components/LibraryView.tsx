@@ -744,13 +744,6 @@ export default function LibraryView({ token }: Props) {
                     <div className={styles.bookSub} title="shelf">{book.shelf.name}</div>
                   )}
                   <div className={styles.bookSub}>{mimeLabel(book.mimeType)} · {formatSize(book.size)}</div>
-                  <button
-                    type="button"
-                    className={styles.reviewBookBtn}
-                    onClick={() => openBookDetail(book)}
-                  >
-                    [review]
-                  </button>
                 </div>
               </div>
             ))}
@@ -786,6 +779,7 @@ export default function LibraryView({ token }: Props) {
           y={bookMenu.y}
           onClose={() => setBookMenu(null)}
           items={[
+            { label: 'view / review', action: () => { void openBookDetail(bookMenu.book); setBookMenu(null) } },
             { label: 'edit', action: () => openEditBook(bookMenu.book) },
             { label: 'copy link', action: () => { void navigator.clipboard.writeText(`[[book:${bookMenu.book.id}]]`); setBookMenu(null) } },
             { label: 'delete', danger: true, action: () => openDeleteBookConfirm(bookMenu.book) },
@@ -830,30 +824,29 @@ export default function LibraryView({ token }: Props) {
 
               {/* Info + reviews */}
               <div className={styles.bookDetailInfo}>
+                {detailBook.author && <div className={styles.bookDetailAuthor}>{detailBook.author}</div>}
+                {detailBook.series && <div className={styles.bookDetailSeries}>{detailBook.series}</div>}
+
                 <div className={styles.bookDetailStats}>
-                  <div className={styles.statRow}>
-                    <span className={styles.statLabel}>uploaded by</span>
-                    <span className={styles.statValue}>{detailBook.uploader.displayName}</span>
-                  </div>
-                  <div className={styles.statRow}>
-                    <span className={styles.statLabel}>uploaded</span>
-                    <span className={styles.statValue}>{formatRelativeDate(detailBook.uploadedAt)}</span>
-                  </div>
-                  {detailBook.author && (
+                  {detailBook.genre && (
                     <div className={styles.statRow}>
-                      <span className={styles.statLabel}>author</span>
-                      <span className={styles.statValue}>{detailBook.author}</span>
-                    </div>
-                  )}
-                  {detailBook.series && (
-                    <div className={styles.statRow}>
-                      <span className={styles.statLabel}>series</span>
-                      <span className={styles.statValue}>{detailBook.series}</span>
+                      <span className={styles.statLabel}>genre</span>
+                      <span className={styles.statValue}>{detailBook.genre}</span>
                     </div>
                   )}
                   <div className={styles.statRow}>
                     <span className={styles.statLabel}>format</span>
                     <span className={styles.statValue}>{mimeLabel(detailBook.mimeType)} · {formatSize(detailBook.size)}</span>
+                  </div>
+                  {detailBook.shelf && (
+                    <div className={styles.statRow}>
+                      <span className={styles.statLabel}>shelf</span>
+                      <span className={styles.statValue}>{detailBook.shelf.name}</span>
+                    </div>
+                  )}
+                  <div className={styles.statRow}>
+                    <span className={styles.statLabel}>added by</span>
+                    <span className={styles.statValue}>{detailBook.uploader.displayName} · {formatRelativeDate(detailBook.uploadedAt)}</span>
                   </div>
                   <div className={styles.statRow}>
                     <span className={styles.statLabel}>rating</span>
