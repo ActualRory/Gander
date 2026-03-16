@@ -190,6 +190,33 @@
   outline: none;
 }
 
+/* ─── Book requests button ─── */
+.requestsBtn {
+  border-top: 1px solid var(--border);
+  padding: 6px 8px;
+  flex-shrink: 0;
+}
+
+.requestsPanelBtn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8em;
+  padding: 4px 8px;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.requestsPanelBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
 /* ─── Genre panel ─── */
 .genrePanel {
   border-top: 1px solid var(--border);
@@ -624,4 +651,90 @@
 .genreRadio input {
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+/* ─── Book requests modal ─── */
+.requestList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+}
+
+.requestItem {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.requestCompleted {
+  opacity: 0.5;
+}
+
+.requestItemMain {
+  font-size: 0.95em;
+  color: var(--text-primary);
+}
+
+.requestTitle {
+  color: var(--text-primary);
+}
+
+.requestAuthor {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.requestItemMeta {
+  display: flex;
+  gap: 10px;
+  font-size: 0.78em;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+
+.requestNotes {
+  font-size: 0.85em;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.requestRequester {
+  color: var(--text-muted);
+}
+
+.requestDate {
+  color: var(--text-muted);
+}
+
+.completeBtn {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78em;
+  padding: 0;
+}
+
+.completeBtn:hover {
+  color: var(--accent);
+}
+
+.requestToggle {
+  margin-bottom: 6px;
+}
+
+.requestForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 4px;
 }

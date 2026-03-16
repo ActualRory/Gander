@@ -235,6 +235,21 @@ export const api = {
     return res.json()
   },
 
+  getBookRequests: (token: string, completed = false) =>
+    request<{ id: string; title: string; author: string | null; notes: string | null; completed: boolean; requestedAt: string; requesterId: string; requester: { displayName: string } }[]>(
+      `/api/library/requests?completed=${completed}`, authed(token)
+    ),
+
+  createBookRequest: (token: string, title: string, author?: string, notes?: string) =>
+    request<{ id: string; title: string; author: string | null; notes: string | null; completed: boolean; requestedAt: string; requesterId: string; requester: { displayName: string } }>(
+      '/api/library/requests', { method: 'POST', body: JSON.stringify({ title, author: author || undefined, notes: notes || undefined }), ...authed(token) }
+    ),
+
+  setBookRequestCompleted: (token: string, requestId: string, completed: boolean) =>
+    request<{ id: string; title: string; author: string | null; notes: string | null; completed: boolean; requestedAt: string; requesterId: string; requester: { displayName: string } }>(
+      `/api/library/requests/${requestId}`, { method: 'PATCH', body: JSON.stringify({ completed }), ...authed(token) }
+    ),
+
   // File Manager
   getFileManagerStats: (token: string) =>
     request<{ totalSize: number; fileCount: number; byChannel: { channelId: string; channelName: string; fileCount: number; totalSize: number }[]; limitBytes: number | null }>(

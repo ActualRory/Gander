@@ -386,4 +386,39 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(204).send()
     },
   )
+
+  // GET /api/library/requests?completed=true|false
+  app.get<{ Querystring: { completed?: string } }>('/requests', async (req) => {
+    const showCompleted = req.query.completed === 'true'
+    return prisma.libraryBookRequest.findMany({
+      where: { completed: showCompleted },
+      orderBy: { requestedAt: 'desc' },
+      include: { requester: { select: { displayName: true } } },
+    })
+  })
+
+  // POST /api/library/requests
+  app.post<{ Body: { title: string; author?: string; notes?: string } }>('/requests', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
+    const { title, author, notes } = req.body as { title: string; author?: string; notes?: string }
+    if (!title?.trim()) return reply.status(400).send({ error: 'title required' })
+    const request = await prisma.libraryBookRequest.create({
+      data: { title: title.trim(), author: author?.trim() || undefined, notes: notes?.trim() || undefined, requesterId: userId },
+      include: { requester: { select: { displayName: true } } },
+    })
+    return reply.status(201).send(request)
+  })
+
+  // PATCH /api/library/requests/:id — toggle completed
+  app.patch<{ Params: { id: string }; Body: { completed: boolean } }>('/requests/:id', async (req, reply) => {
+    const { completed } = req.body as { completed: boolean }
+    const existing = await prisma.libraryBookRequest.findUnique({ where: { id: req.params.id } })
+    if (!existing) return reply.status(404).send({ error: 'Not found' })
+    const updated = await prisma.libraryBookRequest.update({
+      where: { id: req.params.id },
+      data: { completed },
+      include: { requester: { select: { displayName: true } } },
+    })
+    return updated
+  })
 }

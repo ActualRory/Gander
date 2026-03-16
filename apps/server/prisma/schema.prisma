@@ -25,10 +25,11 @@ model User {
   attachments     Attachment[]
   pinnedMessages  PinnedMessage[]
   voiceSessions   VoiceSession[]
-  libraryShelves  LibraryShelf[]
-  libraryBooks    LibraryBook[]
-  libraryReviews  LibraryReview[]
-  gandleResults   GandleResult[]
+  libraryShelves      LibraryShelf[]
+  libraryBooks        LibraryBook[]
+  libraryReviews      LibraryReview[]
+  libraryBookRequests LibraryBookRequest[]
+  gandleResults       GandleResult[]
 }
 
 model Channel {
@@ -193,6 +194,18 @@ model LibraryReview {
   reviewer User        @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
 
   @@unique([bookId, reviewerId])
+}
+
+model LibraryBookRequest {
+  id          String   @id @default(cuid())
+  title       String
+  author      String?
+  notes       String?
+  completed   Boolean  @default(false)
+  requestedAt DateTime @default(now())
+  requesterId String
+
+  requester User @relation(fields: [requesterId], references: [id], onDelete: Cascade)
 }
 
 model Reaction {

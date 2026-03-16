@@ -173,6 +173,18 @@ export default function LibraryView({ token }: Props) {
   const [reviewComment, setReviewComment] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
 
+  // Book requests
+  type BookRequest = { id: string; title: string; author: string | null; notes: string | null; completed: boolean; requestedAt: string; requesterId: string; requester: { displayName: string } }
+  const [requestsOpen, setRequestsOpen] = useState(false)
+  const [requests, setRequests] = useState<BookRequest[]>([])
+  const [completedRequests, setCompletedRequests] = useState<BookRequest[]>([])
+  const [requestsLoading, setRequestsLoading] = useState(false)
+  const [showCompleted, setShowCompleted] = useState(false)
+  const [newRequestTitle, setNewRequestTitle] = useState('')
+  const [newRequestAuthor, setNewRequestAuthor] = useState('')
+  const [newRequestNotes, setNewRequestNotes] = useState('')
+  const [submittingRequest, setSubmittingRequest] = useState(false)
+
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const coverInputRef = useRef<HTMLInputElement>(null)
@@ -481,6 +493,54 @@ export default function LibraryView({ token }: Props) {
     }
   }
 
+  async function openRequests() {
+    setRequestsOpen(true)
+    setShowCompleted(false)
+    setRequestsLoading(true)
+    try {
+      const [open, done] = await Promise.all([
+        api.getBookRequests(token, false),
+        api.getBookRequests(token, true),
+      ])
+      setRequests(open)
+      setCompletedRequests(done)
+    } catch {
+      setError('failed to load book requests')
+    } finally {
+      setRequestsLoading(false)
+    }
+  }
+
+  async function handleSubmitRequest(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newRequestTitle.trim()) return
+    setSubmittingRequest(true)
+    try {
+      const req = await api.createBookRequest(token, newRequestTitle.trim(), newRequestAuthor || undefined, newRequestNotes || undefined)
+      setRequests(prev => [req, ...prev])
+      setNewRequestTitle('')
+      setNewRequestAuthor('')
+      setNewRequestNotes('')
+    } catch {
+      setError('failed to submit request')
+    } finally {
+      setSubmittingRequest(false)
+    }
+  }
+
+  async function handleCompleteRequest(id: string) {
+    try {
+      await api.setBookRequestCompleted(token, id, true)
+      setRequests(prev => {
+        const req = prev.find(r => r.id === id)
+        if (req) setCompletedRequests(c => [{ ...req, completed: true }, ...c])
+        return prev.filter(r => r.id !== id)
+      })
+    } catch {
+      setError('failed to update request')
+    }
+  }
+
   function clearSearch() {
     setSearchQuery('')
     setSearchGenre('')
@@ -552,6 +612,13 @@ export default function LibraryView({ token }: Props) {
             {shelves.length === 0 && !creatingShelf && (
               <div className={styles.empty}>no shelves yet</div>
             )}
+          </div>
+
+          {/* Book requests */}
+          <div className={styles.requestsBtn}>
+            <button type="button" className={styles.requestsPanelBtn} onClick={openRequests}>
+              book requests
+            </button>
           </div>
 
           {/* Genre filter */}
@@ -1028,6 +1095,102 @@ export default function LibraryView({ token }: Props) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Book requests modal */}
+      {requestsOpen && (
+        <div className={styles.modalOverlay} onClick={e => e.target === e.currentTarget && setRequestsOpen(false)}>
+          <div className={styles.modal}>
+            <div className={styles.modalTitle}>
+              book requests
+              <button type="button" className={styles.iconBtn} style={{ float: 'right' }} onClick={() => setRequestsOpen(false)}>[x]</button>
+            </div>
+
+            {requestsLoading && <div className={styles.loading}>loading...</div>}
+
+            {!requestsLoading && (
+              <>
+                {requests.length === 0 && (
+                  <div className={styles.empty} style={{ padding: '8px 0' }}>no open requests</div>
+                )}
+                <div className={styles.requestList}>
+                  {requests.map(r => (
+                    <div key={r.id} className={styles.requestItem}>
+                      <div className={styles.requestItemMain}>
+                        <span className={styles.requestTitle}>{r.title}</span>
+                        {r.author && <span className={styles.requestAuthor}> — {r.author}</span>}
+                      </div>
+                      <div className={styles.requestItemMeta}>
+                        <span className={styles.requestRequester}>requested by {r.requester.displayName}</span>
+                        <span className={styles.requestDate}>{formatRelativeDate(r.requestedAt)}</span>
+                        {r.notes && <div className={styles.requestNotes}>{r.notes}</div>}
+                      </div>
+                      <button type="button" className={styles.completeBtn} onClick={() => handleCompleteRequest(r.id)}>
+                        [mark fulfilled]
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className={styles.requestToggle}>
+                  <button type="button" className={styles.iconBtn} onClick={() => setShowCompleted(v => !v)}>
+                    {showCompleted ? '▾' : '▸'} historical requests ({completedRequests.length})
+                  </button>
+                </div>
+
+                {showCompleted && (
+                  <div className={styles.requestList}>
+                    {completedRequests.map(r => (
+                      <div key={r.id} className={`${styles.requestItem} ${styles.requestCompleted}`}>
+                        <div className={styles.requestItemMain}>
+                          <span className={styles.requestTitle}>{r.title}</span>
+                          {r.author && <span className={styles.requestAuthor}> — {r.author}</span>}
+                        </div>
+                        <div className={styles.requestItemMeta}>
+                          <span className={styles.requestRequester}>requested by {r.requester.displayName}</span>
+                          <span className={styles.requestDate}>{formatRelativeDate(r.requestedAt)}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {completedRequests.length === 0 && (
+                      <div className={styles.empty} style={{ padding: '4px 0' }}>none yet</div>
+                    )}
+                  </div>
+                )}
+
+                <form onSubmit={handleSubmitRequest} className={styles.requestForm}>
+                  <div className={styles.reviewFormTitle}>request a book</div>
+                  <input
+                    type="text"
+                    className={styles.formInput}
+                    placeholder="title *"
+                    value={newRequestTitle}
+                    onChange={e => setNewRequestTitle(e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    className={styles.formInput}
+                    placeholder="author (optional)"
+                    value={newRequestAuthor}
+                    onChange={e => setNewRequestAuthor(e.target.value)}
+                  />
+                  <textarea
+                    className={styles.reviewTextarea}
+                    placeholder="notes (optional)"
+                    value={newRequestNotes}
+                    onChange={e => setNewRequestNotes(e.target.value)}
+                    rows={2}
+                  />
+                  <div className={styles.formActions}>
+                    <button type="submit" className={styles.submitBtn} disabled={!newRequestTitle.trim() || submittingRequest}>
+                      {submittingRequest ? 'submitting...' : '[submit request]'}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
           </div>
         </div>
       )}
