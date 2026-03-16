@@ -1,4 +1,6 @@
 import java.util.Properties
+import java.io.FileOutputStream
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -24,6 +26,22 @@ android {
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
     }
+    signingConfigs {
+        create("release") {
+            val keystoreB64 = System.getenv("ANDROID_KEYSTORE_BASE64")
+            if (keystoreB64 != null) {
+                val keystoreFile = File(buildDir, "release.keystore")
+                keystoreFile.parentFile.mkdirs()
+                FileOutputStream(keystoreFile).use {
+                    it.write(Base64.getDecoder().decode(keystoreB64))
+                }
+                storeFile = keystoreFile
+                storePassword = System.getenv("ANDROID_STORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         getByName("debug") {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
@@ -37,6 +55,7 @@ android {
             }
         }
         getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }

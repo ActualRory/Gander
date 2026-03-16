@@ -16,4 +16,5 @@ export const platform = {
   hasWindowBadge: isTauri && !isAndroid,
   hasCloseEvent: isTauri && !isAndroid,
   hasTray: isTauri && !isAndroid,
+  hasInAppUpdateCheck: isTauri && isAndroid,
 } as const

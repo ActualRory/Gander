@@ -29,6 +29,7 @@ import ContextMenu from '../components/ContextMenu.tsx'
 import { RNNoiseProcessor, rnnoiseSupported } from '../lib/rnnoiseProcessor.ts'
 import UpdateBanner from '../components/UpdateBanner.tsx'
 import { useAppUpdater } from '../lib/useAppUpdater.ts'
+import { useAndroidUpdateCheck } from '../lib/useAndroidUpdateCheck.ts'
 import styles from './Main.module.css'
 
 interface Props {
@@ -1231,15 +1232,17 @@ export default function Main({ auth, onLogout }: Props) {
   }
 
   const updater = useAppUpdater()
+  const androidUpdater = useAndroidUpdateCheck()
+  const activeUpdater = platform.hasInAppUpdateCheck ? androidUpdater : updater
   const userContextMenuUser = userContextMenu ? users.find(u => u.id === userContextMenu.userId) : null
 
   return (
     <div className={styles.root}>
-      {updater.visible && (
+      {activeUpdater.visible && (
         <UpdateBanner
-          state={updater.state}
-          onInstall={updater.install}
-          onDismiss={updater.dismiss}
+          state={activeUpdater.state}
+          onInstall={activeUpdater.install}
+          onDismiss={activeUpdater.dismiss}
         />
       )}
       {errorMessage && <ErrorModal message={errorMessage} onClose={() => setErrorMessage(null)} />}

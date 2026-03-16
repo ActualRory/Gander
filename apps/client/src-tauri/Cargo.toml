@@ -24,4 +24,4 @@ tauri-plugin-updater = { version = "2", features = ["native-tls"] }
 tauri-plugin-process = "2"
 
 [target.'cfg(target_os = "android")'.dependencies]
-tauri = { version = "2", features = ["tray-icon", "devtools"] }
+tauri = { version = "2", features = ["devtools"] }

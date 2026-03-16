@@ -84,3 +84,77 @@ jobs:
             apps/client/src-tauri/target/release/bundle/msi/*.msi.sig
             latest.json
           generate_release_notes: true
+
+  build-android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    env:
+      CARGO_INCREMENTAL: 0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: sdkmanager "ndk;27.0.12077973"
+
+      - name: Set ANDROID_NDK_HOME
+        run: echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> $GITHUB_ENV
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/client/src-tauri -> target
+          cache-on-failure: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @gander/shared build
+
+      - name: Extract version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "APP_VERSION=${VERSION%%-*}" >> $GITHUB_ENV
+
+      - name: Patch tauri.conf.json version
+        run: |
+          jq --arg v "$APP_VERSION" '.version = $v' apps/client/src-tauri/tauri.conf.json > tmp.json
+          mv tmp.json apps/client/src-tauri/tauri.conf.json
+
+      - name: Build Android APK
+        working-directory: apps/client
+        run: pnpm tauri android build --apk
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+
+      - name: Publish APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/client/src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
