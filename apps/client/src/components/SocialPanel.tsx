@@ -74,6 +74,7 @@ export default function SocialPanel({ users, onlineUserIds, voiceParticipants, o
 
   function renderUser(u: User, isOffline: boolean) {
     const status = getStatus(u.id, onlineUserIds, voiceParticipants)
+    const initials = u.displayName.slice(0, 2).toUpperCase()
     return (
       <li
         key={u.id}
@@ -81,7 +82,12 @@ export default function SocialPanel({ users, onlineUserIds, voiceParticipants, o
         onClick={e => onUserClick(u.id, e.clientX, e.clientY)}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onUserRightClick(u.id, e.clientX, e.clientY) }}
       >
-        <span className={styles.dot}>·</span>
+        <span className={styles.avatar}>
+          {u.avatarUrl
+            ? <img src={u.avatarUrl} alt="" className={styles.avatarImg} />
+            : <span className={styles.avatarInitials}>{initials}</span>
+          }
+        </span>
         <span className={styles.userInfo}>
           <span className={styles.userName}>{u.displayName}</span>
           <span className={styles.status}>{status}</span>
