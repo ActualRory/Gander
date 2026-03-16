@@ -22,10 +22,17 @@ export default function ServerSetup({ onConfigured, bootClearing }: Props) {
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
-    const trimmed = url.trim()
+    let trimmed = url.trim()
     if (!trimmed) return
     if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-      setError('URL must start with http:// or https://')
+      trimmed = 'https://' + trimmed
+    }
+    try {
+      const parsed = new URL(trimmed)
+      if (!parsed.port) parsed.port = '3000'
+      trimmed = parsed.origin
+    } catch {
+      setError('Invalid server address')
       return
     }
     setServerUrl(trimmed)
@@ -60,7 +67,7 @@ export default function ServerSetup({ onConfigured, bootClearing }: Props) {
           }}
         >
           <input
-            placeholder="http://your-server:3000"
+            placeholder="gander.servername.win"
             value={url}
             onChange={e => { setError(null); setUrl(e.target.value) }}
             required
