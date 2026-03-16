@@ -2,6 +2,7 @@ import { GANDLE_WORDS } from './gandleWords.ts'
 
 export const WORD_LENGTH = 6
 export const MAX_GUESSES = 6
+export const GANDLE_EPOCH = '2024-01-01'
 
 // Filter to only valid 6-letter words (guards against typos in the word list)
 const ANSWER_WORDS = GANDLE_WORDS.filter(w => w.length === WORD_LENGTH && /^[a-z]+$/.test(w))
@@ -13,6 +14,20 @@ export function todayDate(): string {
   const m = String(d.getUTCMonth() + 1).padStart(2, '0')
   const day = String(d.getUTCDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+/** Returns the date one day before the given "YYYY-MM-DD" string */
+export function prevDate(date: string): string {
+  const d = new Date(date)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Returns the date one day after the given "YYYY-MM-DD" string */
+export function nextDate(date: string): string {
+  const d = new Date(date)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
 }
 
 /** Returns milliseconds until the next UTC midnight */

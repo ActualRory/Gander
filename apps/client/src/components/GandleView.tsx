@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api.ts'
 import {
-  WORD_LENGTH, MAX_GUESSES,
+  WORD_LENGTH, MAX_GUESSES, GANDLE_EPOCH,
   todayDate, getDailyWord, msUntilNextUTCMidnight,
+  prevDate, nextDate,
   evaluateGuess, isValidGuess, getKeyboardStates, formatScore,
   type EvaluatedRow,
 } from '../lib/gandle.ts'
@@ -29,8 +30,14 @@ const KEYBOARD_ROWS = [
   ['Enter','z','x','c','v','b','n','m','⌫'],
 ]
 
-export default function GandleView({ token, currentUserId }: Props) {
-  const date = todayDate()
+interface PuzzleProps {
+  date: string
+  isHistorical: boolean
+  token: string
+  currentUserId: string
+}
+
+function GandlePuzzle({ date, isHistorical, token, currentUserId }: PuzzleProps) {
   const answer = getDailyWord(date)
 
   // Game state
@@ -46,37 +53,35 @@ export default function GandleView({ token, currentUserId }: Props) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [viewingEntry, setViewingEntry] = useState<LeaderboardEntry | null>(null)
 
-  // Countdown to next UTC midnight
-  const [countdown, setCountdown] = useState(() => msUntilNextUTCMidnight())
-  useEffect(() => {
-    const interval = setInterval(() => setCountdown(msUntilNextUTCMidnight()), 1000)
-    return () => clearInterval(interval)
-  }, [])
-
   const progressKey = `gander:gandle-progress:${date}`
 
-  // Load today's state from server, fall back to localStorage for in-progress guesses
+  // Load state from server; for today fall back to localStorage for in-progress guesses
   useEffect(() => {
-    api.gandleToday(token).then(res => {
+    const load = isHistorical ? api.gandleResult(token, date) : api.gandleToday(token)
+    load.then(res => {
       if (res.played && res.result) {
         const rows = res.result.guesses.map(g => evaluateGuess(g, answer))
         setCompletedRows(rows)
         setGameOver(true)
         setSolved(res.result.solved)
-        localStorage.removeItem(progressKey)
+        if (!isHistorical) localStorage.removeItem(progressKey)
+      } else if (isHistorical) {
+        // Not played — reveal the answer
+        setCompletedRows([evaluateGuess(answer, answer)])
+        setGameOver(true)
+        setSolved(false)
       } else {
-        // Restore in-progress guesses from localStorage
+        // Today, not yet played — restore in-progress guesses from localStorage
         try {
           const saved = localStorage.getItem(progressKey)
           if (saved) {
             const { guesses } = JSON.parse(saved) as { guesses: string[] }
-            const rows = guesses.map(g => evaluateGuess(g, answer))
-            setCompletedRows(rows)
+            setCompletedRows(guesses.map(g => evaluateGuess(g, answer)))
           }
         } catch { /* ignore */ }
       }
     }).catch(() => {}).finally(() => setLoading(false))
-  }, [token, answer])
+  }, [token, date, isHistorical, answer, progressKey])
 
   // Load leaderboard on mount and whenever game is completed
   useEffect(() => {
@@ -120,7 +125,6 @@ export default function GandleView({ token, currentUserId }: Props) {
       if (didSolve) showMessage(newRows.length === 1 ? 'genius!' : newRows.length <= 3 ? 'great!' : 'got it!', 2000)
       else showMessage(answer.toUpperCase(), 4000)
 
-      // Submit to server and clear local progress
       try {
         await api.gandleSubmit(token, date, wordList, didSolve)
         localStorage.removeItem(progressKey)
@@ -128,7 +132,6 @@ export default function GandleView({ token, currentUserId }: Props) {
         setLeaderboard(lb)
       } catch { /* ignore submission errors */ }
     } else {
-      // Persist in-progress guesses
       localStorage.setItem(progressKey, JSON.stringify({ guesses: wordList }))
     }
   }, [currentInput, completedRows, answer, token, date, progressKey, showMessage])
@@ -136,7 +139,7 @@ export default function GandleView({ token, currentUserId }: Props) {
   // Physical keyboard handler
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (gameOver) return
+      if (isHistorical || gameOver) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key === 'Enter') { submitGuess(); return }
       if (e.key === 'Backspace') { setCurrentInput(p => p.slice(0, -1)); return }
@@ -146,10 +149,10 @@ export default function GandleView({ token, currentUserId }: Props) {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [gameOver, currentInput, submitGuess])
+  }, [isHistorical, gameOver, currentInput, submitGuess])
 
   function handleKey(key: string) {
-    if (gameOver) return
+    if (isHistorical || gameOver) return
     if (key === 'Enter') { submitGuess(); return }
     if (key === '⌫') { setCurrentInput(p => p.slice(0, -1)); return }
     if (currentInput.length < WORD_LENGTH) setCurrentInput(p => p + key)
@@ -162,17 +165,13 @@ export default function GandleView({ token, currentUserId }: Props) {
   while (displayRows.length < MAX_GUESSES) displayRows.push({ type: 'empty' })
 
   if (loading) {
-    return <div className={styles.root}><div className={styles.loading}>loading...</div></div>
+    return <div className={styles.loading}>loading...</div>
   }
 
-  return (
-    <div className={styles.root}>
-      <div className={styles.header}>
-        <span className={styles.title}>GANDLE</span>
-        <span className={styles.dateLabel}>{date}</span>
-        <span className={styles.countdown}>next: {String(Math.floor(countdown / 3_600_000)).padStart(2, '0')}:{String(Math.floor((countdown % 3_600_000) / 60_000)).padStart(2, '0')}:{String(Math.floor((countdown % 60_000) / 1000)).padStart(2, '0')} UTC</span>
-      </div>
+  const hasTiles = isHistorical && gameOver && leaderboard.length > 0
 
+  return (
+    <>
       {message && <div className={styles.message}>{message}</div>}
 
       <div className={styles.columns}>
@@ -215,7 +214,7 @@ export default function GandleView({ token, currentUserId }: Props) {
             })}
           </div>
 
-          {!gameOver && (
+          {!gameOver && !isHistorical && (
             <div className={styles.keyboard}>
               {KEYBOARD_ROWS.map((row, ri) => (
                 <div key={ri} className={styles.keyRow}>
@@ -245,16 +244,48 @@ export default function GandleView({ token, currentUserId }: Props) {
                 : `the word was: ${answer.toUpperCase()}`}
             </div>
           )}
+
+          {hasTiles && (
+            <div className={styles.communityTiles}>
+              {leaderboard.map(entry => (
+                <div
+                  key={entry.userId}
+                  className={`${styles.tile} ${entry.userId === currentUserId ? styles.tileSelf : ''}`}
+                >
+                  <div className={styles.tileName}>{entry.displayName}</div>
+                  <div className={`${styles.tileScore} ${entry.solved ? styles.lbScoreSolved : styles.lbScoreFailed}`}>
+                    {formatScore(entry.guessCount, entry.solved)}
+                  </div>
+                  {entry.guesses && (
+                    <div className={styles.tileBoard}>
+                      {entry.guesses.map((g, i) => {
+                        const row = evaluateGuess(g, answer)
+                        return (
+                          <div key={i} className={styles.tileRow}>
+                            {row.letters.map((l, j) => (
+                              <div key={j} className={`${styles.tileCell} ${styles[l.state]}`} />
+                            ))}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Right: leaderboard */}
         <div className={styles.leaderboardCol}>
           <div className={styles.leaderboardTitle}>
-            today's scores
+            {isHistorical ? `scores — ${date}` : "today's scores"}
             {!gameOver && leaderboard.length > 0 && <span className={styles.leaderboardHint}> — play to see guesses</span>}
           </div>
           {leaderboard.length === 0 && (
-            <div className={styles.leaderboardEmpty}>no scores yet today</div>
+            <div className={styles.leaderboardEmpty}>
+              {isHistorical ? 'no scores for this date' : 'no scores yet today'}
+            </div>
           )}
           {leaderboard.map(entry => (
             <button
@@ -270,7 +301,6 @@ export default function GandleView({ token, currentUserId }: Props) {
             </button>
           ))}
 
-          {/* Guess replay for selected entry */}
           {viewingEntry && viewingEntry.guesses && (
             <div className={styles.replayPanel}>
               <div className={styles.replayTitle}>{viewingEntry.displayName}'s guesses</div>
@@ -290,7 +320,51 @@ export default function GandleView({ token, currentUserId }: Props) {
           )}
         </div>
       </div>
+    </>
+  )
+}
 
+export default function GandleView({ token, currentUserId }: Props) {
+  const [viewDate, setViewDate] = useState(todayDate)
+  const today = todayDate()
+  const isHistorical = viewDate !== today
+
+  // Countdown to next UTC midnight (only shown for today)
+  const [countdown, setCountdown] = useState(() => msUntilNextUTCMidnight())
+  useEffect(() => {
+    const interval = setInterval(() => setCountdown(msUntilNextUTCMidnight()), 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  return (
+    <div className={styles.root}>
+      <div className={styles.header}>
+        <span className={styles.title}>GANDLE</span>
+        <button
+          onClick={() => setViewDate(d => prevDate(d))}
+          disabled={viewDate <= GANDLE_EPOCH}
+          className={styles.navBtn}
+        >◀</button>
+        <span className={styles.dateLabel}>{viewDate}</span>
+        <button
+          onClick={() => setViewDate(d => nextDate(d))}
+          disabled={!isHistorical}
+          className={styles.navBtn}
+        >▶</button>
+        {!isHistorical && (
+          <span className={styles.countdown}>
+            next: {String(Math.floor(countdown / 3_600_000)).padStart(2, '0')}:{String(Math.floor((countdown % 3_600_000) / 60_000)).padStart(2, '0')}:{String(Math.floor((countdown % 60_000) / 1000)).padStart(2, '0')} UTC
+          </span>
+        )}
+      </div>
+
+      <GandlePuzzle
+        key={viewDate}
+        date={viewDate}
+        isHistorical={isHistorical}
+        token={token}
+        currentUserId={currentUserId}
+      />
     </div>
   )
 }

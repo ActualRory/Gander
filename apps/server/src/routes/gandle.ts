@@ -31,6 +31,23 @@ export const gandleRoutes: FastifyPluginAsync = async (app) => {
     }
   })
 
+  // GET /api/gandle/result?date=YYYY-MM-DD
+  // Returns the current user's result for any date (or null if not played)
+  app.get<{ Querystring: { date?: string } }>('/result', async (req) => {
+    const { userId } = req.user as { userId: string }
+    const date = req.query.date ?? todayDate()
+    const result = await prisma.gandleResult.findUnique({
+      where: { userId_date: { userId, date } },
+    })
+    return {
+      date,
+      played: result !== null,
+      result: result
+        ? { guesses: JSON.parse(result.guesses) as string[], solved: result.solved }
+        : null,
+    }
+  })
+
   // POST /api/gandle/submit  { date, guesses: string[], solved: boolean }
   app.post<{ Body: { date: string; guesses: string[]; solved: boolean } }>(
     '/submit',

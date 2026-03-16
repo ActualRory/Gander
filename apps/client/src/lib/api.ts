@@ -264,6 +264,11 @@ export const api = {
       '/api/gandle/submit', { method: 'POST', body: JSON.stringify({ date, guesses, solved }), ...authed(token) }
     ),
 
+  gandleResult: (token: string, date: string) =>
+    request<{ date: string; played: boolean; result: { guesses: string[]; solved: boolean } | null }>(
+      `/api/gandle/result?date=${encodeURIComponent(date)}`, authed(token)
+    ),
+
   gandleLeaderboard: (token: string, date: string) =>
     request<{ userId: string; displayName: string; avatarUrl: string | null; solved: boolean; guessCount: number; guesses: string[] | null; completedAt: string }[]>(
       `/api/gandle/leaderboard?date=${encodeURIComponent(date)}`, authed(token)
