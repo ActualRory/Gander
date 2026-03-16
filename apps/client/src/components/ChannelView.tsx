@@ -114,6 +114,14 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const editTextareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (!editingMessageId) return
+    const el = editTextareaRef.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [editingMessageId])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const firstUnreadRef = useRef<HTMLDivElement | null>(null)
@@ -717,7 +725,6 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void saveEdit() }
                       if (e.key === 'Escape') { setEditingMessageId(null); setEditInput('') }
                     }}
-                    autoFocus
                   />
                   <span className={styles.editHint}>[enter] save  [esc] cancel</span>
                 </div>
