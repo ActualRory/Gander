@@ -1,0 +1,7 @@
+gander.tastethevideogame.win {
+    reverse_proxy server:3000
+}
+
+jellyfin.tastethevideogame.win {
+    reverse_proxy localhost:8096
+}
