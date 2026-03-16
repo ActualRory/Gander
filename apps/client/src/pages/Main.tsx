@@ -299,7 +299,8 @@ export default function Main({ auth, onLogout }: Props) {
       if (activeChannel.type !== 'DM') activity = `In #${activeChannel.name}`
     }
     wsRef.current.send({ type: 'activity:update', payload: { activity } })
-  }, [voiceChannelId, activeUtilityId, activeChannel, channels])
+    setUserActivities(prev => ({ ...prev, [auth.userId]: activity }))
+  }, [voiceChannelId, activeUtilityId, activeChannel, channels, auth.userId])
 
   // Auto-close stream view if the streamer stops sharing
   useEffect(() => {
