@@ -172,6 +172,8 @@ export default function LibraryView({ token }: Props) {
   const [reviewRating, setReviewRating] = useState(0)
   const [reviewComment, setReviewComment] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
+  const [showReviewForm, setShowReviewForm] = useState(false)
+  const [reviewMenu, setReviewMenu] = useState<{ review: LibraryReview; x: number; y: number } | null>(null)
 
   // Book requests
   type BookRequest = { id: string; title: string; author: string | null; notes: string | null; completed: boolean; requestedAt: string; requesterId: string; requester: { displayName: string } }
@@ -258,8 +260,7 @@ export default function LibraryView({ token }: Props) {
       setDetailReviews(data.reviews)
       setDetailAvgRating(data.avgRating)
       setDetailReviewCount(data.reviewCount)
-      const mine = data.reviews.find(r => r.reviewerId === myUserId)
-      if (mine) { setReviewRating(mine.rating); setReviewComment(mine.comment ?? '') }
+      setShowReviewForm(false)
     } catch {
       setError('failed to load reviews')
     } finally {
@@ -272,6 +273,7 @@ export default function LibraryView({ token }: Props) {
     setDetailReviews([])
     setReviewRating(0)
     setReviewComment('')
+    setShowReviewForm(false)
   }
 
   async function handleSubmitReview(e: React.FormEvent) {
@@ -293,6 +295,9 @@ export default function LibraryView({ token }: Props) {
       const avg = allRatings.reduce((s, r) => s + r.rating, 0) / allRatings.length
       setDetailAvgRating(avg)
       setDetailReviewCount(allRatings.length)
+      setReviewRating(0)
+      setReviewComment('')
+      setShowReviewForm(false)
     } catch {
       setError('failed to submit review')
     } finally {
@@ -787,6 +792,18 @@ export default function LibraryView({ token }: Props) {
         />
       )}
 
+      {/* Review context menu (own review) */}
+      {reviewMenu && (
+        <ContextMenu
+          x={reviewMenu.x}
+          y={reviewMenu.y}
+          onClose={() => setReviewMenu(null)}
+          items={[
+            { label: 'edit review', action: () => { setReviewRating(reviewMenu.review.rating); setReviewComment(reviewMenu.review.comment ?? ''); setShowReviewForm(true); setReviewMenu(null) } },
+          ] satisfies ContextMenuItem[]}
+        />
+      )}
+
       {/* Book detail modal */}
       {detailBook && (
         <div className={styles.modalOverlay} onClick={e => e.target === e.currentTarget && closeBookDetail()}>
@@ -868,7 +885,11 @@ export default function LibraryView({ token }: Props) {
                       <div className={styles.reviewList}>
                         <div className={styles.reviewListTitle}>reviews ({detailReviewCount})</div>
                         {detailReviews.map(r => (
-                          <div key={r.id} className={`${styles.reviewItem} ${r.reviewerId === myUserId ? styles.reviewMine : ''}`}>
+                          <div
+                            key={r.id}
+                            className={`${styles.reviewItem} ${r.reviewerId === myUserId ? styles.reviewMine : ''}`}
+                            onContextMenu={r.reviewerId === myUserId ? e => { e.preventDefault(); setReviewMenu({ review: r, x: e.clientX, y: e.clientY }) } : undefined}
+                          >
                             <div className={styles.reviewItemHeader}>
                               <Stars value={r.rating} />
                               <span className={styles.reviewerName}>{r.reviewer.displayName}</span>
@@ -881,32 +902,40 @@ export default function LibraryView({ token }: Props) {
                       </div>
                     )}
 
-                    {/* Review form */}
-                    <form onSubmit={handleSubmitReview} className={styles.reviewForm}>
-                      <div className={styles.reviewFormTitle}>
-                        {myReview ? 'update your review' : 'leave a review'}
-                      </div>
-                      <div className={styles.reviewFormRow}>
-                        <StarPicker value={reviewRating} onChange={setReviewRating} />
-                        {reviewRating > 0 && <span className={styles.ratingNum}>{reviewRating} / 5</span>}
-                      </div>
-                      <textarea
-                        className={styles.reviewTextarea}
-                        placeholder="comment (optional)"
-                        value={reviewComment}
-                        onChange={e => setReviewComment(e.target.value)}
-                        rows={3}
-                      />
-                      <div className={styles.formActions}>
-                        <button
-                          type="submit"
-                          className={styles.submitBtn}
-                          disabled={reviewRating < 1 || submittingReview}
-                        >
-                          {submittingReview ? 'submitting...' : myReview ? '[update]' : '[submit]'}
-                        </button>
-                      </div>
-                    </form>
+                    {/* Review form toggle / form */}
+                    {!myReview && !showReviewForm && (
+                      <button type="button" className={styles.leaveReviewBtn} onClick={() => setShowReviewForm(true)}>
+                        [leave a review]
+                      </button>
+                    )}
+                    {showReviewForm && (
+                      <form onSubmit={handleSubmitReview} className={styles.reviewForm}>
+                        <div className={styles.reviewFormTitle}>{myReview ? 'update your review' : 'leave a review'}</div>
+                        <div className={styles.reviewFormRow}>
+                          <StarPicker value={reviewRating} onChange={setReviewRating} />
+                          {reviewRating > 0 && <span className={styles.ratingNum}>{reviewRating} / 5</span>}
+                        </div>
+                        <textarea
+                          className={styles.reviewTextarea}
+                          placeholder="comment (optional)"
+                          value={reviewComment}
+                          onChange={e => setReviewComment(e.target.value)}
+                          rows={3}
+                        />
+                        <div className={styles.formActions}>
+                          <button
+                            type="submit"
+                            className={styles.submitBtn}
+                            disabled={reviewRating < 1 || submittingReview}
+                          >
+                            {submittingReview ? 'submitting...' : myReview ? '[update]' : '[submit]'}
+                          </button>
+                          <button type="button" className={styles.cancelBtn} onClick={() => { setShowReviewForm(false); setReviewRating(0); setReviewComment('') }}>
+                            [cancel]
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </>
                 )}
               </div>

@@ -1008,6 +1008,20 @@
 }
 
 /* ─── Review form ─── */
+.leaveReviewBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: left;
+}
+.leaveReviewBtn:hover {
+  color: var(--text-primary);
+}
+
 .reviewForm {
   display: flex;
   flex-direction: column;
