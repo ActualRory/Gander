@@ -119,8 +119,49 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
       },
     })
     if (!book) return reply.status(404).send({ error: 'Not found' })
-    return book
+    const agg = await prisma.libraryReview.aggregate({
+      where: { bookId: req.params.bookId },
+      _avg: { rating: true },
+      _count: { rating: true },
+    })
+    return { ...book, avgRating: agg._avg.rating, reviewCount: agg._count.rating }
   })
+
+  // GET /api/library/books/:bookId/reviews
+  app.get<{ Params: { bookId: string } }>('/books/:bookId/reviews', async (req, reply) => {
+    const book = await prisma.libraryBook.findUnique({ where: { id: req.params.bookId } })
+    if (!book) return reply.status(404).send({ error: 'Not found' })
+    const reviews = await prisma.libraryReview.findMany({
+      where: { bookId: req.params.bookId },
+      orderBy: { createdAt: 'desc' },
+      include: { reviewer: { select: { displayName: true } } },
+    })
+    const agg = await prisma.libraryReview.aggregate({
+      where: { bookId: req.params.bookId },
+      _avg: { rating: true },
+      _count: { rating: true },
+    })
+    return { reviews, avgRating: agg._avg.rating, reviewCount: agg._count.rating }
+  })
+
+  // POST /api/library/books/:bookId/reviews (upsert — one review per user per book)
+  app.post<{ Params: { bookId: string }; Body: { rating: number; comment?: string } }>(
+    '/books/:bookId/reviews',
+    async (req, reply) => {
+      const { userId } = req.user as { userId: string }
+      const { rating, comment } = req.body as { rating: number; comment?: string }
+      if (!rating || rating < 1 || rating > 5) return reply.status(400).send({ error: 'rating must be 1–5' })
+      const book = await prisma.libraryBook.findUnique({ where: { id: req.params.bookId } })
+      if (!book) return reply.status(404).send({ error: 'Not found' })
+      const review = await prisma.libraryReview.upsert({
+        where: { bookId_reviewerId: { bookId: req.params.bookId, reviewerId: userId } },
+        create: { bookId: req.params.bookId, reviewerId: userId, rating, comment: comment?.trim() || null },
+        update: { rating, comment: comment?.trim() || null },
+        include: { reviewer: { select: { displayName: true } } },
+      })
+      return reply.status(201).send(review)
+    },
+  )
 
   // GET /api/library/books/search?q=&genre=
   app.get<{ Querystring: { q?: string; genre?: string } }>('/books/search', async (req) => {
@@ -176,6 +217,7 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
     let bookMimeType: string | null = null
     let bookSize = 0
     let coverUrl: string | null = null
+    let pendingCoverUrl: string | null = null
 
     // Override global fields:0 limit to allow the title/author/series fields
     const parts = req.parts({ limits: { fields: 10, fileSize: 50 * 1024 * 1024 } })
@@ -195,6 +237,10 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
       }
       if (part.type === 'field' && part.fieldname === 'genre') {
         genre = String(part.value).trim() || null
+        continue
+      }
+      if (part.type === 'field' && part.fieldname === 'coverUrl') {
+        pendingCoverUrl = String(part.value).trim() || null
         continue
       }
       if (part.type !== 'file') continue
@@ -227,6 +273,7 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
     if (!bookStoredName || !bookFilename || !bookMimeType) {
       return reply.status(400).send({ error: 'Book file required (field name: "file")' })
     }
+    if (!coverUrl && pendingCoverUrl) coverUrl = pendingCoverUrl
     if (!title) title = bookFilename
 
     try {

@@ -27,6 +27,7 @@ model User {
   voiceSessions   VoiceSession[]
   libraryShelves  LibraryShelf[]
   libraryBooks    LibraryBook[]
+  libraryReviews  LibraryReview[]
   gandleResults   GandleResult[]
 }
 
@@ -174,8 +175,24 @@ model LibraryBook {
   uploaderId String
   shelfId    String
 
-  uploader User         @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
-  shelf    LibraryShelf @relation(fields: [shelfId], references: [id], onDelete: Cascade)
+  uploader User            @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  shelf    LibraryShelf    @relation(fields: [shelfId], references: [id], onDelete: Cascade)
+  reviews  LibraryReview[]
+}
+
+model LibraryReview {
+  id         String   @id @default(cuid())
+  rating     Int      // 1-5
+  comment    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  bookId     String
+  reviewerId String
+
+  book     LibraryBook @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  reviewer User        @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, reviewerId])
 }
 
 model Reaction {

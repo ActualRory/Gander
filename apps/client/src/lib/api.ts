@@ -186,8 +186,18 @@ export const api = {
     ),
 
   getLibraryBookPreview: (token: string, bookId: string) =>
-    request<{ id: string; title: string; author: string | null; series: string | null; genre: string | null; coverUrl: string | null; mimeType: string; size: number; shelf: { id: string; name: string } | null }>(
+    request<{ id: string; title: string; author: string | null; series: string | null; genre: string | null; coverUrl: string | null; mimeType: string; size: number; shelf: { id: string; name: string } | null; avgRating: number | null; reviewCount: number }>(
       `/api/library/books/${bookId}`, authed(token)
+    ),
+
+  getBookReviews: (token: string, bookId: string) =>
+    request<{ reviews: { id: string; rating: number; comment: string | null; createdAt: string; reviewerId: string; reviewer: { displayName: string } }[]; avgRating: number | null; reviewCount: number }>(
+      `/api/library/books/${bookId}/reviews`, authed(token)
+    ),
+
+  submitBookReview: (token: string, bookId: string, rating: number, comment: string) =>
+    request<{ id: string; rating: number; comment: string | null; createdAt: string; reviewerId: string; reviewer: { displayName: string } }>(
+      `/api/library/books/${bookId}/reviews`, { method: 'POST', body: JSON.stringify({ rating, comment: comment || undefined }), ...authed(token) }
     ),
 
   getChannelPreview: (token: string, channelId: string) =>
@@ -203,7 +213,7 @@ export const api = {
     return request<unknown[]>(`/api/library/books/search${query}`, authed(token))
   },
 
-  uploadLibraryBook: async (token: string, shelfId: string, file: File, title: string, cover?: File | null, author?: string, series?: string, genre?: string) => {
+  uploadLibraryBook: async (token: string, shelfId: string, file: File, title: string, cover?: File | null, author?: string, series?: string, genre?: string, coverUrl?: string) => {
     const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
     const form = new FormData()
     form.append('file', file)
@@ -212,6 +222,7 @@ export const api = {
     if (series) form.append('series', series)
     if (genre) form.append('genre', genre)
     if (cover) form.append('cover', cover)
+    if (coverUrl) form.append('coverUrl', coverUrl)
     const res = await fetch(`${base}/api/library/shelves/${shelfId}/books`, {
       method: 'POST',
       body: form,

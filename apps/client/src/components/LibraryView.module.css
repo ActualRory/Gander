@@ -371,6 +371,15 @@
   margin-bottom: 8px;
 }
 
+.bookCoverBtn {
+  display: block;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
 .bookCover {
   width: 120px;
   height: 160px;

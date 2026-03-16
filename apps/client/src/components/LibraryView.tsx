@@ -14,6 +14,10 @@ type LibraryBook = {
   uploader: { displayName: string }
   shelf?: { id: string; name: string }
 }
+type LibraryReview = {
+  id: string; rating: number; comment: string | null; createdAt: string
+  reviewerId: string; reviewer: { displayName: string }
+}
 
 type SortKey = 'title' | 'author' | 'series'
 
@@ -43,8 +47,60 @@ function sortBooks(books: LibraryBook[], key: SortKey): LibraryBook[] {
     const bv = (b[key] ?? '').toLowerCase()
     if (!av && bv) return 1
     if (av && !bv) return -1
-    return av.localeCompare(bv)
+    const primary = av.localeCompare(bv)
+    if (primary !== 0) return primary
+    // Secondary: title when sorting by series or author
+    if (key !== 'title') {
+      return (a.title ?? '').toLowerCase().localeCompare((b.title ?? '').toLowerCase())
+    }
+    return 0
   })
+}
+
+function formatRelativeDate(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 30) return `${days}d ago`
+  return new Date(iso).toLocaleDateString()
+}
+
+function Stars({ value, max = 5 }: { value: number; max?: number }) {
+  const filled = Math.round(value)
+  return (
+    <span className={styles.stars}>
+      {Array.from({ length: max }, (_, i) => (
+        <span key={i} className={i < filled ? styles.starFull : styles.starEmpty}>★</span>
+      ))}
+    </span>
+  )
+}
+
+function StarPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [hover, setHover] = useState(0)
+  const active = hover || value
+  return (
+    <span className={styles.starPicker}>
+      {Array.from({ length: 5 }, (_, i) => (
+        <button
+          key={i}
+          type="button"
+          className={active > i ? styles.starPickerFull : styles.starPickerEmpty}
+          onMouseEnter={() => setHover(i + 1)}
+          onMouseLeave={() => setHover(0)}
+          onClick={() => onChange(i + 1)}
+        >★</button>
+      ))}
+    </span>
+  )
+}
+
+function parseTokenUserId(token: string): string {
+  try { return (JSON.parse(atob(token.split('.')[1])) as { userId?: string }).userId ?? '' } catch { return '' }
 }
 
 export default function LibraryView({ token }: Props) {
@@ -52,7 +108,7 @@ export default function LibraryView({ token }: Props) {
   const [selectedShelfId, setSelectedShelfId] = useState<string | null>(null)
   const [books, setBooks] = useState<LibraryBook[]>([])
   const [loadingBooks, setLoadingBooks] = useState(false)
-  const [sortBy, setSortBy] = useState<SortKey>('title')
+  const [sortBy, setSortBy] = useState<SortKey>('series')
 
   // Search mode
   const [searchQuery, setSearchQuery] = useState('')
@@ -87,6 +143,7 @@ export default function LibraryView({ token }: Props) {
   const [uploadGenre, setUploadGenre] = useState<Genre | ''>('')
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadCover, setUploadCover] = useState<File | null>(null)
+  const [uploadCoverUrl, setUploadCoverUrl] = useState('')
   const [uploading, setUploading] = useState(false)
 
   // Book context menu
@@ -106,10 +163,22 @@ export default function LibraryView({ token }: Props) {
   const [editCoverUrl, setEditCoverUrl] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // Book detail modal + reviews
+  const [detailBook, setDetailBook] = useState<LibraryBook | null>(null)
+  const [detailReviews, setDetailReviews] = useState<LibraryReview[]>([])
+  const [detailAvgRating, setDetailAvgRating] = useState<number | null>(null)
+  const [detailReviewCount, setDetailReviewCount] = useState(0)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [reviewRating, setReviewRating] = useState(0)
+  const [reviewComment, setReviewComment] = useState('')
+  const [submittingReview, setSubmittingReview] = useState(false)
+
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const coverInputRef = useRef<HTMLInputElement>(null)
   const editCoverInputRef = useRef<HTMLInputElement>(null)
+
+  const myUserId = parseTokenUserId(token)
 
   useEffect(() => { fetchShelves() }, [])
 
@@ -161,6 +230,61 @@ export default function LibraryView({ token }: Props) {
       setError('failed to load books')
     } finally {
       setLoadingBooks(false)
+    }
+  }
+
+  async function openBookDetail(book: LibraryBook) {
+    setDetailBook(book)
+    setDetailReviews([])
+    setDetailAvgRating(null)
+    setDetailReviewCount(0)
+    setReviewRating(0)
+    setReviewComment('')
+    setDetailLoading(true)
+    try {
+      const data = await api.getBookReviews(token, book.id)
+      setDetailReviews(data.reviews)
+      setDetailAvgRating(data.avgRating)
+      setDetailReviewCount(data.reviewCount)
+      const mine = data.reviews.find(r => r.reviewerId === myUserId)
+      if (mine) { setReviewRating(mine.rating); setReviewComment(mine.comment ?? '') }
+    } catch {
+      setError('failed to load reviews')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  function closeBookDetail() {
+    setDetailBook(null)
+    setDetailReviews([])
+    setReviewRating(0)
+    setReviewComment('')
+  }
+
+  async function handleSubmitReview(e: React.FormEvent) {
+    e.preventDefault()
+    if (!detailBook || reviewRating < 1) return
+    setSubmittingReview(true)
+    try {
+      const review = await api.submitBookReview(token, detailBook.id, reviewRating, reviewComment)
+      setDetailReviews(prev => {
+        const existing = prev.findIndex(r => r.reviewerId === myUserId)
+        if (existing >= 0) {
+          const updated = [...prev]
+          updated[existing] = review
+          return updated
+        }
+        return [review, ...prev]
+      })
+      const allRatings = [...detailReviews.filter(r => r.reviewerId !== myUserId), review]
+      const avg = allRatings.reduce((s, r) => s + r.rating, 0) / allRatings.length
+      setDetailAvgRating(avg)
+      setDetailReviewCount(allRatings.length)
+    } catch {
+      setError('failed to submit review')
+    } finally {
+      setSubmittingReview(false)
     }
   }
 
@@ -235,6 +359,7 @@ export default function LibraryView({ token }: Props) {
       const book = await api.uploadLibraryBook(
         token, selectedShelfId, uploadFile, uploadTitle, uploadCover,
         uploadAuthor || undefined, uploadSeries || undefined, uploadGenre || undefined,
+        uploadCoverUrl && !uploadCover ? uploadCoverUrl : undefined,
       ) as LibraryBook
       setBooks(prev => [...prev, book])
       setShelves(prev => prev.map(s => s.id === selectedShelfId
@@ -247,6 +372,7 @@ export default function LibraryView({ token }: Props) {
       setUploadGenre('')
       setUploadFile(null)
       setUploadCover(null)
+      setUploadCoverUrl('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'upload failed')
     } finally {
@@ -367,6 +493,9 @@ export default function LibraryView({ token }: Props) {
     ? sortBooks(searchResults, sortBy)
     : sortBooks(books, sortBy)
   const bookCount = isSearchMode ? searchResults.length : books.length
+
+  // Find my review in detail modal
+  const myReview = detailReviews.find(r => r.reviewerId === myUserId)
 
   return (
     <div className={styles.root}>
@@ -525,12 +654,11 @@ export default function LibraryView({ token }: Props) {
                 onDragEnd={() => { setDragBookId(null); setDragSourceShelfId(null); setDragOverShelfId(null) }}
                 onContextMenu={e => { e.preventDefault(); setBookMenu({ book, x: e.clientX, y: e.clientY }) }}
               >
-                <a
-                  href={resolveAttachmentUrl(`/uploads/${book.storedName}`)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={styles.bookCoverLink}
-                  title={`open ${book.title}`}
+                <button
+                  type="button"
+                  className={styles.bookCoverBtn}
+                  onClick={() => openBookDetail(book)}
+                  title={`view ${book.title}`}
                 >
                   {book.coverUrl
                     ? <img src={book.coverUrl.startsWith('http') ? book.coverUrl : resolveAttachmentUrl(book.coverUrl)} alt={book.title} className={styles.bookCover} />
@@ -539,7 +667,7 @@ export default function LibraryView({ token }: Props) {
                         <span className={styles.mimeLabel}>{mimeLabel(book.mimeType)}</span>
                       </div>
                     )}
-                </a>
+                </button>
                 <div className={styles.bookMeta}>
                   <div className={styles.bookTitle}>{book.title}</div>
                   {book.author && <div className={styles.bookSub}>{book.author}</div>}
@@ -551,10 +679,10 @@ export default function LibraryView({ token }: Props) {
                   <div className={styles.bookSub}>{mimeLabel(book.mimeType)} · {formatSize(book.size)}</div>
                   <button
                     type="button"
-                    className={styles.deleteBookBtn}
-                    onClick={() => openDeleteBookConfirm(book)}
+                    className={styles.reviewBookBtn}
+                    onClick={() => openBookDetail(book)}
                   >
-                    [delete]
+                    [review]
                   </button>
                 </div>
               </div>
@@ -596,6 +724,135 @@ export default function LibraryView({ token }: Props) {
             { label: 'delete', danger: true, action: () => openDeleteBookConfirm(bookMenu.book) },
           ] satisfies ContextMenuItem[]}
         />
+      )}
+
+      {/* Book detail modal */}
+      {detailBook && (
+        <div className={styles.modalOverlay} onClick={e => e.target === e.currentTarget && closeBookDetail()}>
+          <div className={styles.bookDetailModal}>
+            <div className={styles.bookDetailHeader}>
+              <span className={styles.bookDetailTitle}>{detailBook.title}</span>
+              <div className={styles.bookDetailHeaderRight}>
+                <a
+                  href={resolveAttachmentUrl(`/uploads/${detailBook.storedName}`)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.downloadLink}
+                >
+                  [download]
+                </a>
+                <button type="button" className={styles.iconBtn} onClick={closeBookDetail}>[x]</button>
+              </div>
+            </div>
+
+            <div className={styles.bookDetailBody}>
+              {/* Cover */}
+              <div className={styles.bookDetailCover}>
+                {detailBook.coverUrl
+                  ? <img
+                      src={detailBook.coverUrl.startsWith('http') ? detailBook.coverUrl : resolveAttachmentUrl(detailBook.coverUrl)}
+                      alt={detailBook.title}
+                      className={styles.bookDetailCoverImg}
+                    />
+                  : (
+                    <div className={styles.bookDetailCoverPlaceholder}>
+                      <span className={styles.mimeLabel}>{mimeLabel(detailBook.mimeType)}</span>
+                    </div>
+                  )}
+              </div>
+
+              {/* Info + reviews */}
+              <div className={styles.bookDetailInfo}>
+                <div className={styles.bookDetailStats}>
+                  <div className={styles.statRow}>
+                    <span className={styles.statLabel}>uploaded by</span>
+                    <span className={styles.statValue}>{detailBook.uploader.displayName}</span>
+                  </div>
+                  <div className={styles.statRow}>
+                    <span className={styles.statLabel}>uploaded</span>
+                    <span className={styles.statValue}>{formatRelativeDate(detailBook.uploadedAt)}</span>
+                  </div>
+                  {detailBook.author && (
+                    <div className={styles.statRow}>
+                      <span className={styles.statLabel}>author</span>
+                      <span className={styles.statValue}>{detailBook.author}</span>
+                    </div>
+                  )}
+                  {detailBook.series && (
+                    <div className={styles.statRow}>
+                      <span className={styles.statLabel}>series</span>
+                      <span className={styles.statValue}>{detailBook.series}</span>
+                    </div>
+                  )}
+                  <div className={styles.statRow}>
+                    <span className={styles.statLabel}>format</span>
+                    <span className={styles.statValue}>{mimeLabel(detailBook.mimeType)} · {formatSize(detailBook.size)}</span>
+                  </div>
+                  <div className={styles.statRow}>
+                    <span className={styles.statLabel}>rating</span>
+                    <span className={styles.statValue}>
+                      {detailAvgRating !== null
+                        ? <><Stars value={detailAvgRating} /> <span className={styles.ratingNum}>{detailAvgRating.toFixed(1)} / 5</span> <span className={styles.ratingCount}>({detailReviewCount})</span></>
+                        : <span className={styles.statMuted}>no reviews yet</span>
+                      }
+                    </span>
+                  </div>
+                </div>
+
+                {detailLoading && <div className={styles.reviewsLoading}>loading reviews...</div>}
+
+                {!detailLoading && (
+                  <>
+                    {/* Review list */}
+                    {detailReviews.length > 0 && (
+                      <div className={styles.reviewList}>
+                        <div className={styles.reviewListTitle}>reviews ({detailReviewCount})</div>
+                        {detailReviews.map(r => (
+                          <div key={r.id} className={`${styles.reviewItem} ${r.reviewerId === myUserId ? styles.reviewMine : ''}`}>
+                            <div className={styles.reviewItemHeader}>
+                              <Stars value={r.rating} />
+                              <span className={styles.reviewerName}>{r.reviewer.displayName}</span>
+                              {r.reviewerId === myUserId && <span className={styles.reviewYouTag}>[you]</span>}
+                              <span className={styles.reviewDate}>{formatRelativeDate(r.createdAt)}</span>
+                            </div>
+                            {r.comment && <div className={styles.reviewComment}>{r.comment}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Review form */}
+                    <form onSubmit={handleSubmitReview} className={styles.reviewForm}>
+                      <div className={styles.reviewFormTitle}>
+                        {myReview ? 'update your review' : 'leave a review'}
+                      </div>
+                      <div className={styles.reviewFormRow}>
+                        <StarPicker value={reviewRating} onChange={setReviewRating} />
+                        {reviewRating > 0 && <span className={styles.ratingNum}>{reviewRating} / 5</span>}
+                      </div>
+                      <textarea
+                        className={styles.reviewTextarea}
+                        placeholder="comment (optional)"
+                        value={reviewComment}
+                        onChange={e => setReviewComment(e.target.value)}
+                        rows={3}
+                      />
+                      <div className={styles.formActions}>
+                        <button
+                          type="submit"
+                          className={styles.submitBtn}
+                          disabled={reviewRating < 1 || submittingReview}
+                        >
+                          {submittingReview ? 'submitting...' : myReview ? '[update]' : '[submit]'}
+                        </button>
+                      </div>
+                    </form>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete book confirm modal */}
@@ -866,7 +1123,19 @@ export default function LibraryView({ token }: Props) {
                   type="file"
                   accept="image/jpeg,image/png,image/gif,image/webp"
                   style={{ display: 'none' }}
-                  onChange={e => setUploadCover(e.target.files?.[0] ?? null)}
+                  onChange={e => { setUploadCover(e.target.files?.[0] ?? null); setUploadCoverUrl('') }}
+                />
+              </label>
+
+              <label className={styles.formLabel}>
+                — or cover URL
+                <input
+                  type="url"
+                  value={uploadCoverUrl}
+                  onChange={e => { setUploadCoverUrl(e.target.value); setUploadCover(null) }}
+                  placeholder="https://..."
+                  className={styles.formInput}
+                  disabled={!!uploadCover}
                 />
               </label>
 
@@ -881,6 +1150,7 @@ export default function LibraryView({ token }: Props) {
                     setUploadOpen(false)
                     setUploadFile(null)
                     setUploadCover(null)
+                    setUploadCoverUrl('')
                     setUploadTitle('')
                     setUploadAuthor('')
                     setUploadSeries('')
