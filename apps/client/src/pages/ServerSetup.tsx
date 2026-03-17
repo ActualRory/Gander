@@ -28,9 +28,7 @@ export default function ServerSetup({ onConfigured, bootClearing }: Props) {
       trimmed = 'https://' + trimmed
     }
     try {
-      const parsed = new URL(trimmed)
-      if (!parsed.port) parsed.port = '3000'
-      trimmed = parsed.origin
+      trimmed = new URL(trimmed).origin
     } catch {
       setError('Invalid server address')
       return
