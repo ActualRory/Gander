@@ -1,6 +1,6 @@
 # Gander — Codebase Notes
 
-Self-hosted Discord/Teamspeak alternative. V1: DMs, group chats, voice channels. Screen sharing is post-V1.
+Self-hosted Discord/Teamspeak alternative. V1: DMs, group chats, voice channels, screen sharing.
 
 ## Stack
 
@@ -122,6 +122,7 @@ pnpm tauri android dev   # connects to running AVD
 - [x] Message history (paginated `?before=` cursor)
 - [x] DMs
 - [x] Voice (LiveKit)
+- [x] Screen sharing (LiveKit ScreenShare track, optional system audio, quality settings)
 - [x] Font bundling (Fira Code woff2)
 - [x] Production Docker Compose + GitHub Actions release pipeline
 - [x] Android Tauri foundation (Rust side done, `tauri android init` not yet run)
