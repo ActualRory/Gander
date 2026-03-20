@@ -125,6 +125,8 @@ pnpm tauri android dev   # connects to running AVD
 - [x] Screen sharing (LiveKit ScreenShare track, optional system audio, quality settings)
 - [x] Font bundling (Fira Code woff2)
 - [x] Production Docker Compose + GitHub Actions release pipeline
+- [x] macOS support (universal binary — Intel + Apple Silicon, .dmg + auto-updater)
 - [x] Android Tauri foundation (Rust side done, `tauri android init` not yet run)
 - [ ] `tauri android init` + Android CI/CD job
+- [ ] Apple code signing + notarization (optional — requires Apple Developer account)
 - [ ] Presence indicators
