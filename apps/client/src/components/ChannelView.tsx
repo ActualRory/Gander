@@ -127,6 +127,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const firstUnreadRef = useRef<HTMLDivElement | null>(null)
   const isAtBottomRef = useRef(true)
   const initialScrollDoneRef = useRef(false)
+  // tempId → content: tracks optimistic messages awaiting server echo
+  const pendingOwnMsgs = useRef<Map<string, string>>(new Map())
   const [isAtBottom, setIsAtBottom] = useState(true)
 
   const mentionUsers = mentionQuery !== null
@@ -200,7 +202,21 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   useEffect(() => {
     return ws.on(event => {
       if (event.type === 'message:new' && event.payload.channelId === channel.id) {
-        setMessages(prev => [...prev, event.payload])
+        setMessages(prev => {
+          // Replace our own optimistic message with the confirmed server message
+          if (event.payload.authorId === currentUserId && pendingOwnMsgs.current.size > 0) {
+            const tempIdx = prev.findIndex(m =>
+              pendingOwnMsgs.current.has(m.id) && m.content === event.payload.content
+            )
+            if (tempIdx !== -1) {
+              pendingOwnMsgs.current.delete(prev[tempIdx].id)
+              const next = [...prev]
+              next[tempIdx] = event.payload
+              return next
+            }
+          }
+          return [...prev, event.payload]
+        })
       }
       if (event.type === 'message:edited' && event.payload.channelId === channel.id) {
         setMessages(prev => prev.map(m => m.id === event.payload.id ? event.payload : m))
@@ -354,6 +370,29 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     const readyIds = pendingAttachments.filter(p => p.attachmentId !== null).map(p => p.attachmentId as string)
     if (!trimmed && readyIds.length === 0) return
     if (pendingAttachments.some(p => p.uploading)) return
+
+    // Optimistically add the message immediately so it's visible even if the WS
+    // echo is lost (e.g. due to a brief network drop between send and broadcast).
+    const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const optimistic: Message = {
+      id: tempId,
+      channelId: channel.id,
+      authorId: currentUserId,
+      authorName: users.find(u => u.id === currentUserId)?.displayName ?? '',
+      content: trimmed,
+      createdAt: new Date().toISOString(),
+      editedAt: null,
+      postNumber: null,
+      replyTo: replyingTo
+        ? { id: replyingTo.id, authorName: replyingTo.authorName, content: replyingTo.content.slice(0, 100) || '[image]' }
+        : null,
+      reactions: [],
+      mentions: [],
+      attachments: [],
+      isSystem: false,
+    }
+    pendingOwnMsgs.current.set(tempId, trimmed)
+    setMessages(prev => [...prev, optimistic])
 
     ws.send({
       type: 'message:send',
