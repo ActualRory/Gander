@@ -37,10 +37,7 @@
     ],
     "macOS": {
       "entitlements": "Entitlements.plist",
-      "infoPlist": {
-        "NSMicrophoneUsageDescription": "Gander needs microphone access for voice channels",
-        "NSCameraUsageDescription": "Gander needs camera access for video calls"
-      }
+      "infoPlist": "Info.plist"
     }
   },
   "plugins": {
