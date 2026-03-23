@@ -6,8 +6,8 @@ import { prisma } from '../lib/prisma.js'
 // channelId → set of connected sockets (text channel rooms)
 const rooms = new Map<string, Set<WebSocket>>()
 
-// userId → socket (global presence)
-const connectedUsers = new Map<string, WebSocket>()
+// userId → set of connected sockets (supports multiple devices)
+const connectedUsers = new Map<string, Set<WebSocket>>()
 
 // Voice presence: channelId → set of userIds currently in that voice channel
 const voiceRooms = new Map<string, Set<string>>()
@@ -53,17 +53,23 @@ export function broadcast(channelId: string, event: ServerEvent, exclude?: WebSo
 
 export function broadcastAll(event: ServerEvent, exclude?: WebSocket) {
   const data = JSON.stringify(event)
-  for (const socket of connectedUsers.values()) {
-    if (socket !== exclude && socket.readyState === socket.OPEN) {
-      socket.send(data)
+  for (const sockets of connectedUsers.values()) {
+    for (const socket of sockets) {
+      if (socket !== exclude && socket.readyState === socket.OPEN) {
+        socket.send(data)
+      }
     }
   }
 }
 
 export function broadcastToUser(userId: string, event: ServerEvent) {
-  const socket = connectedUsers.get(userId)
-  if (socket && socket.readyState === socket.OPEN) {
-    socket.send(JSON.stringify(event))
+  const sockets = connectedUsers.get(userId)
+  if (!sockets) return
+  const data = JSON.stringify(event)
+  for (const socket of sockets) {
+    if (socket.readyState === socket.OPEN) {
+      socket.send(data)
+    }
   }
 }
 
@@ -87,7 +93,12 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
       try {
         const payload = req.server.jwt.verify<{ userId: string }>(msg.token)
         userId = payload.userId
-        connectedUsers.set(userId, socket)
+        let userSockets = connectedUsers.get(userId)
+        if (!userSockets) {
+          userSockets = new Set()
+          connectedUsers.set(userId, userSockets)
+        }
+        userSockets.add(socket)
         // Send current online list to the newly connected client
         socket.send(JSON.stringify({
           type: 'users:init',
@@ -115,19 +126,21 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
           type: 'activity:init',
           payload: { activities: Object.fromEntries(userActivity) },
         }))
-        // Notify all other clients this user came online (include user data so new users are discoverable)
-        const connectedUser = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { id: true, username: true, displayName: true, subtitle: true, avatarUrl: true, createdAt: true, lastSeenAt: true },
-        })
-        if (connectedUser) {
-          broadcastAll({
-            type: 'user:online',
-            payload: {
-              userId,
-              user: { ...connectedUser, createdAt: connectedUser.createdAt.toISOString(), lastSeenAt: connectedUser.lastSeenAt?.toISOString() ?? null },
-            },
-          }, socket)
+        // Notify all other clients this user came online (only for first connection)
+        if (userSockets.size === 1) {
+          const connectedUser = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, username: true, displayName: true, subtitle: true, avatarUrl: true, createdAt: true, lastSeenAt: true },
+          })
+          if (connectedUser) {
+            broadcastAll({
+              type: 'user:online',
+              payload: {
+                userId,
+                user: { ...connectedUser, createdAt: connectedUser.createdAt.toISOString(), lastSeenAt: connectedUser.lastSeenAt?.toISOString() ?? null },
+              },
+            }, socket)
+          }
         }
       } catch {
         socket.close(4001, 'Unauthorized')
@@ -343,36 +356,44 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
 
   socket.on('close', async () => {
     if (userId) {
-      connectedUsers.delete(userId)
-      userActivity.delete(userId)
-      // Clean up any typing indicators for this user
-      for (const [channelId] of channelTyping) {
-        clearTyping(channelId, userId)
+      const userSockets = connectedUsers.get(userId)
+      if (userSockets) {
+        userSockets.delete(socket)
+        if (userSockets.size === 0) connectedUsers.delete(userId)
       }
-      const now = new Date()
-      await prisma.user.update({ where: { id: userId }, data: { lastSeenAt: now } }).catch(() => {})
-      broadcastAll({ type: 'user:offline', payload: { userId, lastSeenAt: now.toISOString() } })
-      // Auto-leave voice channel on disconnect
-      const voiceChannelId = userVoiceChannel.get(userId)
-      if (voiceChannelId) {
-        voiceRooms.get(voiceChannelId)?.delete(userId)
-        if ((voiceRooms.get(voiceChannelId)?.size ?? 0) === 0) {
-          voiceChannelStartTimes.delete(voiceChannelId)
-        }
-        userVoiceChannel.delete(userId)
-        userVoiceState.delete(userId)
-        broadcastAll({ type: 'voice:leave', payload: { userId, channelId: voiceChannelId } })
-        const sessionId = userVoiceSessionId.get(userId)
-        if (sessionId) {
-          await prisma.voiceSession.update({ where: { id: sessionId }, data: { leftAt: new Date() } }).catch(() => {})
-          userVoiceSessionId.delete(userId)
-        }
+      // Clean up channel rooms this socket joined
+      for (const channelId of joinedChannels) {
+        rooms.get(channelId)?.delete(socket)
       }
-    }
-    for (const channelId of joinedChannels) {
-      rooms.get(channelId)?.delete(socket)
-      if (userId) {
-        broadcast(channelId, { type: 'presence:leave', payload: { userId, channelId } })
+      // Only broadcast offline/cleanup when ALL sockets for this user are gone
+      if (!connectedUsers.has(userId)) {
+        userActivity.delete(userId)
+        // Clean up any typing indicators for this user
+        for (const [channelId] of channelTyping) {
+          clearTyping(channelId, userId)
+        }
+        const now = new Date()
+        await prisma.user.update({ where: { id: userId }, data: { lastSeenAt: now } }).catch(() => {})
+        broadcastAll({ type: 'user:offline', payload: { userId, lastSeenAt: now.toISOString() } })
+        // Auto-leave voice channel on disconnect
+        const voiceChannelId = userVoiceChannel.get(userId)
+        if (voiceChannelId) {
+          voiceRooms.get(voiceChannelId)?.delete(userId)
+          if ((voiceRooms.get(voiceChannelId)?.size ?? 0) === 0) {
+            voiceChannelStartTimes.delete(voiceChannelId)
+          }
+          userVoiceChannel.delete(userId)
+          userVoiceState.delete(userId)
+          broadcastAll({ type: 'voice:leave', payload: { userId, channelId: voiceChannelId } })
+          const sessionId = userVoiceSessionId.get(userId)
+          if (sessionId) {
+            await prisma.voiceSession.update({ where: { id: sessionId }, data: { leftAt: new Date() } }).catch(() => {})
+            userVoiceSessionId.delete(userId)
+          }
+        }
+        for (const channelId of joinedChannels) {
+          broadcast(channelId, { type: 'presence:leave', payload: { userId, channelId } })
+        }
       }
     }
   })
