@@ -106,6 +106,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const lastTypingSentRef = useRef(0)
   const [lightbox, setLightbox] = useState<{ url: string; filename: string } | null>(null)
   const [imgMenu, setImgMenu] = useState<{ url: string; filename: string; x: number; y: number } | null>(null)
+  const [imageSaved, setImageSaved] = useState(false)
+  const [downloadToast, setDownloadToast] = useState<string | null>(null)
   const [ogData, setOgData] = useState<Map<string, OgData>>(new Map())
   const [pinsOpen, setPinsOpen] = useState(false)
   const [pins, setPins] = useState<PinnedMessageEntry[]>([])
@@ -539,6 +541,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   }
 
   async function downloadImage(url: string, filename: string) {
+    if (imageSaved) return
     const res = await fetch(url)
     const blob = await res.blob()
     const a = document.createElement('a')
@@ -548,9 +551,14 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     a.click()
     a.remove()
     URL.revokeObjectURL(a.href)
+    setImageSaved(true)
+    setDownloadToast(filename)
+    setTimeout(() => setImageSaved(false), 2000)
+    setTimeout(() => setDownloadToast(null), 3000)
   }
 
   useEffect(() => {
+    setImageSaved(false)
     if (!lightbox) return
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setLightbox(null) }
     document.addEventListener('keydown', onKey)
@@ -987,10 +995,15 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
             onClick={e => e.stopPropagation()}
           />
           <div className={styles.lightboxControls}>
-            <button type="button" className={styles.lightboxClose} onClick={e => { e.stopPropagation(); void downloadImage(lightbox.url, lightbox.filename) }}>[save]</button>
+            <button type="button" className={`${styles.lightboxClose}${imageSaved ? ` ${styles.lightboxSaved}` : ''}`} disabled={imageSaved} onClick={e => { e.stopPropagation(); void downloadImage(lightbox.url, lightbox.filename) }}>{imageSaved ? '[saved]' : '[save]'}</button>
             <button type="button" className={styles.lightboxClose} onClick={() => setLightbox(null)}>[close]</button>
           </div>
         </div>,
+        document.body
+      )}
+
+      {downloadToast && createPortal(
+        <div className={styles.downloadToast}>downloaded {downloadToast}</div>,
         document.body
       )}
 

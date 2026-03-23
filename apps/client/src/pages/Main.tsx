@@ -602,6 +602,11 @@ export default function Main({ auth, onLogout }: Props) {
     }
 
     try {
+      if (!navigator.mediaDevices) {
+        setErrorMessage('microphone access is not available — check your system permissions for Gander')
+        return
+      }
+
       // Reset deafen state synchronously before registering TrackSubscribed —
       // the handler fires during room.connect() before React can re-render and
       // run the isDeafenedRef sync effect, so the ref must be correct in advance.

@@ -633,6 +633,40 @@
   color: var(--text-primary);
 }
 
+.lightboxSaved {
+  color: var(--text-muted);
+  border-color: var(--border);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.lightboxSaved:hover {
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+.downloadToast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 600;
+  background: var(--bg-surface);
+  border: 1px solid var(--accent-dim);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 6px 16px;
+  animation: toastFade 3s ease-in-out;
+}
+
+@keyframes toastFade {
+  0% { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  10% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 /* ---- OG link preview card ---- */
 .ogCard {
   display: flex;
