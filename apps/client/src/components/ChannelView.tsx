@@ -104,7 +104,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const [editInput, setEditInput] = useState('')
   const [typingUserIds, setTypingUserIds] = useState<string[]>([])
   const lastTypingSentRef = useRef(0)
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState<{ url: string; filename: string } | null>(null)
+  const [imgMenu, setImgMenu] = useState<{ url: string; filename: string; x: number; y: number } | null>(null)
   const [ogData, setOgData] = useState<Map<string, OgData>>(new Map())
   const [pinsOpen, setPinsOpen] = useState(false)
   const [pins, setPins] = useState<PinnedMessageEntry[]>([])
@@ -537,12 +538,24 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     void handleFilesSelected(e.dataTransfer.files)
   }
 
+  async function downloadImage(url: string, filename: string) {
+    const res = await fetch(url)
+    const blob = await res.blob()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(a.href)
+  }
+
   useEffect(() => {
-    if (!lightboxUrl) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setLightboxUrl(null) }
+    if (!lightbox) return
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setLightbox(null) }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [lightboxUrl])
+  }, [lightbox])
 
   // Fetch OG metadata for non-image URLs in messages
   useEffect(() => {
@@ -779,7 +792,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                       alt={att.filename}
                       className={styles.messageImage}
                       loading="lazy"
-                      onClick={() => setLightboxUrl(resolveAttachmentUrl(att.url))}
+                      onClick={() => setLightbox({ url: resolveAttachmentUrl(att.url), filename: att.filename })}
+                      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setImgMenu({ url: resolveAttachmentUrl(att.url), filename: att.filename, x: e.clientX, y: e.clientY }) }}
                       title={`${att.filename} (${formatBytes(att.size)})`}
                     />
                   ) : (
@@ -797,16 +811,20 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                   ))}
                 </div>
               )}
-              {msg.content && extractImageUrls(msg.content).map(url => (
-                <img
-                  key={url}
-                  src={url}
-                  alt={url}
-                  className={styles.messageImage}
-                  loading="lazy"
-                  onClick={() => setLightboxUrl(url)}
-                />
-              ))}
+              {msg.content && extractImageUrls(msg.content).map(url => {
+                const urlFilename = url.split('/').pop()?.split('?')[0] || 'image'
+                return (
+                  <img
+                    key={url}
+                    src={url}
+                    alt={url}
+                    className={styles.messageImage}
+                    loading="lazy"
+                    onClick={() => setLightbox({ url, filename: urlFilename })}
+                    onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setImgMenu({ url, filename: urlFilename, x: e.clientX, y: e.clientY }) }}
+                  />
+                )
+              })}
               {msg.content && extractVideoUrls(msg.content).map(url => (
                 <video
                   key={url}
@@ -955,22 +973,43 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         document.body
       )}
 
-      {lightboxUrl && createPortal(
+      {lightbox && createPortal(
         <div
           className={styles.lightboxOverlay}
-          onClick={() => setLightboxUrl(null)}
+          onClick={() => setLightbox(null)}
           role="dialog"
           tabIndex={0}
         >
           <img
-            src={lightboxUrl}
+            src={lightbox.url}
             alt="full size"
             className={styles.lightboxImage}
             onClick={e => e.stopPropagation()}
           />
-          <button type="button" className={styles.lightboxClose} onClick={() => setLightboxUrl(null)}>[close]</button>
+          <div className={styles.lightboxControls}>
+            <button type="button" className={styles.lightboxClose} onClick={e => { e.stopPropagation(); void downloadImage(lightbox.url, lightbox.filename) }}>[save]</button>
+            <button type="button" className={styles.lightboxClose} onClick={() => setLightbox(null)}>[close]</button>
+          </div>
         </div>,
         document.body
+      )}
+
+      {imgMenu && (
+        <ContextMenu
+          x={imgMenu.x}
+          y={imgMenu.y}
+          items={[
+            {
+              label: 'save image',
+              action: () => void downloadImage(imgMenu.url, imgMenu.filename),
+            },
+            {
+              label: 'open fullscreen',
+              action: () => setLightbox({ url: imgMenu.url, filename: imgMenu.filename }),
+            },
+          ]}
+          onClose={() => setImgMenu(null)}
+        />
       )}
 
       {replyingTo && (
