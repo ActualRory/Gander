@@ -148,7 +148,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
       return
     }
 
-    switch (event.type) {
+    try { switch (event.type) {
       case 'channel:join': {
         const { channelId } = event.payload
         if (!rooms.has(channelId)) rooms.set(channelId, new Set())
@@ -278,24 +278,37 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         const mentionedUserIds = mentionedUsers.map(u => u.id).filter(id => id !== userId)
 
         const isDm = channel?.type === 'DM' || channel?.type === 'GROUP'
-        let postNumber: number | null = null
-        if (!isDm) {
-          const { _max } = await prisma.message.aggregate({ _max: { postNumber: true } })
-          postNumber = (_max.postNumber ?? 0) + 1
-        }
 
-        const message = await prisma.message.create({
-          data: {
-            content,
-            channelId,
-            authorId: userId,
-            postNumber,
-            ...(replyToId ? { replyToId } : {}),
-            ...(mentionedUserIds.length > 0 ? {
-              mentions: { createMany: { data: mentionedUserIds.map(uid => ({ userId: uid })), skipDuplicates: true } },
-            } : {}),
-          },
-        })
+        // Retry loop to handle postNumber unique-constraint races
+        let message: Awaited<ReturnType<typeof prisma.message.create>> | null = null
+        for (let attempt = 0; attempt < 3; attempt++) {
+          let postNumber: number | null = null
+          if (!isDm) {
+            const { _max } = await prisma.message.aggregate({ _max: { postNumber: true } })
+            postNumber = (_max.postNumber ?? 0) + 1
+          }
+          try {
+            message = await prisma.message.create({
+              data: {
+                content,
+                channelId,
+                authorId: userId,
+                postNumber,
+                ...(replyToId ? { replyToId } : {}),
+                ...(mentionedUserIds.length > 0 ? {
+                  mentions: { createMany: { data: mentionedUserIds.map(uid => ({ userId: uid })), skipDuplicates: true } },
+                } : {}),
+              },
+            })
+            break
+          } catch (err: unknown) {
+            // Retry on unique constraint violation (postNumber race)
+            const code = err && typeof err === 'object' && 'code' in err ? (err as { code: string }).code : ''
+            if (code === 'P2002' && attempt < 2) continue
+            throw err
+          }
+        }
+        if (!message) return
 
         // Link attachments (only the uploader's unlinked ones)
         let attachments: Array<{ id: string; storedName: string; mimeType: string; filename: string; size: number }> = []
@@ -351,6 +364,8 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         }
         break
       }
+    } } catch (err) {
+      console.error('[ws] handler error:', err)
     }
   })
 

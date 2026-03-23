@@ -85,6 +85,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [hasOlder, setHasOlder] = useState(true)
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [msgMenu, setMsgMenu] = useState<{ msgId: string; x: number; y: number } | null>(null)
   const [reactionPicker, setReactionPicker] = useState<{ msgId: string; x: number; y: number } | null>(null)
@@ -159,6 +161,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     setLoading(true)
     setMessages([])
     setReplyingTo(null)
+    setHasOlder(true)
     initialScrollDoneRef.current = false
     isAtBottomRef.current = true
 
@@ -174,7 +177,9 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         api.getMessages(token, channel.id, { after }),
       ]).then(([beforeMsgs, afterMsgs]) => {
         if (!cancelled) {
-          setMessages([...beforeMsgs, ...afterMsgs])
+          const combined = [...beforeMsgs, ...afterMsgs]
+          setMessages(combined)
+          setHasOlder(beforeMsgs.length >= 50)
           setLoading(false)
         }
       }).catch(() => {
@@ -184,6 +189,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       api.getMessages(token, channel.id).then(msgs => {
         if (!cancelled) {
           setMessages(msgs)
+          setHasOlder(msgs.length >= 50)
           setLoading(false)
         }
       }).catch(() => {
@@ -300,6 +306,30 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDown) }
   }, [pinsOpen])
 
+  async function loadOlderMessages() {
+    if (loadingOlder || !hasOlder || messages.length === 0) return
+    setLoadingOlder(true)
+    const el = messagesContainerRef.current
+    const prevScrollHeight = el?.scrollHeight ?? 0
+    try {
+      const oldest = messages[0]
+      const older = await api.getMessages(token, channel.id, { before: oldest.createdAt })
+      if (older.length < 50) setHasOlder(false)
+      if (older.length > 0) {
+        setMessages(prev => {
+          const existingIds = new Set(prev.map(m => m.id))
+          const fresh = older.filter(m => !existingIds.has(m.id))
+          return [...fresh, ...prev]
+        })
+        // Preserve scroll position after prepending
+        requestAnimationFrame(() => {
+          if (el) el.scrollTop = el.scrollHeight - prevScrollHeight
+        })
+      }
+    } catch { /* ignore */ }
+    setLoadingOlder(false)
+  }
+
   function handleMessagesScroll() {
     const el = messagesContainerRef.current
     if (!el) return
@@ -307,6 +337,10 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     isAtBottomRef.current = atBottom
     setIsAtBottom(atBottom)
     if (atBottom) onMarkRead()
+    // Load older messages when scrolled near the top
+    if (el.scrollTop < 200 && hasOlder && !loadingOlder) {
+      loadOlderMessages()
+    }
   }
 
   function scrollToBottom() {
@@ -671,6 +705,10 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         className={styles.messages}
         onScroll={handleMessagesScroll}
       >
+        {loadingOlder && <p className={styles.status}>loading older messages...</p>}
+        {!loading && !loadingOlder && !hasOlder && messages.length > 0 && (
+          <p className={styles.status}>beginning of conversation</p>
+        )}
         {loading && <p className={styles.status}>loading...</p>}
         {!loading && messages.length === 0 && (
           <p className={styles.status}>no messages yet — say something</p>
