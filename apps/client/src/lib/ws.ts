@@ -6,9 +6,11 @@ type EventHandler = (event: ServerEvent) => void
 export class GanderWS {
   private ws: WebSocket | null = null
   private handlers = new Set<EventHandler>()
+  private reconnectHandlers = new Set<() => void>()
   private authed = false
   private queue: ClientEvent[] = []
   private dead = false
+  private hasConnectedOnce = false
   private token: string
   private wsUrl: string
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -31,11 +33,19 @@ export class GanderWS {
         ws.send(JSON.stringify(event))
       }
       this.queue = []
+      if (this.hasConnectedOnce) {
+        for (const cb of this.reconnectHandlers) cb()
+      }
+      this.hasConnectedOnce = true
     }
 
     ws.onmessage = (e: MessageEvent<string>) => {
       const event = JSON.parse(e.data) as ServerEvent
       for (const handler of this.handlers) handler(event)
+    }
+
+    ws.onerror = () => {
+      // onclose will fire after onerror and handle reconnect
     }
 
     ws.onclose = () => {
@@ -60,9 +70,15 @@ export class GanderWS {
     return () => this.handlers.delete(handler)
   }
 
+  onReconnect(cb: () => void): () => void {
+    this.reconnectHandlers.add(cb)
+    return () => this.reconnectHandlers.delete(cb)
+  }
+
   close() {
     this.dead = true
     if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer)
+    this.reconnectHandlers.clear()
     this.ws?.close()
   }
 }

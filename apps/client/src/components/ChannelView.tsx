@@ -134,6 +134,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const initialScrollDoneRef = useRef(false)
   // tempId → content: tracks optimistic messages awaiting server echo
   const pendingOwnMsgs = useRef<Map<string, string>>(new Map())
+  // Ref to the createdAt of the last received message, for catch-up fetches after reconnect
+  const lastMessageCreatedAtRef = useRef<string | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
 
   const mentionUsers = mentionQuery !== null
@@ -212,11 +214,12 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     return ws.on(event => {
       if (event.type === 'message:new' && event.payload.channelId === channel.id) {
         setMessages(prev => {
-          // Replace our own optimistic message with the confirmed server message
+          // Replace our own optimistic message with the confirmed server message.
+          // Prefer matching by tempId (exact); fall back to content match for old messages.
           if (event.payload.authorId === currentUserId && pendingOwnMsgs.current.size > 0) {
-            const tempIdx = prev.findIndex(m =>
-              pendingOwnMsgs.current.has(m.id) && m.content === event.payload.content
-            )
+            const tempIdx = event.payload.tempId !== undefined
+              ? prev.findIndex(m => m.id === event.payload.tempId)
+              : prev.findIndex(m => pendingOwnMsgs.current.has(m.id) && m.content === event.payload.content)
             if (tempIdx !== -1) {
               pendingOwnMsgs.current.delete(prev[tempIdx].id)
               const next = [...prev]
@@ -224,6 +227,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
               return next
             }
           }
+          // Deduplicate: ignore if already present (e.g. arrived before catch-up fetch)
+          if (prev.some(m => m.id === event.payload.id)) return prev
           return [...prev, event.payload]
         })
       }
@@ -243,6 +248,30 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       }
     })
   }, [channel.id, ws])
+
+  // Keep lastMessageCreatedAtRef current so the reconnect handler can use it
+  useEffect(() => {
+    if (messages.length > 0) {
+      lastMessageCreatedAtRef.current = messages[messages.length - 1].createdAt
+    }
+  }, [messages])
+
+  // On WS reconnect: re-join channel for presence tracking and catch up on missed messages
+  useEffect(() => {
+    return ws.onReconnect(() => {
+      ws.send({ type: 'channel:join', payload: { channelId: channel.id } })
+      const after = lastMessageCreatedAtRef.current
+      if (after) {
+        api.getMessages(token, channel.id, { after }).then(missed => {
+          if (missed.length === 0) return
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id))
+            return [...prev, ...missed.filter(m => !existingIds.has(m.id))]
+          })
+        }).catch(() => {})
+      }
+    })
+  }, [channel.id, token, ws])
 
   // Initial scroll: to first unread (centred) or to bottom
   useEffect(() => {
@@ -436,6 +465,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       payload: {
         channelId: channel.id,
         content: trimmed,
+        tempId,
         ...(replyingTo ? { replyToId: replyingTo.id } : {}),
         ...(readyIds.length > 0 ? { attachmentIds: readyIds } : {}),
       },

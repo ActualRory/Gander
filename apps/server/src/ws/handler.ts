@@ -238,7 +238,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
       }
 
       case 'message:send': {
-        const { channelId, content, replyToId, attachmentIds } = event.payload
+        const { channelId, content, replyToId, attachmentIds, tempId } = event.payload
         // Clear typing indicator when message is sent
         clearTyping(channelId, userId)
         const hasContent = content.trim().length > 0
@@ -346,6 +346,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
               size: a.size,
             })),
             isSystem: false,
+            ...(tempId ? { tempId } : {}),
           },
         }
 

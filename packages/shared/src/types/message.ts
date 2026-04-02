@@ -32,6 +32,8 @@ export interface Message {
   mentions: string[]
   attachments: AttachmentInfo[]
   isSystem: boolean
+  /** Client-generated correlation ID echoed back by the server to resolve optimistic messages */
+  tempId?: string
 }
 
 export interface PinnedMessageEntry {
