@@ -107,9 +107,6 @@ function loadLastRead(userId: string, channelId: string): string | null {
   return localStorage.getItem(`gander:lastread:${userId}:${channelId}`)
 }
 
-function saveLastRead(userId: string, channelId: string) {
-  localStorage.setItem(`gander:lastread:${userId}:${channelId}`, new Date().toISOString())
-}
 
 interface VoiceSettings {
   pttMode: boolean

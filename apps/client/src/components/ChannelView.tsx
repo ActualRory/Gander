@@ -264,10 +264,15 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     })
   }, [channel.id, ws])
 
-  // Keep lastMessageCreatedAtRef current so the reconnect handler can use it
+  // Keep lastMessageCreatedAtRef current so the reconnect handler can use it.
+  // Only update from confirmed server messages — skip optimistic placeholders whose
+  // client-generated createdAt could be ahead of the server clock, causing the
+  // catch-up fetch to miss messages if used as the `after` cursor.
   useEffect(() => {
-    if (messages.length > 0) {
-      lastMessageCreatedAtRef.current = messages[messages.length - 1].createdAt
+    if (messages.length === 0) return
+    const last = messages[messages.length - 1]
+    if (!pendingOwnMsgs.current.has(last.id)) {
+      lastMessageCreatedAtRef.current = last.createdAt
     }
   }, [messages])
 

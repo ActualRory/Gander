@@ -78,6 +78,7 @@
 
 .message {
   margin-top: 14px;
+  touch-action: pan-y;
 }
 
 .messageRow {
