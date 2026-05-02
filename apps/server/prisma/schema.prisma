@@ -30,6 +30,7 @@ model User {
   libraryReviews      LibraryReview[]
   libraryBookRequests LibraryBookRequest[]
   gandleResults       GandleResult[]
+  channelReads    UserChannelRead[]
 }
 
 model Channel {
@@ -45,6 +46,7 @@ model Channel {
   messages      Message[]
   pins          PinnedMessage[]
   voiceSessions VoiceSession[]
+  channelReads  UserChannelRead[]
 }
 
 enum ChannelType {
@@ -220,4 +222,15 @@ model Reaction {
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId, reaction])
+}
+
+model UserChannelRead {
+  userId     String
+  channelId  String
+  lastReadAt DateTime
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@id([userId, channelId])
 }

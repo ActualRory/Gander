@@ -216,4 +216,33 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     await prisma.pinnedMessage.deleteMany({ where: { channelId, messageId } })
     return reply.status(204).send()
   })
+
+  // GET /api/channels/read — return all lastReadAt timestamps for the current user
+  app.get('/read', async (req) => {
+    const { userId } = req.user as { userId: string }
+    const rows = await prisma.userChannelRead.findMany({ where: { userId } })
+    return rows.map(r => ({ channelId: r.channelId, lastReadAt: r.lastReadAt.toISOString() }))
+  })
+
+  // POST /api/channels/read — batch upsert read timestamps, broadcast to other devices
+  app.post('/read', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
+    const { reads } = req.body as { reads: Array<{ channelId: string; lastReadAt: string }> }
+    if (!Array.isArray(reads) || reads.length === 0) return reply.status(204).send()
+
+    await Promise.all(reads.map(({ channelId, lastReadAt }) =>
+      prisma.userChannelRead.upsert({
+        where: { userId_channelId: { userId, channelId } },
+        create: { userId, channelId, lastReadAt: new Date(lastReadAt) },
+        update: { lastReadAt: new Date(lastReadAt) },
+      })
+    ))
+
+    // Notify other connected devices for the same user
+    for (const { channelId, lastReadAt } of reads) {
+      broadcastToUser(userId, { type: 'channel:read', payload: { channelId, lastReadAt } })
+    }
+
+    return reply.status(204).send()
+  })
 }

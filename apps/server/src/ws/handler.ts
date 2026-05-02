@@ -281,8 +281,9 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
 
         // Retry loop to handle postNumber unique-constraint races
         let message: Awaited<ReturnType<typeof prisma.message.create>> | null = null
+        let postNumber: number | null = null
         for (let attempt = 0; attempt < 3; attempt++) {
-          let postNumber: number | null = null
+          postNumber = null
           if (!isDm) {
             const { _max } = await prisma.message.aggregate({ _max: { postNumber: true } })
             postNumber = (_max.postNumber ?? 0) + 1

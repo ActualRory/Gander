@@ -136,6 +136,21 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const pendingOwnMsgs = useRef<Map<string, string>>(new Map())
   // Ref to the createdAt of the last received message, for catch-up fetches after reconnect
   const lastMessageCreatedAtRef = useRef<string | null>(null)
+  // Long-press timer for touch context menus on message rows
+  const msgLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function startMsgLongPress(msgId: string, x: number, y: number) {
+    msgLongPressTimer.current = setTimeout(() => {
+      msgLongPressTimer.current = null
+      setMsgMenu({ msgId, x, y })
+    }, 500)
+  }
+  function cancelMsgLongPress() {
+    if (msgLongPressTimer.current !== null) {
+      clearTimeout(msgLongPressTimer.current)
+      msgLongPressTimer.current = null
+    }
+  }
   const [isAtBottom, setIsAtBottom] = useState(true)
 
   const mentionUsers = mentionQuery !== null
@@ -756,6 +771,10 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
               ref={isFirstUnread ? el => { firstUnreadRef.current = el } : undefined}
               className={styles.message}
               onContextMenu={msg.isSystem ? e => e.preventDefault() : e => { e.preventDefault(); setMsgMenu({ msgId: msg.id, x: e.clientX, y: e.clientY }) }}
+              onPointerDown={msg.isSystem ? undefined : e => startMsgLongPress(msg.id, e.clientX, e.clientY)}
+              onPointerUp={cancelMsgLongPress}
+              onPointerCancel={cancelMsgLongPress}
+              onPointerLeave={cancelMsgLongPress}
             >
               {showDateSep && (
                 <div className={styles.dateSeparator}>
@@ -1186,7 +1205,6 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           autoComplete="off"
-          autoFocus
         />
         <button
           type="button"

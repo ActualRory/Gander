@@ -379,6 +379,12 @@
     padding: 10px 16px 6px;
   }
 
+  .addBtn {
+    min-height: 36px;
+    min-width: 36px;
+    padding: 4px 8px;
+  }
+
   .userBar {
     height: 52px;
   }

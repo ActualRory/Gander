@@ -341,9 +341,19 @@ export default function Main({ auth, onLogout }: Props) {
   }, [unreadCounts, mentionCounts, mutedChannelIds])
 
   useEffect(() => {
-    api.getChannels(auth.token).then(async fetchedChannels => {
+    Promise.all([
+      api.getChannels(auth.token),
+      api.getChannelReadState(auth.token).catch(() => [] as { channelId: string; lastReadAt: string }[]),
+    ]).then(async ([fetchedChannels, serverReadState]) => {
       setChannels(fetchedChannels)
-      // Bootstrap unread counts for text channels
+      // Merge server read timestamps into localStorage — server wins for cross-device freshness
+      for (const { channelId, lastReadAt } of serverReadState) {
+        const local = loadLastRead(auth.userId, channelId)
+        if (!local || new Date(lastReadAt) > new Date(local)) {
+          localStorage.setItem(`gander:lastread:${auth.userId}:${channelId}`, lastReadAt)
+        }
+      }
+      // Bootstrap unread counts for text channels using the now-merged local timestamps
       const channelLastReadAt: Record<string, string> = {}
       for (const c of fetchedChannels) {
         if (c.type !== 'TEXT') continue
@@ -513,6 +523,15 @@ export default function Main({ auth, onLogout }: Props) {
         setUsers(prev => prev.map(u => u.id === user.id ? user : u))
         setProfileTarget(prev => prev && prev.user.id === user.id ? { ...prev, user } : prev)
         setFullProfileTarget(prev => prev?.id === user.id ? user : prev)
+      } else if (event.type === 'channel:read') {
+        // Another device/tab marked this channel read — sync local state
+        const { channelId, lastReadAt } = event.payload
+        const local = loadLastRead(auth.userId, channelId)
+        if (!local || new Date(lastReadAt) > new Date(local)) {
+          localStorage.setItem(`gander:lastread:${auth.userId}:${channelId}`, lastReadAt)
+        }
+        setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+        setMentionCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
       }
     })
 
@@ -1094,7 +1113,9 @@ export default function Main({ auth, onLogout }: Props) {
   function markChannelRead(channelId: string) {
     setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
     setMentionCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
-    saveLastRead(auth.userId, channelId)
+    const lastReadAt = new Date().toISOString()
+    localStorage.setItem(`gander:lastread:${auth.userId}:${channelId}`, lastReadAt)
+    api.markChannelsRead(auth.token, [{ channelId, lastReadAt }]).catch(() => {})
   }
 
   function handleWatchStream(userId: string, type: 'screen' | 'camera') {

@@ -69,6 +69,16 @@ export const api = {
       ...authed(token),
     }),
 
+  getChannelReadState: (token: string) =>
+    request<{ channelId: string; lastReadAt: string }[]>('/api/channels/read', authed(token)),
+
+  markChannelsRead: (token: string, reads: Array<{ channelId: string; lastReadAt: string }>) =>
+    request<void>('/api/channels/read', {
+      method: 'POST',
+      body: JSON.stringify({ reads }),
+      ...authed(token),
+    }),
+
   getVoiceToken: (token: string, channelId: string) =>
     request<{ token: string; url: string }>(
       `/api/voice/${channelId}/token`,

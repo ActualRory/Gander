@@ -804,6 +804,35 @@
   color: var(--text-secondary);
 }
 
+/* ---- Mobile layout ---- */
+@media (max-width: 640px) {
+  /* Offset header content so it isn't obscured by the hamburger button (49px wide) */
+  .header {
+    padding-left: 58px;
+  }
+}
+
+@media (pointer: coarse) {
+  /* Prevent Android WebView auto-zoom on textarea focus (CSS module overrides global rule) */
+  .input,
+  .editTextarea {
+    font-size: max(16px, 1em);
+  }
+
+  /* Larger tap targets for reaction buttons */
+  .reactionTag {
+    min-height: 36px;
+    padding: 4px 10px;
+  }
+
+  /* Larger tap target for the attachment remove button */
+  .pendingThumbRemove {
+    min-height: 32px;
+    min-width: 32px;
+    padding: 4px;
+  }
+}
+
 /* ---- Pins panel (portal) ---- */
 .pinsPanel {
   position: fixed;

@@ -25,6 +25,7 @@ export type ServerEvent =
   | { type: 'typing:update'; payload: { channelId: string; userIds: string[] } }
   | { type: 'activity:init'; payload: { activities: Record<string, string> } }
   | { type: 'activity:update'; payload: { userId: string; activity: string } }
+  | { type: 'channel:read'; payload: { channelId: string; lastReadAt: string } }
 
 // Events sent from client → server
 export type ClientEvent =
