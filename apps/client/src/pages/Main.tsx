@@ -1491,6 +1491,7 @@ export default function Main({ auth, onLogout }: Props) {
                 onJoin={handleJoinChannel}
                 onOpen={openChannel}
                 onJoinVoice={handleJoinVoice}
+                onClose={channels.length > 0 ? () => setShowChannelIndex(false) : undefined}
               />
             )
           }

@@ -37,6 +37,21 @@
   color: var(--text-primary);
 }
 
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 0;
+  margin-left: 12px;
+}
+
+.closeBtn:hover {
+  color: var(--text-primary);
+}
+
 .errorBanner {
   background: #5a3030;
   color: #e8d5a3;

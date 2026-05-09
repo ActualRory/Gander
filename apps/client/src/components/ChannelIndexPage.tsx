@@ -11,6 +11,7 @@ interface Props {
   onJoin: (channelId: string, message?: string) => Promise<void>
   onOpen: (channel: Channel) => void
   onJoinVoice: (channel: Channel) => void
+  onClose?: () => void
 }
 
 function typeIcon(type: string): string {
@@ -24,7 +25,7 @@ function visibilityLabel(v: string): string {
   return '[public]'
 }
 
-export default function ChannelIndexPage({ token, joinedChannelIds, onJoin, onOpen, onJoinVoice }: Props) {
+export default function ChannelIndexPage({ token, joinedChannelIds, onJoin, onOpen, onJoinVoice, onClose }: Props) {
   const [entries, setEntries] = useState<ChannelIndexEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -171,6 +172,9 @@ export default function ChannelIndexPage({ token, joinedChannelIds, onJoin, onOp
       <div className={styles.header}>
         <span className={styles.title}>channel index</span>
         <button type="button" className={styles.refreshBtn} onClick={load}>[refresh]</button>
+        {onClose && (
+          <button type="button" className={styles.closeBtn} onClick={onClose}>[×]</button>
+        )}
       </div>
 
       {error && (
