@@ -1,0 +1,576 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.title {
+  color: var(--accent);
+  font-size: 1em;
+  letter-spacing: 0.1em;
+  flex: 1;
+}
+
+.roleTag {
+  color: var(--text-muted);
+  font-size: 0.8em;
+}
+
+/* ─── Tabs ─── */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 16px 0;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.tab,
+.tabActive {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 4px 10px 6px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tabActive {
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+}
+
+/* ─── Body ─── */
+.body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tabContent {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Sub-tabs (channels section) ─── */
+.subTabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.subTab,
+.subTabActive {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.82em;
+  padding: 2px 6px;
+  color: var(--text-muted);
+}
+
+.subTab:hover {
+  color: var(--text-primary);
+}
+
+.subTabActive {
+  color: var(--accent);
+}
+
+/* ─── Status / feedback ─── */
+.loading,
+.empty {
+  padding: 20px 16px;
+  color: var(--text-muted);
+  font-size: 0.88em;
+}
+
+.emptySmall {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.errorBanner {
+  background: #5a3030;
+  color: #e8d5a3;
+  padding: 6px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85em;
+  flex-shrink: 0;
+}
+
+.errorBanner button {
+  background: none;
+  border: none;
+  color: #c87060;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
+  margin-left: auto;
+}
+
+/* ─── Table ─── */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+
+.table th {
+  text-align: left;
+  padding: 6px 10px;
+  color: var(--text-muted);
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  vertical-align: middle;
+}
+
+.table tr:hover td {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.bannedRow td {
+  opacity: 0.6;
+}
+
+.archivedRow td {
+  opacity: 0.55;
+  font-style: italic;
+}
+
+.emptyCell {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 16px 10px !important;
+}
+
+/* ─── Cell types ─── */
+.userCell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.displayName {
+  color: var(--text-primary);
+}
+
+.username {
+  color: var(--text-muted);
+  font-size: 0.8em;
+}
+
+.nameCell {
+  color: var(--text-secondary);
+}
+
+.typeCell {
+  color: var(--text-muted);
+  font-size: 0.82em;
+}
+
+.dateCell {
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-size: 0.82em;
+}
+
+.numCell {
+  color: var(--text-secondary);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.messageCell {
+  color: var(--text-secondary);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.targetCell {
+  color: var(--text-muted);
+  font-size: 0.8em;
+}
+
+.metaCell {
+  color: var(--text-muted);
+  font-size: 0.78em;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actionCode {
+  font-family: inherit;
+  color: var(--text-secondary);
+  font-size: 0.9em;
+}
+
+/* ─── Role badges ─── */
+.roleBadge {
+  font-size: 0.78em;
+  padding: 1px 5px;
+  border: 1px solid;
+}
+
+.roleRoot     { color: #e8d5a3; border-color: #e8d5a3; }
+.roleSuperadmin { color: #c8a96e; border-color: #c8a96e; }
+.roleAdmin    { color: #c87060; border-color: #c87060; }
+.roleMod      { color: #7a9e6e; border-color: #7a9e6e; }
+.roleMember   { color: var(--text-muted); border-color: var(--border); }
+
+/* ─── Status badges ─── */
+.bannedBadge {
+  font-size: 0.8em;
+  color: #c87060;
+  border: 1px solid #c87060;
+  padding: 1px 5px;
+}
+
+.timedOutBadge {
+  font-size: 0.8em;
+  color: #c8a96e;
+  border: 1px solid #c8a96e;
+  padding: 1px 5px;
+}
+
+.okBadge {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.archivedBadge {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+}
+
+/* ─── Visibility badge ─── */
+.visBadge {
+  font-size: 0.78em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+}
+
+/* ─── Actions ─── */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.actBtn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8em;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.actBtn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.actBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.dangerBtn {
+  color: #c87060;
+  border-color: #5a3030;
+}
+
+.dangerBtn:hover:not(:disabled) {
+  color: #e87060;
+  border-color: #c87060;
+}
+
+.cancelBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8em;
+  padding: 2px 0;
+}
+
+.cancelBtn:hover {
+  color: var(--text-primary);
+}
+
+.roleSelect {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.8em;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+/* ─── Inline form rows ─── */
+.inlineFormRow td {
+  background: color-mix(in srgb, var(--bg) 70%, var(--border) 10%);
+  padding: 8px 10px !important;
+}
+
+.inlineForm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.formLabel {
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.formInput {
+  background: color-mix(in srgb, var(--bg) 60%, var(--border));
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 3px 8px;
+  outline: none;
+  min-width: 0;
+}
+
+.formInput:focus {
+  border-color: var(--accent);
+}
+
+/* ─── Ban history ─── */
+.bansExpanded {
+  padding: 4px 0;
+}
+
+.bansTitle {
+  color: var(--text-secondary);
+  font-size: 0.82em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.banEntry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 0.85em;
+}
+
+.banDate {
+  color: var(--text-muted);
+}
+
+.banIssuer {
+  color: var(--text-secondary);
+}
+
+.banReason {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ─── Filter bar (audit) ─── */
+.filterBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.filterLabel {
+  color: var(--text-muted);
+  font-size: 0.82em;
+}
+
+.filterInput {
+  flex: 1;
+  max-width: 320px;
+  background: color-mix(in srgb, var(--bg) 60%, var(--border));
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 3px 8px;
+  outline: none;
+}
+
+.filterInput:focus {
+  border-color: var(--accent);
+}
+
+.loadMoreRow {
+  padding: 10px 16px;
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── Stats grid ─── */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+
+.statCard {
+  border: 1px solid var(--border);
+  padding: 16px;
+  text-align: center;
+}
+
+.statValue {
+  color: var(--accent);
+  font-size: 1.6em;
+  margin-bottom: 4px;
+}
+
+.statLabel {
+  color: var(--text-muted);
+  font-size: 0.82em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ─── File tab ─── */
+.storageSection {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.storageLabel {
+  font-size: 0.82em;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.storageBarTrack {
+  height: 5px;
+  background: color-mix(in srgb, var(--border) 60%, var(--bg));
+  width: 100%;
+  max-width: 360px;
+}
+
+.storageBarFill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.storageBarDanger {
+  background: #c87060;
+}
+
+.sortBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sortLabel {
+  color: var(--text-muted);
+  font-size: 0.8em;
+}
+
+.sortBtn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8em;
+  padding: 2px 8px;
+}
+
+.sortBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.sortBtnActive {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.fileList {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.fileNameCell {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileLink {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.fileLink:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}

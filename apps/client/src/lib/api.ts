@@ -1,4 +1,4 @@
-import type { Channel, Message, AuthResponse, User, UserStats, AttachmentInfo, OgData, PinnedMessageEntry, SearchResult } from '@gander/shared'
+import type { Channel, ChannelIndexEntry, ChannelIndexRequest, ChannelJoinRequest, Message, AuthResponse, User, UserRole, UserStats, AttachmentInfo, OgData, PinnedMessageEntry, SearchResult, AuditLogEntry, BanRecord } from '@gander/shared'
 import { getServerUrl } from './config.ts'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -309,6 +309,121 @@ export const api = {
     request<{ userId: string; displayName: string; avatarUrl: string | null; solved: boolean; guessCount: number; guesses: string[] | null; completedAt: string }[]>(
       `/api/gandle/leaderboard?date=${encodeURIComponent(date)}`, authed(token)
     ),
+
+  // Channel index and joining
+  getChannelIndex: (token: string) =>
+    request<ChannelIndexEntry[]>('/api/channels/index', authed(token)),
+
+  joinChannel: (token: string, channelId: string, message?: string) =>
+    request<{ status?: 'pending' } | void>(`/api/channels/${channelId}/join`, {
+      method: 'POST',
+      ...(message !== undefined ? { body: JSON.stringify({ message }) } : {}),
+      ...authed(token),
+    }),
+
+  submitIndexRequest: (token: string, channelId: string, visibility: 'PUBLIC' | 'SEMI_PUBLIC') =>
+    request<void>(`/api/channels/${channelId}/index-request`, {
+      method: 'POST', body: JSON.stringify({ visibility }), ...authed(token),
+    }),
+
+  approveJoinRequest: (token: string, channelId: string, requestId: string) =>
+    request<void>(`/api/channels/${channelId}/join-requests/${requestId}/approve`, { method: 'POST', ...authed(token) }),
+
+  rejectJoinRequest: (token: string, channelId: string, requestId: string) =>
+    request<void>(`/api/channels/${channelId}/join-requests/${requestId}/reject`, { method: 'POST', ...authed(token) }),
+
+  archiveChannel: (token: string, channelId: string, isArchived: boolean) =>
+    request<void>(`/api/channels/${channelId}`, { method: 'PATCH', body: JSON.stringify({ isArchived }), ...authed(token) }),
+
+  // Admin — users
+  adminGetUsers: (token: string) =>
+    request<(User & { messageCount: number })[]>('/api/admin/users', authed(token)),
+
+  adminGetUserBans: (token: string, userId: string) =>
+    request<BanRecord[]>(`/api/admin/users/${userId}/bans`, authed(token)),
+
+  adminSetRole: (token: string, userId: string, role: UserRole) =>
+    request<void>(`/api/admin/users/${userId}/role`, { method: 'PATCH', body: JSON.stringify({ role }), ...authed(token) }),
+
+  adminTimeout: (token: string, userId: string, duration: number, reason?: string) =>
+    request<void>(`/api/admin/users/${userId}/timeout`, { method: 'POST', body: JSON.stringify({ duration, reason }), ...authed(token) }),
+
+  adminClearTimeout: (token: string, userId: string) =>
+    request<void>(`/api/admin/users/${userId}/timeout`, { method: 'DELETE', ...authed(token) }),
+
+  adminBanUser: (token: string, userId: string, reason?: string) =>
+    request<void>(`/api/admin/users/${userId}/ban`, { method: 'POST', body: JSON.stringify({ reason }), ...authed(token) }),
+
+  adminUnbanUser: (token: string, userId: string) =>
+    request<void>(`/api/admin/users/${userId}/unban`, { method: 'POST', ...authed(token) }),
+
+  adminSetDisplayName: (token: string, userId: string, displayName: string) =>
+    request<void>(`/api/admin/users/${userId}/displayName`, { method: 'PATCH', body: JSON.stringify({ displayName }), ...authed(token) }),
+
+  // Admin — channels
+  adminGetChannels: (token: string) =>
+    request<(Channel & { memberCount: number; messageCount: number })[]>('/api/admin/channels', authed(token)),
+
+  adminGetIndexRequests: (token: string) =>
+    request<ChannelIndexRequest[]>('/api/admin/channels/index-requests', authed(token)),
+
+  adminApproveIndex: (token: string, requestId: string, visibility?: string) =>
+    request<void>(`/api/admin/channels/index-requests/${requestId}/approve`, { method: 'POST', body: JSON.stringify({ visibility }), ...authed(token) }),
+
+  adminRejectIndex: (token: string, requestId: string) =>
+    request<void>(`/api/admin/channels/index-requests/${requestId}/reject`, { method: 'POST', ...authed(token) }),
+
+  adminUpdateChannel: (token: string, channelId: string, data: { name?: string; topic?: string; isArchived?: boolean; visibility?: string }) =>
+    request<void>(`/api/admin/channels/${channelId}`, { method: 'PATCH', body: JSON.stringify(data), ...authed(token) }),
+
+  adminDeleteChannel: (token: string, channelId: string) =>
+    request<void>(`/api/admin/channels/${channelId}`, { method: 'DELETE', ...authed(token) }),
+
+  // Admin — messages
+  adminDeleteMessage: (token: string, messageId: string) =>
+    request<void>(`/api/admin/messages/${messageId}`, { method: 'DELETE', ...authed(token) }),
+
+  // Admin — join requests
+  adminGetJoinRequests: (token: string) =>
+    request<ChannelJoinRequest[]>('/api/admin/join-requests', authed(token)),
+
+  adminApproveJoinRequest: (token: string, requestId: string) =>
+    request<void>(`/api/admin/join-requests/${requestId}/approve`, { method: 'POST', ...authed(token) }),
+
+  adminRejectJoinRequest: (token: string, requestId: string) =>
+    request<void>(`/api/admin/join-requests/${requestId}/reject`, { method: 'POST', ...authed(token) }),
+
+  // Admin — audit log
+  adminGetAuditLog: (token: string, params?: { action?: string; actorId?: string; targetId?: string; before?: string; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.action) qs.set('action', params.action)
+    if (params?.actorId) qs.set('actorId', params.actorId)
+    if (params?.targetId) qs.set('targetId', params.targetId)
+    if (params?.before) qs.set('before', params.before)
+    if (params?.limit) qs.set('limit', String(params.limit))
+    const query = qs.toString() ? `?${qs}` : ''
+    return request<AuditLogEntry[]>(`/api/admin/audit${query}`, authed(token))
+  },
+
+  // Admin — stats
+  adminGetStats: (token: string) =>
+    request<{ userCount: number; messageCount: number; channelCount: number; totalAttachmentBytes: number }>('/api/admin/stats', authed(token)),
+
+  // Admin — files
+  adminGetFiles: (token: string, params?: { sort?: string; limit?: number; cursor?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.sort) qs.set('sort', params.sort)
+    if (params?.limit) qs.set('limit', String(params.limit))
+    if (params?.cursor) qs.set('cursor', params.cursor)
+    const query = qs.toString() ? `?${qs}` : ''
+    return request<{
+      files: { id: string; filename: string; mimeType: string; size: number; uploadedAt: string; uploaderName: string; url: string; channel: { id: string; name: string; type: string } | null }[]
+      nextCursor: string | null
+    }>(`/api/admin/files${query}`, authed(token))
+  },
+
+  adminGetFileStats: (token: string) =>
+    request<{ totalSize: number; fileCount: number; limitBytes: number | null }>('/api/admin/file-stats', authed(token)),
 
   uploadAttachments: async (token: string, files: File[]): Promise<AttachmentInfo[]> => {
     const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'

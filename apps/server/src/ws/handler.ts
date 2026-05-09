@@ -73,6 +73,22 @@ export function broadcastToUser(userId: string, event: ServerEvent) {
   }
 }
 
+export function getVoiceParticipantCounts(): Record<string, number> {
+  const result: Record<string, number> = {}
+  for (const [channelId, members] of voiceRooms) {
+    if (members.size > 0) result[channelId] = members.size
+  }
+  return result
+}
+
+export function forceDisconnectUser(userId: string) {
+  const sockets = connectedUsers.get(userId)
+  if (!sockets) return
+  for (const socket of sockets) {
+    if (socket.readyState === socket.OPEN) socket.close(4003, 'Banned')
+  }
+}
+
 export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
   let userId: string | null = null
   const joinedChannels = new Set<string>()
@@ -130,14 +146,14 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         if (userSockets.size === 1) {
           const connectedUser = await prisma.user.findUnique({
             where: { id: userId },
-            select: { id: true, username: true, displayName: true, subtitle: true, avatarUrl: true, createdAt: true, lastSeenAt: true },
+            select: { id: true, username: true, displayName: true, subtitle: true, avatarUrl: true, createdAt: true, lastSeenAt: true, role: true, isBanned: true, timeoutUntil: true },
           })
           if (connectedUser) {
             broadcastAll({
               type: 'user:online',
               payload: {
                 userId,
-                user: { ...connectedUser, createdAt: connectedUser.createdAt.toISOString(), lastSeenAt: connectedUser.lastSeenAt?.toISOString() ?? null },
+                user: { ...connectedUser, role: connectedUser.role as import('@gander/shared').UserRole, createdAt: connectedUser.createdAt.toISOString(), lastSeenAt: connectedUser.lastSeenAt?.toISOString() ?? null, timeoutUntil: connectedUser.timeoutUntil?.toISOString() ?? null },
               },
             }, socket)
           }
@@ -239,6 +255,13 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
 
       case 'message:send': {
         const { channelId, content, replyToId, attachmentIds, tempId } = event.payload
+        // Reject timed-out or banned users
+        const sender = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { isBanned: true, timeoutUntil: true },
+        })
+        if (sender?.isBanned) { socket.close(4003, 'Banned'); return }
+        if (sender?.timeoutUntil && sender.timeoutUntil > new Date()) return
         // Clear typing indicator when message is sent
         clearTyping(channelId, userId)
         const hasContent = content.trim().length > 0

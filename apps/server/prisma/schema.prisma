@@ -7,15 +7,62 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum ChannelType {
+  TEXT
+  VOICE
+  DM
+  GROUP
+}
+
+enum UserRole {
+  MEMBER
+  MODERATOR
+  ADMIN
+  SUPERADMIN
+  ROOT
+}
+
+enum ChannelVisibility {
+  PRIVATE
+  PUBLIC
+  SEMI_PUBLIC
+  DEFAULT
+}
+
+enum ChannelMemberRole {
+  MEMBER
+  MANAGER
+}
+
+enum IndexRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─── Core Models ──────────────────────────────────────────────────────────────
+
 model User {
   id           String    @id @default(cuid())
   username     String    @unique
   displayName  String
   subtitle     String?
   avatarUrl    String?
-  passwordHash String
+  passwordHash    String
+  hashVersion     String    @default("sha256")
   createdAt    DateTime  @default(now())
   lastSeenAt   DateTime?
+  role         UserRole  @default(MEMBER)
+  isBanned     Boolean   @default(false)
+  timeoutUntil DateTime?
 
   memberships     ChannelMember[]
   messages        Message[]
@@ -31,41 +78,105 @@ model User {
   libraryBookRequests LibraryBookRequest[]
   gandleResults       GandleResult[]
   channelReads    UserChannelRead[]
+  bans            Ban[]              @relation("BanTarget")
+  bansIssued      Ban[]              @relation("BanIssuer")
+  auditLogs       AuditLog[]
+  channelJoinRequests ChannelJoinRequest[]
 }
 
 model Channel {
-  id        String      @id @default(cuid())
-  name      String
-  type      ChannelType @default(TEXT)
-  topic     String?
-  createdAt DateTime    @default(now())
-  creatorId String?
+  id         String            @id @default(cuid())
+  name       String
+  type       ChannelType       @default(TEXT)
+  topic      String?
+  createdAt  DateTime          @default(now())
+  creatorId  String?
+  visibility ChannelVisibility @default(PRIVATE)
+  isArchived Boolean           @default(false)
 
-  creator       User?          @relation("ChannelCreator", fields: [creatorId], references: [id])
+  creator       User?               @relation("ChannelCreator", fields: [creatorId], references: [id])
   members       ChannelMember[]
   messages      Message[]
   pins          PinnedMessage[]
   voiceSessions VoiceSession[]
   channelReads  UserChannelRead[]
-}
-
-enum ChannelType {
-  TEXT
-  VOICE
-  DM
-  GROUP
+  indexRequest  ChannelIndexRequest?
+  joinRequests  ChannelJoinRequest[]
 }
 
 model ChannelMember {
   userId    String
   channelId String
-  joinedAt  DateTime @default(now())
+  joinedAt  DateTime          @default(now())
+  role      ChannelMemberRole @default(MEMBER)
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   @@id([userId, channelId])
 }
+
+// ─── Moderation Models ────────────────────────────────────────────────────────
+
+model Ban {
+  id          String    @id @default(cuid())
+  userId      String
+  issuedById  String
+  reason      String?
+  bannedAt    DateTime  @default(now())
+  unbannedAt  DateTime?
+  active      Boolean   @default(true)
+
+  user      User @relation("BanTarget", fields: [userId], references: [id], onDelete: Cascade)
+  issuedBy  User @relation("BanIssuer", fields: [issuedById], references: [id], onDelete: Cascade)
+
+  @@index([userId, active])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  actorId    String?
+  action     String
+  targetId   String?
+  targetType String?
+  meta       Json?
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+}
+
+// ─── Channel Lifecycle Models ─────────────────────────────────────────────────
+
+model ChannelIndexRequest {
+  id                  String             @id @default(cuid())
+  channelId           String             @unique
+  requestedById       String
+  requestedVisibility ChannelVisibility
+  status              IndexRequestStatus @default(PENDING)
+  reviewedById        String?
+  reviewedAt          DateTime?
+  createdAt           DateTime           @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+}
+
+model ChannelJoinRequest {
+  id           String            @id @default(cuid())
+  userId       String
+  channelId    String
+  message      String?
+  status       JoinRequestStatus @default(PENDING)
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime          @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+}
+
+// ─── Messaging Models ─────────────────────────────────────────────────────────
 
 model Message {
   id         String   @id @default(cuid())
@@ -128,6 +239,8 @@ model Mention {
   @@id([messageId, userId])
 }
 
+// ─── Voice & Presence ─────────────────────────────────────────────────────────
+
 model VoiceSession {
   id        String    @id @default(cuid())
   userId    String
@@ -138,6 +251,19 @@ model VoiceSession {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 }
+
+model UserChannelRead {
+  userId     String
+  channelId  String
+  lastReadAt DateTime
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@id([userId, channelId])
+}
+
+// ─── Games & Features ─────────────────────────────────────────────────────────
 
 model GandleResult {
   id        String   @id @default(cuid())
@@ -222,15 +348,4 @@ model Reaction {
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId, reaction])
-}
-
-model UserChannelRead {
-  userId     String
-  channelId  String
-  lastReadAt DateTime
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-
-  @@id([userId, channelId])
 }

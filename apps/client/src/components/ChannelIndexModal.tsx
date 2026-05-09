@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { Channel } from '@gander/shared'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
-import CreateChannelModal from './CreateChannelModal.tsx'
 import styles from './ChannelIndexModal.module.css'
 
 const UTILITIES = [
   { id: 'library', label: 'the library' },
-  { id: 'file-manager', label: 'file manager' },
   { id: 'gandle', label: 'gandle' },
 ]
 
@@ -21,7 +19,6 @@ interface Props {
   hiddenChannelIds: Set<string>
   currentUserId: string
   onToggleVisibility: (channelId: string) => void
-  onCreateChannel: (name: string, type: 'TEXT' | 'VOICE') => void
   onDeleteChannel: (channelId: string) => void
   onClose: () => void
   hiddenUtilityIds: Set<string>
@@ -33,22 +30,20 @@ export default function ChannelIndexModal({
   hiddenChannelIds,
   currentUserId,
   onToggleVisibility,
-  onCreateChannel,
   onDeleteChannel,
   onClose,
   hiddenUtilityIds,
   onToggleUtilityVisibility,
 }: Props) {
-  const [createOpen, setCreateOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !createOpen) onClose()
+      if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, createOpen])
+  }, [onClose])
 
   function handleContextMenu(e: React.MouseEvent, channel: Channel) {
     e.preventDefault()
@@ -86,10 +81,7 @@ export default function ChannelIndexModal({
       <div className={styles.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
         <div className={styles.modal}>
           <div className={styles.header}>
-            <span className={styles.title}>all channels</span>
-            <button type="button" className={styles.newBtn} onClick={() => setCreateOpen(true)}>
-              [new channel]
-            </button>
+            <span className={styles.title}>show / hide channels</span>
           </div>
           <div className={styles.hint}>click to show / hide in sidebar</div>
           <div className={styles.channelList}>
@@ -137,12 +129,6 @@ export default function ChannelIndexModal({
         />
       )}
 
-      {createOpen && (
-        <CreateChannelModal
-          onConfirm={(name, type) => { onCreateChannel(name, type); setCreateOpen(false) }}
-          onClose={() => setCreateOpen(false)}
-        />
-      )}
     </>
   )
 }

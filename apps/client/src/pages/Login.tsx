@@ -67,7 +67,7 @@ export default function Login({ onAuth, onChangeServer }: Props) {
       const res = mode === 'login'
         ? await api.login(username, password)
         : await api.register(username, displayName, password)
-      const authState = { token: res.token, userId: res.user.id, username: res.user.username, displayName: res.user.displayName }
+      const authState = { token: res.token, userId: res.user.id, username: res.user.username, displayName: res.user.displayName, role: res.user.role, timeoutUntil: res.user.timeoutUntil ?? null }
       localStorage.setItem('gander_auth', JSON.stringify(authState))
       onAuth(authState)
     } catch (err: unknown) {

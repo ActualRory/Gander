@@ -1,0 +1,241 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.title {
+  color: var(--accent);
+  font-size: 1em;
+  letter-spacing: 0.1em;
+  flex: 1;
+}
+
+.refreshBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 0;
+}
+
+.refreshBtn:hover {
+  color: var(--text-primary);
+}
+
+.errorBanner {
+  background: #5a3030;
+  color: #e8d5a3;
+  padding: 6px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85em;
+  flex-shrink: 0;
+}
+
+.errorBanner button {
+  background: none;
+  border: none;
+  color: #c87060;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
+  margin-left: auto;
+}
+
+.loading,
+.empty {
+  padding: 24px 20px;
+  color: var(--text-muted);
+  font-size: 0.88em;
+}
+
+.grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ─── Channel card ─── */
+.card {
+  border: 1px solid var(--border);
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--bg) 80%, var(--accent) 3%);
+}
+
+.card:hover {
+  border-color: color-mix(in srgb, var(--border) 50%, var(--accent));
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.typeIcon {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  flex-shrink: 0;
+}
+
+.channelName {
+  color: var(--text-primary);
+  font-size: 1em;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Visibility badges ─── */
+.visBadge {
+  font-size: 0.78em;
+  padding: 1px 6px;
+  border: 1px solid;
+  flex-shrink: 0;
+}
+
+.vis_public {
+  color: #7a9e6e;
+  border-color: #7a9e6e;
+}
+
+.vis_semi_public {
+  color: #c8a96e;
+  border-color: #c8a96e;
+}
+
+.vis_default {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ─── Topic ─── */
+.topic {
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  margin: 4px 0 6px 22px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ─── Stats ─── */
+.stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 8px 22px;
+  font-size: 0.8em;
+}
+
+.stat {
+  color: var(--text-muted);
+}
+
+.statLive {
+  color: #7a9e6e;
+}
+
+.statSep {
+  color: var(--border);
+}
+
+/* ─── Footer / actions ─── */
+.cardFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 22px;
+}
+
+.actionBtn {
+  background: none;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 3px 10px;
+}
+
+.actionBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.actionBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.cancelBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 3px 0;
+}
+
+.cancelBtn:hover {
+  color: var(--text-primary);
+}
+
+.pendingBadge {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+/* ─── Request form ─── */
+.requestForm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.requestInput {
+  flex: 1;
+  background: color-mix(in srgb, var(--bg) 60%, var(--border));
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 3px 8px;
+  outline: none;
+  min-width: 0;
+}
+
+.requestInput:focus {
+  border-color: var(--accent);
+}
+
+/* ─── Mobile ─── */
+@media (max-width: 640px) {
+  .grid {
+    padding: 10px 12px;
+  }
+}

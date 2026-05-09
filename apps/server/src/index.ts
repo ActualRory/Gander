@@ -19,6 +19,7 @@ import { searchRoutes } from './routes/search.js'
 import { libraryRoutes } from './routes/library.js'
 import { fileManagerRoutes } from './routes/fileManager.js'
 import { gandleRoutes } from './routes/gandle.js'
+import { adminRoutes } from './routes/admin.js'
 import { wsHandler } from './ws/handler.js'
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads')
@@ -51,6 +52,7 @@ await server.register(searchRoutes, { prefix: '/api/search' })
 await server.register(libraryRoutes, { prefix: '/api/library' })
 await server.register(fileManagerRoutes, { prefix: '/api/file-manager' })
 await server.register(gandleRoutes, { prefix: '/api/gandle' })
+await server.register(adminRoutes, { prefix: '/api/admin' })
 
 await server.register(async (app) => {
   app.get('/ws', { websocket: true }, wsHandler)

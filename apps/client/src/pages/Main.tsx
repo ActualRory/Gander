@@ -7,7 +7,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { Image as TauriImage } from '@tauri-apps/api/image'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { platform } from '../lib/platform.ts'
-import type { Channel, User } from '@gander/shared'
+import type { Channel, User, UserRole } from '@gander/shared'
 import type { AuthState } from '../App.tsx'
 import { api } from '../lib/api.ts'
 import { GanderWS } from '../lib/ws.ts'
@@ -16,6 +16,8 @@ import ChannelView from '../components/ChannelView.tsx'
 import LibraryView from '../components/LibraryView.tsx'
 import FileManagerView from '../components/FileManagerView.tsx'
 import GandleView from '../components/GandleView.tsx'
+import ChannelIndexPage from '../components/ChannelIndexPage.tsx'
+import AdminPanel from '../components/AdminPanel.tsx'
 import SocialPanel from '../components/SocialPanel.tsx'
 import ErrorModal from '../components/ErrorModal.tsx'
 import SettingsModal from '../components/SettingsModal.tsx'
@@ -182,7 +184,9 @@ export default function Main({ auth, onLogout }: Props) {
   const [userContextMenu, setUserContextMenu] = useState<{ userId: string; x: number; y: number } | null>(null)
   const [pendingJump, setPendingJump] = useState<{ messageId: string; anchorTime: string } | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [activeUtilityId, setActiveUtilityId] = useState<'library' | 'file-manager' | 'gandle' | null>(null)
+  const [activeUtilityId, setActiveUtilityId] = useState<'library' | 'file-manager' | 'gandle' | 'admin' | null>(null)
+  const [showChannelIndex, setShowChannelIndex] = useState(false)
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole>(() => auth.role ?? 'MEMBER')
   const [hiddenUtilityIds, setHiddenUtilityIds] = useState<Set<string>>(() => loadHiddenUtilities(auth.userId))
   const [windowFocused, setWindowFocused] = useState(true)
   const wsRef = useRef<GanderWS | null>(null)
@@ -343,6 +347,7 @@ export default function Main({ auth, onLogout }: Props) {
       api.getChannelReadState(auth.token).catch(() => [] as { channelId: string; lastReadAt: string }[]),
     ]).then(async ([fetchedChannels, serverReadState]) => {
       setChannels(fetchedChannels)
+      if (fetchedChannels.length === 0) setShowChannelIndex(true)
       // Merge server read timestamps into localStorage — server wins for cross-device freshness
       for (const { channelId, lastReadAt } of serverReadState) {
         const local = loadLastRead(auth.userId, channelId)
@@ -529,6 +534,31 @@ export default function Main({ auth, onLogout }: Props) {
         }
         setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
         setMentionCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+      } else if (event.type === 'user:banned') {
+        const { userId } = event.payload
+        if (userId === auth.userId) {
+          localStorage.removeItem('gander_auth')
+          onLogout()
+        } else {
+          setUsers(prev => prev.map(u => u.id === userId ? { ...u, isBanned: true } : u))
+        }
+      } else if (event.type === 'user:unbanned') {
+        setUsers(prev => prev.map(u => u.id === event.payload.userId ? { ...u, isBanned: false } : u))
+      } else if (event.type === 'user:timedout') {
+        setUsers(prev => prev.map(u => u.id === event.payload.userId ? { ...u, timeoutUntil: event.payload.timeoutUntil } : u))
+      } else if (event.type === 'user:untimeout') {
+        setUsers(prev => prev.map(u => u.id === event.payload.userId ? { ...u, timeoutUntil: null } : u))
+      } else if (event.type === 'user:role_changed') {
+        const { userId, role } = event.payload
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u))
+        if (userId === auth.userId) setCurrentUserRole(role)
+      } else if (event.type === 'channel:archived') {
+        const { channelId } = event.payload
+        setChannels(prev => prev.map(c => c.id === channelId ? { ...c, isArchived: true } : c))
+        if (activeChannelRef.current?.id === channelId) setActiveChannel(null)
+      } else if (event.type === 'channel:visibility_changed') {
+        const { channelId, visibility } = event.payload
+        setChannels(prev => prev.map(c => c.id === channelId ? { ...c, visibility } : c))
       }
     })
 
@@ -1091,6 +1121,12 @@ export default function Main({ auth, onLogout }: Props) {
     if (activeChannel?.id === channelId) setActiveChannel(updated)
   }
 
+  async function handleArchiveChannel(channelId: string) {
+    await api.archiveChannel(auth.token, channelId, true)
+    setChannels(prev => prev.map(c => c.id === channelId ? { ...c, isArchived: true } : c))
+    if (activeChannel?.id === channelId) setActiveChannel(null)
+  }
+
   async function handleDeleteChannel(channelId: string) {
     await api.deleteChannel(auth.token, channelId)
     setChannels(prev => prev.filter(c => c.id !== channelId))
@@ -1137,10 +1173,31 @@ export default function Main({ auth, onLogout }: Props) {
     setSidebarOpen(false)
   }
 
-  function openUtility(id: 'library' | 'file-manager' | 'gandle') {
+  function openUtility(id: 'library' | 'file-manager' | 'gandle' | 'admin') {
     setActiveUtilityId(id)
     setActiveChannel(null)
+    setShowChannelIndex(false)
     setSidebarOpen(false)
+  }
+
+  async function handleJoinChannel(channelId: string, message?: string) {
+    try {
+      const result = await api.joinChannel(auth.token, channelId, message)
+      if (result && typeof result === 'object' && 'status' in result && result.status === 'pending') {
+        // SEMI_PUBLIC: request submitted, no immediate join
+        return
+      }
+      // Refresh joined channels list
+      const updated = await api.getChannels(auth.token)
+      setChannels(updated)
+      const joined = updated.find(c => c.id === channelId)
+      if (joined) {
+        setShowChannelIndex(false)
+        openChannel(joined)
+      }
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to join channel')
+    }
   }
 
   function handleToggleUtilityVisibility(id: string) {
@@ -1326,6 +1383,7 @@ export default function Main({ auth, onLogout }: Props) {
         onCreateChannel={handleCreateChannel}
         onRenameChannel={handleRenameChannel}
         onDeleteChannel={handleDeleteChannel}
+        onArchiveChannel={handleArchiveChannel}
         onHideChannel={handleHideChannel}
         onToggleChannelVisibility={handleToggleChannelVisibility}
         onMarkRead={markChannelRead}
@@ -1354,6 +1412,8 @@ export default function Main({ auth, onLogout }: Props) {
         onToggleUtilityVisibility={handleToggleUtilityVisibility}
         onOpenUtility={openUtility}
         activeUtilityId={activeUtilityId}
+        onBrowseChannels={() => { setShowChannelIndex(true); setActiveChannel(null); setActiveUtilityId(null); setSidebarOpen(false) }}
+        currentUserRole={currentUserRole}
       />
       <main className={styles.content}>
         <button
@@ -1404,6 +1464,28 @@ export default function Main({ auth, onLogout }: Props) {
             return <GandleView token={auth.token} currentUserId={auth.userId} />
           }
 
+          if (activeUtilityId === 'admin') {
+            return (
+              <AdminPanel
+                token={auth.token}
+                currentUserId={auth.userId}
+                currentUserRole={currentUserRole}
+              />
+            )
+          }
+
+          if (showChannelIndex) {
+            return (
+              <ChannelIndexPage
+                token={auth.token}
+                currentUserId={auth.userId}
+                joinedChannelIds={new Set(channels.map(c => c.id))}
+                onJoin={handleJoinChannel}
+                onOpen={openChannel}
+              />
+            )
+          }
+
           if (activeChannel && wsRef.current) {
             return (
               <ChannelView
@@ -1426,7 +1508,7 @@ export default function Main({ auth, onLogout }: Props) {
             )
           }
 
-          return <p className={styles.placeholder}>select a channel</p>
+          return <p className={styles.placeholder}>select a channel or <button type="button" onClick={() => setShowChannelIndex(true)} style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit', padding: 0, textDecoration: 'underline' }}>[browse channels]</button></p>
         })()}
       </main>
       <SocialPanel

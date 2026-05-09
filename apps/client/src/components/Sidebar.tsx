@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Channel, User } from '@gander/shared'
+import type { Channel, User, UserRole } from '@gander/shared'
 import { platform } from '../lib/platform.ts'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import ChannelIndexModal from './ChannelIndexModal.tsx'
@@ -31,6 +31,7 @@ interface Props {
   onCreateChannel: (name: string, type: 'TEXT' | 'VOICE') => void
   onRenameChannel: (channelId: string, name: string) => void
   onDeleteChannel: (channelId: string) => void
+  onArchiveChannel?: (channelId: string) => void
   onHideChannel: (channelId: string) => void
   onToggleChannelVisibility: (channelId: string) => void
   onMarkRead: (channelId: string) => void
@@ -57,8 +58,10 @@ interface Props {
   onClose: () => void
   hiddenUtilityIds: Set<string>
   onToggleUtilityVisibility: (id: string) => void
-  onOpenUtility: (id: 'library' | 'file-manager' | 'gandle') => void
+  onOpenUtility: (id: 'library' | 'file-manager' | 'gandle' | 'admin') => void
   activeUtilityId: string | null
+  onBrowseChannels: () => void
+  currentUserRole: UserRole
 }
 
 interface ContextState {
@@ -76,11 +79,16 @@ interface ParticipantVolumeState {
 
 const UTILITIES = [
   { id: 'library' as const, label: 'the library' },
-  { id: 'file-manager' as const, label: 'file manager' },
   { id: 'gandle' as const, label: 'gandle' },
 ]
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId }: Props) {
+const MOD_ROLES: UserRole[] = ['MODERATOR', 'ADMIN', 'SUPERADMIN', 'ROOT']
+const ADMIN_ROLES: UserRole[] = ['ADMIN', 'SUPERADMIN', 'ROOT']
+
+function isMod(role: UserRole) { return MOD_ROLES.includes(role) }
+function isAdmin(role: UserRole) { return ADMIN_ROLES.includes(role) }
+
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onArchiveChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId, onBrowseChannels, currentUserRole }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -168,11 +176,19 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
       },
     ]
     items.push({ label: 'copy link', action: () => void navigator.clipboard.writeText(`#${channel.name}`) })
-    if (channel.creatorId === currentUserId) {
+    const canManage = channel.creatorId === currentUserId || isMod(currentUserRole)
+    if (canManage) {
       items.push({ label: 'rename', action: () => startRename(channel) })
       if (channel.type === 'TEXT') {
         items.push({ label: 'set topic', action: () => { setSettingTopic(channel); setTopicValue(channel.topic ?? '') } })
       }
+    }
+    if (isMod(currentUserRole) && !channel.isArchived) {
+      items.push({ label: 'archive', action: () => onArchiveChannel?.(channel.id) })
+    }
+    if (channel.creatorId === currentUserId && channel.visibility === 'PRIVATE') {
+      items.push({ label: 'delete', danger: true, action: () => setDeleting(channel) })
+    } else if (isAdmin(currentUserRole)) {
       items.push({ label: 'delete', danger: true, action: () => setDeleting(channel) })
     }
     return items
@@ -413,7 +429,10 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span>text channels</span>
-              <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)}>[+]</button>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <button type="button" className={styles.addBtn} onClick={onBrowseChannels} title="browse channels">[⊕]</button>
+                <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)} title="show/hide">[+]</button>
+              </div>
             </div>
             {visibleText.map(c => renderTextChannel(c))}
           </div>
@@ -426,7 +445,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
             {visibleVoice.map(c => renderVoiceChannel(c))}
           </div>
 
-          {visibleUtilities.length > 0 && (
+          {(visibleUtilities.length > 0 || isMod(currentUserRole)) && (
             <div className={styles.section}>
               <div className={styles.sectionHeader}>
                 <span>utilities</span>
@@ -443,6 +462,15 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
                   <span className={styles.channelLabel}>{u.label}</span>
                 </button>
               ))}
+              {isMod(currentUserRole) && (
+                <button
+                  type="button"
+                  className={`${styles.channel} ${activeUtilityId === 'admin' ? styles.active : ''}`}
+                  onClick={() => onOpenUtility('admin')}
+                >
+                  <span className={styles.channelLabel}>[admin panel]</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -529,7 +557,6 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           hiddenChannelIds={hiddenChannelIds}
           currentUserId={currentUserId}
           onToggleVisibility={onToggleChannelVisibility}
-          onCreateChannel={(name, type) => { onCreateChannel(name, type) }}
           onDeleteChannel={(id) => { onDeleteChannel(id); setIndexOpen(false) }}
           onClose={() => setIndexOpen(false)}
           hiddenUtilityIds={hiddenUtilityIds}

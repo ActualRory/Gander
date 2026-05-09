@@ -5,6 +5,7 @@ import { pipeline } from 'node:stream/promises'
 import { randomBytes } from 'node:crypto'
 import { prisma } from '../lib/prisma.js'
 import { broadcastAll } from '../ws/handler.js'
+import type { UserRole } from '@gander/shared'
 
 const USER_SELECT = {
   id: true,
@@ -14,6 +15,9 @@ const USER_SELECT = {
   avatarUrl: true,
   createdAt: true,
   lastSeenAt: true,
+  role: true,
+  isBanned: true,
+  timeoutUntil: true,
 } as const
 
 const AVATAR_MIME_TO_EXT: Record<string, string> = {
@@ -23,8 +27,8 @@ const AVATAR_MIME_TO_EXT: Record<string, string> = {
   'image/webp': '.webp',
 }
 
-function serializeUser(u: { id: string; username: string; displayName: string; subtitle: string | null; avatarUrl: string | null; createdAt: Date; lastSeenAt: Date | null }) {
-  return { ...u, createdAt: u.createdAt.toISOString(), lastSeenAt: u.lastSeenAt?.toISOString() ?? null }
+function serializeUser(u: { id: string; username: string; displayName: string; subtitle: string | null; avatarUrl: string | null; createdAt: Date; lastSeenAt: Date | null; role: string; isBanned: boolean; timeoutUntil: Date | null }) {
+  return { ...u, role: u.role as UserRole, createdAt: u.createdAt.toISOString(), lastSeenAt: u.lastSeenAt?.toISOString() ?? null, timeoutUntil: u.timeoutUntil?.toISOString() ?? null }
 }
 
 export const userRoutes: FastifyPluginAsync = async (app) => {

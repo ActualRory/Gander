@@ -26,6 +26,13 @@ export type ServerEvent =
   | { type: 'activity:init'; payload: { activities: Record<string, string> } }
   | { type: 'activity:update'; payload: { userId: string; activity: string } }
   | { type: 'channel:read'; payload: { channelId: string; lastReadAt: string } }
+  | { type: 'user:banned'; payload: { userId: string } }
+  | { type: 'user:unbanned'; payload: { userId: string } }
+  | { type: 'user:timedout'; payload: { userId: string; timeoutUntil: string } }
+  | { type: 'user:untimeout'; payload: { userId: string } }
+  | { type: 'user:role_changed'; payload: { userId: string; role: import('./user.js').UserRole } }
+  | { type: 'channel:archived'; payload: { channelId: string } }
+  | { type: 'channel:visibility_changed'; payload: { channelId: string; visibility: import('./channel.js').ChannelVisibility } }
 
 // Events sent from client → server
 export type ClientEvent =

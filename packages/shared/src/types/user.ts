@@ -1,3 +1,5 @@
+export type UserRole = 'MEMBER' | 'MODERATOR' | 'ADMIN' | 'SUPERADMIN' | 'ROOT'
+
 export interface User {
   id: string
   username: string
@@ -6,6 +8,9 @@ export interface User {
   avatarUrl: string | null
   createdAt: string
   lastSeenAt: string | null
+  role: UserRole
+  isBanned?: boolean
+  timeoutUntil?: string | null
 }
 
 export interface AuthResponse {
@@ -16,4 +21,15 @@ export interface AuthResponse {
 export interface UserStats {
   messageCount: number
   voiceSeconds: number
+}
+
+export interface BanRecord {
+  id: string
+  userId: string
+  issuedById: string
+  issuedByName: string
+  reason: string | null
+  bannedAt: string
+  unbannedAt: string | null
+  active: boolean
 }

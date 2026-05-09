@@ -13,6 +13,8 @@ export interface AuthState {
   userId: string
   username: string
   displayName: string
+  role: import('@gander/shared').UserRole
+  timeoutUntil: string | null
 }
 
 interface TextMenu {
@@ -27,7 +29,10 @@ export default function App() {
   const [auth, setAuth] = useState<AuthState | null>(() => {
     try {
       const saved = localStorage.getItem('gander_auth')
-      return saved ? JSON.parse(saved) : null
+      if (!saved) return null
+      const parsed = JSON.parse(saved) as Partial<AuthState>
+      // Backfill missing fields from older saved auth states
+      return { role: 'MEMBER', timeoutUntil: null, ...parsed } as AuthState
     } catch {
       return null
     }
