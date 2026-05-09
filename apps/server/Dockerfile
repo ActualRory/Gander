@@ -1,7 +1,7 @@
 FROM node:22-slim AS builder
 WORKDIR /app
 
-RUN npm install -g pnpm@11
+RUN npm install -g pnpm@9
 
 # Copy full workspace (needed for monorepo install)
 COPY . .
