@@ -1,6 +1,6 @@
 {
   "productName": "Gander",
-  "version": "0.7.0",
+  "version": "0.7.2",
   "identifier": "com.gander.app",
   "build": {
     "frontendDist": "../dist",
