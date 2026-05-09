@@ -335,6 +335,9 @@ export const api = {
   archiveChannel: (token: string, channelId: string, isArchived: boolean) =>
     request<void>(`/api/channels/${channelId}`, { method: 'PATCH', body: JSON.stringify({ isArchived }), ...authed(token) }),
 
+  leaveChannel: (token: string, channelId: string) =>
+    request<void>(`/api/channels/${channelId}/membership`, { method: 'DELETE', ...authed(token) }),
+
   // Admin — users
   adminGetUsers: (token: string) =>
     request<(User & { messageCount: number })[]>('/api/admin/users', authed(token)),

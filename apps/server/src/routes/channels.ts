@@ -334,6 +334,17 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(204).send()
   })
 
+  // DELETE /api/channels/:channelId/membership — leave a channel
+  app.delete('/:channelId/membership', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
+    const { channelId } = req.params as { channelId: string }
+    const channel = await prisma.channel.findUnique({ where: { id: channelId } })
+    if (!channel) return reply.status(404).send({ error: 'Not found' })
+    if (channel.type === 'DM' || channel.type === 'GROUP') return reply.status(400).send({ error: 'Cannot leave DM channels' })
+    await prisma.channelMember.deleteMany({ where: { userId, channelId } })
+    return reply.status(204).send()
+  })
+
   // GET /api/channels/:channelId/preview
   app.get('/:channelId/preview', async (req, reply) => {
     const { channelId } = req.params as { channelId: string }

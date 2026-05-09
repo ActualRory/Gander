@@ -1121,6 +1121,13 @@ export default function Main({ auth, onLogout }: Props) {
     if (activeChannel?.id === channelId) setActiveChannel(updated)
   }
 
+  async function handleLeaveChannel(channelId: string) {
+    await api.leaveChannel(auth.token, channelId)
+    setChannels(prev => prev.filter(c => c.id !== channelId))
+    if (activeChannel?.id === channelId) setActiveChannel(null)
+    if (voiceChannelId === channelId) await handleLeaveVoice()
+  }
+
   async function handleArchiveChannel(channelId: string) {
     await api.archiveChannel(auth.token, channelId, true)
     setChannels(prev => prev.map(c => c.id === channelId ? { ...c, isArchived: true } : c))
@@ -1384,6 +1391,7 @@ export default function Main({ auth, onLogout }: Props) {
         onRenameChannel={handleRenameChannel}
         onDeleteChannel={handleDeleteChannel}
         onArchiveChannel={handleArchiveChannel}
+        onLeaveChannel={handleLeaveChannel}
         onHideChannel={handleHideChannel}
         onToggleChannelVisibility={handleToggleChannelVisibility}
         onMarkRead={markChannelRead}
@@ -1482,6 +1490,7 @@ export default function Main({ auth, onLogout }: Props) {
                 joinedChannelIds={new Set(channels.map(c => c.id))}
                 onJoin={handleJoinChannel}
                 onOpen={openChannel}
+                onJoinVoice={handleJoinVoice}
               />
             )
           }

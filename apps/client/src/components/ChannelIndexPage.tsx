@@ -10,6 +10,7 @@ interface Props {
   joinedChannelIds: Set<string>
   onJoin: (channelId: string, message?: string) => Promise<void>
   onOpen: (channel: Channel) => void
+  onJoinVoice: (channel: Channel) => void
 }
 
 function typeIcon(type: string): string {
@@ -23,7 +24,7 @@ function visibilityLabel(v: string): string {
   return '[public]'
 }
 
-export default function ChannelIndexPage({ token, joinedChannelIds, onJoin, onOpen }: Props) {
+export default function ChannelIndexPage({ token, joinedChannelIds, onJoin, onOpen, onJoinVoice }: Props) {
   const [entries, setEntries] = useState<ChannelIndexEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -79,12 +80,16 @@ export default function ChannelIndexPage({ token, joinedChannelIds, onJoin, onOp
     const isMember = joinedChannelIds.has(entry.id) || entry.isMember
 
     if (isMember) {
+      const channel: Channel = { id: entry.id, name: entry.name, type: entry.type, visibility: entry.visibility, isArchived: false, createdAt: entry.createdAt, creatorId: null }
+      if (entry.type === 'VOICE') {
+        return (
+          <button type="button" className={styles.actionBtn} onClick={() => onJoinVoice(channel)}>
+            [connect]
+          </button>
+        )
+      }
       return (
-        <button
-          type="button"
-          className={styles.actionBtn}
-          onClick={() => onOpen({ id: entry.id, name: entry.name, type: entry.type, visibility: entry.visibility, isArchived: false, createdAt: entry.createdAt, creatorId: null })}
-        >
+        <button type="button" className={styles.actionBtn} onClick={() => onOpen(channel)}>
           [open]
         </button>
       )
