@@ -296,19 +296,23 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   // Initial scroll: to first unread (centred) or to bottom
   useEffect(() => {
     if (loading) return
-    if (firstUnreadRef.current) {
-      firstUnreadRef.current.scrollIntoView({ block: 'center' })
-    } else {
-      bottomRef.current?.scrollIntoView()
-    }
-    initialScrollDoneRef.current = true
+    requestAnimationFrame(() => {
+      if (firstUnreadRef.current) {
+        firstUnreadRef.current.scrollIntoView({ block: 'center' })
+      } else {
+        const el = messagesContainerRef.current
+        if (el) el.scrollTop = el.scrollHeight
+      }
+      initialScrollDoneRef.current = true
+    })
   }, [loading])
 
   // Auto-scroll on new messages only when already at bottom
   useEffect(() => {
     if (!initialScrollDoneRef.current) return
     if (isAtBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      const el = messagesContainerRef.current
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
     }
   }, [messages])
 
@@ -393,7 +397,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   }
 
   function scrollToBottom() {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = messagesContainerRef.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
     isAtBottomRef.current = true
     setIsAtBottom(true)
   }
@@ -649,11 +654,12 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     return () => document.removeEventListener('keydown', onKey)
   }, [lightbox])
 
-  // Fetch OG metadata for non-image URLs in messages
+  // Fetch OG metadata for non-image URLs in messages (skip YouTube — we embed those directly)
   useEffect(() => {
     const toFetch = new Set<string>()
     for (const msg of messages) {
       for (const url of extractWebUrls(msg.content)) {
+        if (extractYouTubeId(url)) continue
         const cached = ogFetchCache.get(url)
         if (!cached || Date.now() - cached.fetchedAt > OG_TTL) toFetch.add(url)
       }
@@ -935,7 +941,22 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                 />
               ))}
               {msg.content && (() => {
-                const urlWithOg = extractWebUrls(msg.content).find(url => ogData.has(url))
+                const webUrls = extractWebUrls(msg.content)
+                const ytId = webUrls.reduce<string | null>((id, url) => id ?? extractYouTubeId(url), null)
+                if (ytId) {
+                  return (
+                    <div className={styles.youtubeEmbed}>
+                      <iframe
+                        src={`https://www.youtube-nocookie.com/embed/${ytId}`}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                        loading="lazy"
+                        title="YouTube video"
+                      />
+                    </div>
+                  )
+                }
+                const urlWithOg = webUrls.find(url => ogData.has(url))
                 const og = urlWithOg ? ogData.get(urlWithOg)! : null
                 if (!og || !urlWithOg) return null
                 return (
@@ -1263,6 +1284,18 @@ function extractWebUrls(text: string): string[] {
     if (!IMAGE_EXT_RE.test(m[0]) && !VIDEO_EXT_RE.test(m[0])) urls.push(m[0])
   }
   return urls
+}
+
+function extractYouTubeId(url: string): string | null {
+  try {
+    const u = new URL(url)
+    if (u.hostname === 'youtu.be') return u.pathname.slice(1).split('/')[0] || null
+    if (u.hostname === 'youtube.com' || u.hostname === 'www.youtube.com' || u.hostname === 'm.youtube.com') {
+      if (u.pathname.startsWith('/shorts/')) return u.pathname.split('/')[2] || null
+      return u.searchParams.get('v')
+    }
+  } catch { /* invalid URL */ }
+  return null
 }
 
 function formatBytes(bytes: number): string {

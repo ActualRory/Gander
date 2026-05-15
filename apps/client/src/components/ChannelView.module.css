@@ -788,6 +788,23 @@
   border: 1px solid var(--border);
 }
 
+/* ---- YouTube embed ---- */
+.youtubeEmbed {
+  position: relative;
+  width: min(85vw, 480px);
+  aspect-ratio: 16 / 9;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+}
+
+.youtubeEmbed iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
 /* ---- Pin button in header ---- */
 .headerPinBtn {
   margin-left: auto;
