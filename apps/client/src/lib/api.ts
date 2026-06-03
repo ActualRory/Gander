@@ -1,4 +1,4 @@
-import type { Channel, ChannelIndexEntry, ChannelIndexRequest, ChannelJoinRequest, Message, AuthResponse, User, UserRole, UserStats, AttachmentInfo, OgData, PinnedMessageEntry, SearchResult, AuditLogEntry, BanRecord } from '@gander/shared'
+import type { Channel, ChannelIndexEntry, ChannelIndexRequest, ChannelJoinRequest, Message, AuthResponse, User, UserRole, UserStats, AttachmentInfo, OgData, PinnedMessageEntry, SearchResult, AuditLogEntry, BanRecord, Notification } from '@gander/shared'
 import { getServerUrl } from './config.ts'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -430,6 +430,48 @@ export const api = {
 
   adminGetFileStats: (token: string) =>
     request<{ totalSize: number; fileCount: number; limitBytes: number | null }>('/api/admin/file-stats', authed(token)),
+
+  // Admin — password reset requests
+  adminGetPasswordResets: (token: string) =>
+    request<{ id: string; userId: string; username: string; displayName: string; createdAt: string }[]>('/api/admin/password-resets', authed(token)),
+
+  adminApprovePasswordReset: (token: string, requestId: string) =>
+    request<void>(`/api/admin/password-resets/${requestId}/approve`, { method: 'POST', ...authed(token) }),
+
+  adminRejectPasswordReset: (token: string, requestId: string) =>
+    request<void>(`/api/admin/password-resets/${requestId}/reject`, { method: 'POST', ...authed(token) }),
+
+  // Recovery
+  getRecoveryQuestions: () =>
+    request<{ questions: string[] }>('/api/recovery/questions'),
+
+  getRecoveryStatus: (token: string) =>
+    request<{ hasRecovery: boolean }>('/api/recovery/status', authed(token)),
+
+  setupRecovery: (token: string, data: {
+    question1: string; answer1: string
+    question2: string; answer2: string
+    question3: string; answer3: string
+  }) => request<void>('/api/recovery/setup', { method: 'POST', body: JSON.stringify(data), ...authed(token) }),
+
+  getUserRecoveryQuestions: (username: string) =>
+    request<{ questions: string[] }>(`/api/recovery/user-questions/${encodeURIComponent(username)}`),
+
+  submitPasswordReset: (data: {
+    username: string
+    newPassword: string
+    answers: { msgNumber: string; creator: string; answer1: string; answer2: string; answer3: string }
+  }) => request<{ message: string }>('/api/recovery/reset', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Notifications
+  getNotifications: (token: string) =>
+    request<Notification[]>('/api/notifications', authed(token)),
+
+  markNotificationRead: (token: string, id: string) =>
+    request<void>(`/api/notifications/${id}/read`, { method: 'POST', ...authed(token) }),
+
+  markAllNotificationsRead: (token: string) =>
+    request<void>('/api/notifications/read-all', { method: 'POST', ...authed(token) }),
 
   uploadAttachments: async (token: string, files: File[]): Promise<AttachmentInfo[]> => {
     const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'

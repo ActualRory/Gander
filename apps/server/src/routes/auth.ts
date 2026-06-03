@@ -85,8 +85,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const { username, password } = req.body as { username: string; password: string }
 
     const user = await prisma.user.findUnique({ where: { username } })
-    if (!user || !(await verifyPassword(password, user.passwordHash, user.hashVersion))) {
-      return reply.status(401).send({ error: 'Invalid credentials' })
+    if (!user) return reply.status(401).send({ error: 'Unknown username' })
+    if (!(await verifyPassword(password, user.passwordHash, user.hashVersion))) {
+      return reply.status(401).send({ error: 'Wrong password' })
     }
 
     if (user.isBanned) {

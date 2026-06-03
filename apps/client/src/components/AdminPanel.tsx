@@ -10,7 +10,7 @@ interface Props {
   currentUserRole: UserRole
 }
 
-type Tab = 'users' | 'channels' | 'join-requests' | 'audit' | 'files' | 'stats'
+type Tab = 'users' | 'channels' | 'password-resets' | 'join-requests' | 'audit' | 'files' | 'stats'
 
 const RANK: Record<UserRole, number> = { MEMBER: 0, MODERATOR: 1, ADMIN: 2, SUPERADMIN: 3, ROOT: 4 }
 
@@ -323,6 +323,9 @@ function ChannelsTab({ token, currentUserRole }: { token: string; currentUserRol
   const [error, setError] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
   const [section, setSection] = useState<'all' | 'requests'>('all')
+  const [newChannelName, setNewChannelName] = useState('')
+  const [newChannelType, setNewChannelType] = useState<'TEXT' | 'VOICE'>('TEXT')
+  const [creating, setCreating] = useState(false)
 
   useEffect(() => { load() }, [section])
 
@@ -358,9 +361,45 @@ function ChannelsTab({ token, currentUserRole }: { token: string; currentUserRol
   const isAdmin = isAtLeast(currentUserRole, 'ADMIN')
   const isSuperadmin = isAtLeast(currentUserRole, 'SUPERADMIN')
 
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newChannelName.trim()) return
+    setCreating(true)
+    try {
+      await api.createChannel(token, newChannelName.trim(), newChannelType)
+      setNewChannelName('')
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create')
+    } finally {
+      setCreating(false)
+    }
+  }
+
   return (
     <div className={styles.tabContent}>
       {error && <div className={styles.errorBanner}>{error} <button onClick={() => setError(null)}>[×]</button></div>}
+      {isAdmin && (
+        <form onSubmit={handleCreate} className={styles.createChannelForm}>
+          <select
+            value={newChannelType}
+            onChange={e => setNewChannelType(e.target.value as 'TEXT' | 'VOICE')}
+            className={styles.typeSelect}
+          >
+            <option value="TEXT"># text</option>
+            <option value="VOICE">▸ voice</option>
+          </select>
+          <input
+            placeholder="channel-name"
+            value={newChannelName}
+            onChange={e => setNewChannelName(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
+            className={styles.createChannelInput}
+          />
+          <button type="submit" className={styles.actBtn} disabled={creating || !newChannelName.trim()}>
+            {creating ? 'creating...' : '[+ new channel]'}
+          </button>
+        </form>
+      )}
       <div className={styles.subTabs}>
         <button className={section === 'all' ? styles.subTabActive : styles.subTab} onClick={() => setSection('all')}>[all channels]</button>
         <button className={section === 'requests' ? styles.subTabActive : styles.subTab} onClick={() => setSection('requests')}>[index requests]</button>
@@ -440,6 +479,73 @@ function ChannelsTab({ token, currentUserRole }: { token: string; currentUserRol
                   <div className={styles.actions}>
                     <button className={styles.actBtn} disabled={working} onClick={() => act(() => api.adminApproveIndex(token, req.id, req.requestedVisibility))}>[approve]</button>
                     <button className={`${styles.actBtn} ${styles.dangerBtn}`} disabled={working} onClick={() => act(() => api.adminRejectIndex(token, req.id))}>[reject]</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+// ─── Password reset requests tab ──────────────────────────────────────────────
+
+type ResetRequest = { id: string; userId: string; username: string; displayName: string; createdAt: string }
+
+function PasswordResetsTab({ token }: { token: string }) {
+  const [requests, setRequests] = useState<ResetRequest[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [working, setWorking] = useState(false)
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    try {
+      setRequests(await api.adminGetPasswordResets(token))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function act(fn: () => Promise<void>) {
+    setWorking(true)
+    setError(null)
+    try { await fn(); await load() }
+    catch (err) { setError(err instanceof Error ? err.message : 'Action failed') }
+    finally { setWorking(false) }
+  }
+
+  return (
+    <div className={styles.tabContent}>
+      {error && <div className={styles.errorBanner}>{error} <button onClick={() => setError(null)}>[×]</button></div>}
+      {loading ? <div className={styles.loading}>loading...</div> : (
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th>user</th>
+              <th>username</th>
+              <th>requested</th>
+              <th>actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {requests.length === 0 ? (
+              <tr><td colSpan={4} className={styles.emptyCell}>no pending password reset requests</td></tr>
+            ) : requests.map(r => (
+              <tr key={r.id}>
+                <td className={styles.nameCell}>{r.displayName}</td>
+                <td>{r.username}</td>
+                <td className={styles.dateCell}>{formatDateTime(r.createdAt)}</td>
+                <td>
+                  <div className={styles.actions}>
+                    <button className={styles.actBtn} disabled={working} onClick={() => act(() => api.adminApprovePasswordReset(token, r.id))}>[approve]</button>
+                    <button className={`${styles.actBtn} ${styles.dangerBtn}`} disabled={working} onClick={() => act(() => api.adminRejectPasswordReset(token, r.id))}>[reject]</button>
                   </div>
                 </td>
               </tr>
@@ -784,6 +890,7 @@ function StatsTab({ token }: { token: string }) {
 const TABS: { id: Tab; label: string; minRole: UserRole }[] = [
   { id: 'users', label: 'users', minRole: 'MODERATOR' },
   { id: 'channels', label: 'channels', minRole: 'MODERATOR' },
+  { id: 'password-resets', label: 'password resets', minRole: 'SUPERADMIN' },
   { id: 'join-requests', label: 'join requests', minRole: 'MODERATOR' },
   { id: 'audit', label: 'audit log', minRole: 'MODERATOR' },
   { id: 'files', label: 'files', minRole: 'MODERATOR' },
@@ -816,6 +923,7 @@ export default function AdminPanel({ token, currentUserId, currentUserRole }: Pr
       <div className={styles.body}>
         {activeTab === 'users' && <UsersTab token={token} currentUserId={currentUserId} currentUserRole={currentUserRole} />}
         {activeTab === 'channels' && <ChannelsTab token={token} currentUserRole={currentUserRole} />}
+        {activeTab === 'password-resets' && <PasswordResetsTab token={token} />}
         {activeTab === 'join-requests' && <JoinRequestsTab token={token} />}
         {activeTab === 'audit' && <AuditTab token={token} />}
         {activeTab === 'files' && <FilesTab token={token} />}

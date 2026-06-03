@@ -30,6 +30,8 @@ import UserProfileModal from '../components/UserProfileModal.tsx'
 import ContextMenu from '../components/ContextMenu.tsx'
 import { RNNoiseProcessor, rnnoiseSupported } from '../lib/rnnoiseProcessor.ts'
 import UpdateBanner from '../components/UpdateBanner.tsx'
+import NotificationInbox from '../components/NotificationInbox.tsx'
+import RecoverySetupModal from '../components/RecoverySetupModal.tsx'
 import { useAppUpdater } from '../lib/useAppUpdater.ts'
 import { useAndroidUpdateCheck } from '../lib/useAndroidUpdateCheck.ts'
 import styles from './Main.module.css'
@@ -187,6 +189,8 @@ export default function Main({ auth, onLogout }: Props) {
   const [activeUtilityId, setActiveUtilityId] = useState<'library' | 'file-manager' | 'gandle' | 'admin' | null>(null)
   const [showChannelIndex, setShowChannelIndex] = useState(false)
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(() => auth.role ?? 'MEMBER')
+  const [notifications, setNotifications] = useState<import('@gander/shared').Notification[]>([])
+  const [showRecoverySetup, setShowRecoverySetup] = useState(false)
   const [hiddenUtilityIds, setHiddenUtilityIds] = useState<Set<string>>(() => loadHiddenUtilities(auth.userId))
   const [windowFocused, setWindowFocused] = useState(true)
   const wsRef = useRef<GanderWS | null>(null)
@@ -323,6 +327,14 @@ export default function Main({ auth, onLogout }: Props) {
       if (!granted) requestPermission().catch(() => {})
     }).catch(() => {})
   }, [])
+
+  // Load notifications and check recovery setup on mount
+  useEffect(() => {
+    api.getNotifications(auth.token).then(setNotifications).catch(() => {})
+    api.getRecoveryStatus(auth.token).then(({ hasRecovery }) => {
+      if (!hasRecovery) setShowRecoverySetup(true)
+    }).catch(() => {})
+  }, [auth.token])
 
   // Update taskbar badge (desktop only)
   useEffect(() => {
@@ -559,6 +571,8 @@ export default function Main({ auth, onLogout }: Props) {
       } else if (event.type === 'channel:visibility_changed') {
         const { channelId, visibility } = event.payload
         setChannels(prev => prev.map(c => c.id === channelId ? { ...c, visibility } : c))
+      } else if (event.type === 'notification:new') {
+        setNotifications(prev => [event.payload, ...prev])
       }
     })
 
@@ -1567,6 +1581,19 @@ export default function Main({ auth, onLogout }: Props) {
             }] : []),
           ]}
           onClose={() => setUserContextMenu(null)}
+        />
+      )}
+      <NotificationInbox
+        token={auth.token}
+        notifications={notifications}
+        onMarkRead={id => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
+        onMarkAllRead={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+      />
+      {showRecoverySetup && (
+        <RecoverySetupModal
+          token={auth.token}
+          onDone={() => setShowRecoverySetup(false)}
+          onSkip={() => setShowRecoverySetup(false)}
         />
       )}
     </div>

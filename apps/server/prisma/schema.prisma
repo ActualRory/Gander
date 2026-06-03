@@ -48,6 +48,12 @@ enum JoinRequestStatus {
   REJECTED
 }
 
+enum ResetRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // ─── Core Models ──────────────────────────────────────────────────────────────
 
 model User {
@@ -82,6 +88,9 @@ model User {
   bansIssued      Ban[]              @relation("BanIssuer")
   auditLogs       AuditLog[]
   channelJoinRequests ChannelJoinRequest[]
+  recovery        UserRecovery?
+  passwordResets  PasswordResetRequest[]
+  notifications   Notification[]
 }
 
 model Channel {
@@ -348,4 +357,47 @@ model Reaction {
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId, reaction])
+}
+
+// ─── Recovery & Notifications ─────────────────────────────────────────────────
+
+model UserRecovery {
+  userId    String @id
+  question1 String
+  answer1   String
+  question2 String
+  answer2   String
+  question3 String
+  answer3   String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PasswordResetRequest {
+  id              String             @id @default(cuid())
+  userId          String
+  newPasswordHash String
+  status          ResetRequestStatus @default(PENDING)
+  reviewedById    String?
+  reviewedAt      DateTime?
+  createdAt       DateTime           @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String?
+  meta      Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
 }

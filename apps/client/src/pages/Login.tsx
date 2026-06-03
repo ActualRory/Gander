@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { AuthState } from '../App.tsx'
 import { api } from '../lib/api.ts'
 import { getServerUrl } from '../lib/config.ts'
+import PasswordResetModal from '../components/PasswordResetModal.tsx'
 import styles from './Login.module.css'
 
 const LOGO = `⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣤⣶⣶⣾⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀
@@ -55,6 +56,7 @@ interface Props {
 export default function Login({ onAuth, onChangeServer }: Props) {
   const serverUrl = getServerUrl()!
   const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [showReset, setShowReset] = useState(false)
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
@@ -119,8 +121,14 @@ export default function Login({ onAuth, onChangeServer }: Props) {
         <button className={styles.toggle} onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
           {mode === 'login' ? 'click here to create an account' : 'have an account? login'}
         </button>
+        {mode === 'login' && (
+          <button className={styles.toggle} onClick={() => setShowReset(true)}>
+            forgot password?
+          </button>
+        )}
       </div>
       <p className={styles.credit}>direct all feedback to rory</p>
+      {showReset && <PasswordResetModal onClose={() => setShowReset(false)} />}
     </div>
   )
 }

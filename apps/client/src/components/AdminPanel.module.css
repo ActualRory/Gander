@@ -75,6 +75,33 @@
 }
 
 /* ─── Sub-tabs (channels section) ─── */
+.createChannelForm {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.typeSelect {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.82rem;
+  padding: 4px 6px;
+}
+
+.createChannelInput {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 4px 8px;
+}
+
 .subTabs {
   display: flex;
   gap: 4px;

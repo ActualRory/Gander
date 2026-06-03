@@ -1,6 +1,7 @@
 import type { Message, ReactionSummary } from './message.js'
 import type { Channel } from './channel.js'
 import type { User } from './user.js'
+import type { Notification } from './notification.js'
 
 // Events sent from server → client
 export type ServerEvent =
@@ -33,6 +34,7 @@ export type ServerEvent =
   | { type: 'user:role_changed'; payload: { userId: string; role: import('./user.js').UserRole } }
   | { type: 'channel:archived'; payload: { channelId: string } }
   | { type: 'channel:visibility_changed'; payload: { channelId: string; visibility: import('./channel.js').ChannelVisibility } }
+  | { type: 'notification:new'; payload: Notification }
 
 // Events sent from client → server
 export type ClientEvent =

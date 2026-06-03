@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { prisma } from '../lib/prisma.js'
 import { broadcastAll, broadcastToUser, forceDisconnectUser } from '../ws/handler.js'
 import { requireRole, canPromoteTo, rankOf, writeAuditLog, type UserRole } from '../lib/auth.js'
+import { createNotification } from '../lib/notifier.js'
 import type { UserRole as SharedUserRole, ChannelType, ChannelVisibility } from '@gander/shared'
 
 function serializeUser(u: {
@@ -415,6 +416,87 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(204).send()
     }
   )
+
+  // ─── Password Reset Requests ──────────────────────────────────────────────────
+
+  // GET /api/admin/password-resets — SUPERADMIN+
+  app.get('/password-resets', { preHandler: [requireRole('SUPERADMIN')] }, async () => {
+    const requests = await prisma.passwordResetRequest.findMany({
+      where: { status: 'PENDING' },
+      include: { user: { select: { id: true, username: true, displayName: true } } },
+      orderBy: { createdAt: 'asc' },
+    })
+    return requests.map(r => ({
+      id: r.id,
+      userId: r.userId,
+      username: r.user.username,
+      displayName: r.user.displayName,
+      createdAt: r.createdAt.toISOString(),
+    }))
+  })
+
+  // POST /api/admin/password-resets/:id/approve — SUPERADMIN+
+  app.post('/password-resets/:id/approve', { preHandler: [requireRole('SUPERADMIN')] }, async (req, reply) => {
+    const { userId: actorId } = req.user as { userId: string }
+    const { id } = req.params as { id: string }
+
+    const request = await prisma.passwordResetRequest.findUnique({
+      where: { id },
+      include: { user: { select: { id: true, username: true, displayName: true } } },
+    })
+    if (!request) return reply.status(404).send({ error: 'Not found' })
+    if (request.status !== 'PENDING') return reply.status(409).send({ error: 'Already reviewed' })
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: request.userId },
+        data: { passwordHash: request.newPasswordHash, hashVersion: 'bcrypt' },
+      }),
+      prisma.passwordResetRequest.update({
+        where: { id },
+        data: { status: 'APPROVED', reviewedById: actorId, reviewedAt: new Date() },
+      }),
+    ])
+
+    await writeAuditLog(actorId, 'password_reset.approved', request.userId, 'user', {
+      username: request.user.username,
+      requestId: id,
+    })
+
+    await createNotification(
+      request.userId,
+      'account:reset_approved',
+      'Password reset approved',
+      'Your password reset request has been approved. You can now log in with your new password.',
+    )
+
+    return reply.status(204).send()
+  })
+
+  // POST /api/admin/password-resets/:id/reject — SUPERADMIN+
+  app.post('/password-resets/:id/reject', { preHandler: [requireRole('SUPERADMIN')] }, async (req, reply) => {
+    const { userId: actorId } = req.user as { userId: string }
+    const { id } = req.params as { id: string }
+
+    const request = await prisma.passwordResetRequest.findUnique({
+      where: { id },
+      include: { user: { select: { id: true, username: true } } },
+    })
+    if (!request) return reply.status(404).send({ error: 'Not found' })
+    if (request.status !== 'PENDING') return reply.status(409).send({ error: 'Already reviewed' })
+
+    await prisma.passwordResetRequest.update({
+      where: { id },
+      data: { status: 'REJECTED', reviewedById: actorId, reviewedAt: new Date() },
+    })
+
+    await writeAuditLog(actorId, 'password_reset.rejected', request.userId, 'user', {
+      username: request.user.username,
+      requestId: id,
+    })
+
+    return reply.status(204).send()
+  })
 
   // ─── Audit Log ─────────────────────────────────────────────────────────────────
 
