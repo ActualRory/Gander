@@ -1,8 +1,5 @@
 .bell {
-  position: fixed;
-  top: 10px;
-  right: 12px;
-  z-index: 200;
+  margin-left: auto;
   background: none;
   border: none;
   font-family: inherit;
@@ -11,6 +8,7 @@
   cursor: pointer;
   padding: 2px 4px;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .bell:hover {
@@ -24,8 +22,6 @@
 
 .panel {
   position: fixed;
-  top: 34px;
-  right: 12px;
   z-index: 300;
   width: 320px;
   max-height: 480px;

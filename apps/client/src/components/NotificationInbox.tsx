@@ -24,6 +24,7 @@ function timeAgo(iso: string) {
 
 export default function NotificationInbox({ token, notifications, onMarkRead, onMarkAllRead, onNotificationClick }: Props) {
   const [open, setOpen] = useState(false)
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
   const btnRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -31,6 +32,10 @@ export default function NotificationInbox({ token, notifications, onMarkRead, on
 
   useEffect(() => {
     if (!open) return
+    const rect = btnRef.current?.getBoundingClientRect()
+    if (rect) {
+      setPanelPos({ top: rect.bottom + 4, left: Math.max(4, rect.right - 320) })
+    }
     function onClickOutside(e: MouseEvent) {
       if (
         panelRef.current && !panelRef.current.contains(e.target as Node) &&
@@ -73,7 +78,7 @@ export default function NotificationInbox({ token, notifications, onMarkRead, on
   )
 
   const panel = open && createPortal(
-    <div ref={panelRef} className={styles.panel}>
+    <div ref={panelRef} className={styles.panel} style={{ top: panelPos.top, left: panelPos.left }}>
       <div className={styles.header}>
         <span className={styles.headerTitle}>notifications</span>
         {unreadCount > 0 && (

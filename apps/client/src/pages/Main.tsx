@@ -30,7 +30,6 @@ import UserProfileModal from '../components/UserProfileModal.tsx'
 import ContextMenu from '../components/ContextMenu.tsx'
 import { RNNoiseProcessor, rnnoiseSupported } from '../lib/rnnoiseProcessor.ts'
 import UpdateBanner from '../components/UpdateBanner.tsx'
-import NotificationInbox from '../components/NotificationInbox.tsx'
 import RecoverySetupModal from '../components/RecoverySetupModal.tsx'
 import { useAppUpdater } from '../lib/useAppUpdater.ts'
 import { useAndroidUpdateCheck } from '../lib/useAndroidUpdateCheck.ts'
@@ -1436,6 +1435,10 @@ export default function Main({ auth, onLogout }: Props) {
         activeUtilityId={activeUtilityId}
         onBrowseChannels={() => { setShowChannelIndex(true); setActiveChannel(null); setActiveUtilityId(null); setSidebarOpen(false) }}
         currentUserRole={currentUserRole}
+        token={auth.token}
+        notifications={notifications}
+        onMarkNotificationRead={id => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
+        onMarkAllNotificationsRead={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
       />
       <main className={styles.content}>
         <button
@@ -1583,12 +1586,6 @@ export default function Main({ auth, onLogout }: Props) {
           onClose={() => setUserContextMenu(null)}
         />
       )}
-      <NotificationInbox
-        token={auth.token}
-        notifications={notifications}
-        onMarkRead={id => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
-        onMarkAllRead={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
-      />
       {showRecoverySetup && (
         <RecoverySetupModal
           token={auth.token}

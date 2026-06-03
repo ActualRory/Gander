@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Channel, User, UserRole } from '@gander/shared'
+import type { Channel, Notification, User, UserRole } from '@gander/shared'
 import { platform } from '../lib/platform.ts'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import ChannelIndexModal from './ChannelIndexModal.tsx'
 import ConfirmDeleteModal from './ConfirmDeleteModal.tsx'
 import VoiceControls, { type VoiceStats } from './VoiceControls.tsx'
 import ParticipantVolumeMenu from './ParticipantVolumeMenu.tsx'
+import NotificationInbox from './NotificationInbox.tsx'
 import styles from './Sidebar.module.css'
 
 interface Props {
@@ -63,6 +64,10 @@ interface Props {
   activeUtilityId: string | null
   onBrowseChannels: () => void
   currentUserRole: UserRole
+  token: string
+  notifications: Notification[]
+  onMarkNotificationRead: (id: string) => void
+  onMarkAllNotificationsRead: () => void
 }
 
 interface ContextState {
@@ -89,7 +94,7 @@ const ADMIN_ROLES: UserRole[] = ['ADMIN', 'SUPERADMIN', 'ROOT']
 function isMod(role: UserRole) { return MOD_ROLES.includes(role) }
 function isAdmin(role: UserRole) { return ADMIN_ROLES.includes(role) }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onArchiveChannel, onLeaveChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId, onBrowseChannels, currentUserRole }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onArchiveChannel, onLeaveChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId, onBrowseChannels, currentUserRole, token, notifications, onMarkNotificationRead, onMarkAllNotificationsRead }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -418,6 +423,12 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
         <div className={styles.serverName}>
           GANDER
           {appVersion && <span className={styles.version}>v{appVersion}</span>}
+          <NotificationInbox
+            token={token}
+            notifications={notifications}
+            onMarkRead={onMarkNotificationRead}
+            onMarkAllRead={onMarkAllNotificationsRead}
+          />
         </div>
 
         <div className={styles.channelList}>
