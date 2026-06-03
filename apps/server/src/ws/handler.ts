@@ -334,6 +334,29 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         }
         if (!message) return
 
+        // Notify mentioned users (skip self-mentions, fire-and-forget)
+        if (mentionedUserIds.length > 0 && author) {
+          const preview = content.slice(0, 100)
+          const locationHint = isDm ? 'in a DM' : `(#${postNumber})`
+          const notifTitle = `${author.displayName} mentioned you`
+          const notifBody = preview + (locationHint ? ` ${locationHint}` : '')
+          const notifMeta = { messageId: message.id, channelId, postNumber }
+          for (const mentionedId of mentionedUserIds) {
+            prisma.notification.create({
+              data: { userId: mentionedId, type: 'mention', title: notifTitle, body: notifBody, meta: notifMeta as never },
+            }).then((notif: { id: string; type: string; title: string; body: string | null; meta: unknown; read: boolean; createdAt: Date }) => {
+              broadcastToUser(mentionedId, {
+                type: 'notification:new',
+                payload: {
+                  id: notif.id, type: notif.type, title: notif.title,
+                  body: notif.body ?? null, meta: notif.meta as Record<string, unknown> | null,
+                  read: notif.read, createdAt: notif.createdAt.toISOString(),
+                },
+              })
+            }).catch(() => {})
+          }
+        }
+
         // Link attachments (only the uploader's unlinked ones)
         let attachments: Array<{ id: string; storedName: string; mimeType: string; filename: string; size: number }> = []
         if (hasAttachments) {
