@@ -1506,6 +1506,7 @@ export default function Main({ auth, onLogout }: Props) {
                 users={users}
                 channels={channels}
                 currentUserId={auth.userId}
+                currentUserRole={currentUserRole}
                 onUserRightClick={handleUserRightClick}
                 lastReadAt={loadLastRead(auth.userId, activeChannel.id)}
                 onMarkRead={() => markChannelRead(activeChannel.id)}

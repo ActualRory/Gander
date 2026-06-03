@@ -67,6 +67,7 @@ interface Props {
   users: User[]
   channels: Channel[]
   currentUserId: string
+  currentUserRole: import('@gander/shared').UserRole
   lastReadAt: string | null
   onMarkRead: () => void
   onUserRightClick: (userId: string, x: number, y: number) => void
@@ -77,7 +78,7 @@ interface Props {
   onNavigateToMessage?: (channelId: string, messageId: string, createdAt: string) => void
 }
 
-export default function ChannelView({ channel, token, ws, users, channels, currentUserId, onUserRightClick, lastReadAt, onMarkRead, onNavigateToChannel, onNavigateToUtility, jumpToMessageId, jumpAnchorTime, onNavigateToMessage }: Props) {
+export default function ChannelView({ channel, token, ws, users, channels, currentUserId, currentUserRole, onUserRightClick, lastReadAt, onMarkRead, onNavigateToChannel, onNavigateToUtility, jumpToMessageId, jumpAnchorTime, onNavigateToMessage }: Props) {
   const channelLabel = channel.type === 'DM'
     ? (users.find(u => u.id === channel.otherUserId)?.displayName ?? channel.name)
     : `# ${channel.name}`
@@ -152,6 +153,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     }
   }
   const [isAtBottom, setIsAtBottom] = useState(true)
+  const [videoConfirm, setVideoConfirm] = useState<{ files: File[] } | null>(null)
 
   const mentionUsers = mentionQuery !== null
     ? users.filter(u =>
@@ -411,12 +413,19 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     setTimeout(() => el.classList.remove(styles.messageHighlight), 1200)
   }
 
-  async function handleFilesSelected(files: FileList | File[]) {
+  async function handleFilesSelected(files: FileList | File[], skipConfirm = false) {
     const validFiles = Array.from(files).filter(f => SUPPORTED_MIMES.has(f.type))
-    const imageFiles = validFiles
     const available = 5 - pendingAttachments.length
-    const toUpload = imageFiles.slice(0, available)
+    const toUpload = validFiles.slice(0, available)
     if (toUpload.length === 0) return
+
+    if (!skipConfirm) {
+      const largeVideos = toUpload.filter(f => isVideoMime(f.type) && f.size > VIDEO_WARN_BYTES)
+      if (largeVideos.length > 0) {
+        setVideoConfirm({ files: toUpload })
+        return
+      }
+    }
 
     const newPending = toUpload.map(file => ({
       file,
@@ -902,6 +911,15 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setImgMenu({ url: resolveAttachmentUrl(att.url), filename: att.filename, x: e.clientX, y: e.clientY }) }}
                       title={`${att.filename} (${formatBytes(att.size)})`}
                     />
+                  ) : isVideoMime(att.mimeType) ? (
+                    <video
+                      key={att.id}
+                      src={resolveAttachmentUrl(att.url)}
+                      className={styles.messageVideo}
+                      controls
+                      preload="metadata"
+                      title={`${att.filename} (${formatBytes(att.size)})`}
+                    />
                   ) : (
                     <button
                       key={att.id}
@@ -1065,6 +1083,15 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                 if (msg) { setEditingMessageId(msg.id); setEditInput(msg.content) }
               },
             }] : []),
+            ...((messages.find(m => m.id === msgMenu.msgId)?.authorId === currentUserId || currentUserRole === 'ROOT') ? [{
+              label: currentUserRole === 'ROOT' && messages.find(m => m.id === msgMenu.msgId)?.authorId !== currentUserId ? 'delete (mod)' : 'delete',
+              danger: true,
+              action: async () => {
+                const msgId = msgMenu.msgId
+                setMsgMenu(null)
+                await api.deleteMessage(token, msgId)
+              },
+            }] : []),
           ]}
           onClose={() => setMsgMenu(null)}
         />
@@ -1117,6 +1144,27 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
 
       {downloadToast && createPortal(
         <div className={styles.downloadToast}>downloaded {downloadToast}</div>,
+        document.body
+      )}
+
+      {videoConfirm && createPortal(
+        <div className={styles.lightboxOverlay} onClick={() => setVideoConfirm(null)} role="dialog" tabIndex={0}>
+          <div className={styles.videoConfirmBox} onClick={e => e.stopPropagation()}>
+            <div className={styles.videoConfirmTitle}>upload large video?</div>
+            <div className={styles.videoConfirmFiles}>
+              {videoConfirm.files.filter(f => isVideoMime(f.type) && f.size > VIDEO_WARN_BYTES).map((f, i) => (
+                <div key={i} className={styles.videoConfirmFile}>
+                  <span>{f.name}</span>
+                  <span className={styles.videoConfirmSize}>{formatBytes(f.size)}</span>
+                </div>
+              ))}
+            </div>
+            <div className={styles.videoConfirmActions}>
+              <button type="button" className={styles.videoConfirmCancel} onClick={() => setVideoConfirm(null)}>[cancel]</button>
+              <button type="button" className={styles.videoConfirmOk} onClick={() => { const f = videoConfirm.files; setVideoConfirm(null); void handleFilesSelected(f, true) }}>[upload anyway]</button>
+            </div>
+          </div>
+        </div>,
         document.body
       )}
 
@@ -1187,6 +1235,11 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
             <div key={i} className={`${styles.pendingThumb} ${p.error ? styles.pendingThumbError : ''}`}>
               {isImageMime(p.file.type) ? (
                 <img src={p.previewUrl} alt={p.file.name} className={styles.pendingThumbImg} />
+              ) : isVideoMime(p.file.type) ? (
+                <div className={styles.pendingThumbFile}>
+                  <span className={styles.pendingThumbFileIcon}>[video]</span>
+                  <span className={styles.pendingThumbFileName}>{p.file.name}</span>
+                </div>
               ) : (
                 <div className={styles.pendingThumbFile}>
                   <span className={styles.pendingThumbFileName}>{p.file.name}</span>
@@ -1215,7 +1268,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,application/zip,.exe"
+          accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/ogg,video/quicktime,application/pdf,text/plain,application/zip,.exe"
           multiple
           style={{ display: 'none' }}
           onChange={e => { if (e.target.files) void handleFilesSelected(e.target.files); e.target.value = '' }}
@@ -1243,14 +1296,21 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   )
 }
 
+const VIDEO_WARN_BYTES = 50 * 1024 * 1024 // 50 MB
+
 const SUPPORTED_MIMES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime',
   'application/pdf', 'text/plain', 'application/zip', 'application/x-zip-compressed',
   'application/x-msdownload', 'application/vnd.microsoft.portable-executable',
 ])
 
 function isImageMime(mimeType: string): boolean {
   return mimeType.startsWith('image/')
+}
+
+function isVideoMime(mimeType: string): boolean {
+  return mimeType.startsWith('video/')
 }
 
 const IMAGE_EXT_RE = /\.(jpg|jpeg|png|gif|webp)(\?[^\s]*)?$/i

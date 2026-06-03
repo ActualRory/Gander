@@ -3,6 +3,7 @@ import type { Channel, User, UserRole } from '@gander/shared'
 import { platform } from '../lib/platform.ts'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import ChannelIndexModal from './ChannelIndexModal.tsx'
+import CreateChannelModal from './CreateChannelModal.tsx'
 import ConfirmDeleteModal from './ConfirmDeleteModal.tsx'
 import VoiceControls, { type VoiceStats } from './VoiceControls.tsx'
 import ParticipantVolumeMenu from './ParticipantVolumeMenu.tsx'
@@ -91,6 +92,8 @@ function isAdmin(role: UserRole) { return ADMIN_ROLES.includes(role) }
 
 export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onArchiveChannel, onLeaveChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId, onBrowseChannels, currentUserRole }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createType, setCreateType] = useState<'TEXT' | 'VOICE'>('TEXT')
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
   const [renaming, setRenaming] = useState<Channel | null>(null)
@@ -435,6 +438,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
               <span>text channels</span>
               <div style={{ display: 'flex', gap: '4px' }}>
                 <button type="button" className={styles.addBtn} onClick={onBrowseChannels} title="browse channels">[⊕]</button>
+                <button type="button" className={styles.addBtn} onClick={() => { setCreateType('TEXT'); setCreateOpen(true) }} title="new channel">[new]</button>
                 <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)} title="show/hide">[+]</button>
               </div>
             </div>
@@ -444,7 +448,10 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span>voice channels</span>
-              <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)}>[+]</button>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <button type="button" className={styles.addBtn} onClick={() => { setCreateType('VOICE'); setCreateOpen(true) }} title="new channel">[new]</button>
+                <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)} title="show/hide">[+]</button>
+              </div>
             </div>
             {visibleVoice.map(c => renderVoiceChannel(c))}
           </div>
@@ -552,6 +559,14 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           volume={participantVolumes[participantVolumeMenu.userId] ?? 1.0}
           onSetVolume={onSetParticipantVolume}
           onClose={() => setParticipantVolumeMenu(null)}
+        />
+      )}
+
+      {createOpen && (
+        <CreateChannelModal
+          initialType={createType}
+          onConfirm={(name, type) => { onCreateChannel(name, type); setCreateOpen(false) }}
+          onClose={() => setCreateOpen(false)}
         />
       )}
 

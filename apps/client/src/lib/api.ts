@@ -109,6 +109,9 @@ export const api = {
   editMessage: (token: string, messageId: string, content: string) =>
     request<Message>(`/api/messages/${messageId}`, { method: 'PATCH', body: JSON.stringify({ content }), ...authed(token) }),
 
+  deleteMessage: (token: string, messageId: string) =>
+    request<void>(`/api/messages/${messageId}`, { method: 'DELETE', ...authed(token) }),
+
   getPins: (token: string, channelId: string) =>
     request<PinnedMessageEntry[]>(`/api/channels/${channelId}/pins`, authed(token)),
 

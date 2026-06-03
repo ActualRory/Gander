@@ -4,11 +4,12 @@ import styles from './CreateChannelModal.module.css'
 interface Props {
   onConfirm: (name: string, type: 'TEXT' | 'VOICE') => void
   onClose: () => void
+  initialType?: 'TEXT' | 'VOICE'
 }
 
-export default function CreateChannelModal({ onConfirm, onClose }: Props) {
+export default function CreateChannelModal({ onConfirm, onClose, initialType = 'TEXT' }: Props) {
   const [name, setName] = useState('')
-  const [type, setType] = useState<'TEXT' | 'VOICE'>('TEXT')
+  const [type, setType] = useState<'TEXT' | 'VOICE'>(initialType)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {

@@ -30,8 +30,9 @@ const server = Fastify({ logger: true })
 await server.register(fastifyCors, { origin: true })
 await server.register(fastifyJwt, { secret: process.env.JWT_SECRET ?? 'dev-secret' })
 await server.register(fastifyWebsocket)
+const MAX_UPLOAD_BYTES = (Number(process.env.MAX_UPLOAD_MB) || 500) * 1024 * 1024
 await server.register(fastifyMultipart, {
-  limits: { fileSize: 10 * 1024 * 1024, files: 5, fields: 0 },
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: 5, fields: 0 },
 })
 await server.register(fastifyStatic, {
   root: UPLOADS_DIR,

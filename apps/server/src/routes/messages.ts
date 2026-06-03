@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { prisma } from '../lib/prisma.js'
+import { rankOf, writeAuditLog, type UserRole } from '../lib/auth.js'
 import { broadcastAll, broadcastToUser } from '../ws/handler.js'
 
 export const messageRoutes: FastifyPluginAsync = async (app) => {
@@ -99,6 +100,48 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         isSystem: m.isSystem,
       }
     })
+  })
+
+  app.delete('/:messageId', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
+    const { messageId } = req.params as { messageId: string }
+
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+      select: { id: true, channelId: true, authorId: true, content: true, channel: { select: { type: true } } },
+    })
+    if (!message) return reply.status(404).send({ error: 'Not found' })
+
+    const actor = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })
+    const isRoot = rankOf(actor?.role as UserRole ?? 'MEMBER') >= rankOf('ROOT')
+    const isAuthor = message.authorId === userId
+
+    if (!isAuthor && !isRoot) return reply.status(403).send({ error: 'Forbidden' })
+
+    await prisma.message.delete({ where: { id: messageId } })
+
+    if (isRoot && !isAuthor) {
+      await writeAuditLog(userId, 'message.delete', messageId, 'message', {
+        channelId: message.channelId,
+        authorId: message.authorId,
+        preview: message.content.slice(0, 100),
+      })
+    }
+
+    const isDm = message.channel.type === 'DM' || message.channel.type === 'GROUP'
+    if (isDm) {
+      const members = await prisma.channelMember.findMany({
+        where: { channelId: message.channelId },
+        select: { userId: true },
+      })
+      for (const { userId: memberId } of members) {
+        broadcastToUser(memberId, { type: 'message:deleted', payload: { id: messageId, channelId: message.channelId } })
+      }
+    } else {
+      broadcastAll({ type: 'message:deleted', payload: { id: messageId, channelId: message.channelId } })
+    }
+
+    return reply.status(204).send()
   })
 
   app.patch('/:messageId', async (req, reply) => {
