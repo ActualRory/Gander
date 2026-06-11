@@ -10,6 +10,7 @@ export interface User {
   lastSeenAt: string | null
   role: UserRole
   isBanned?: boolean
+  isArchived?: boolean
   timeoutUntil?: string | null
 }
 

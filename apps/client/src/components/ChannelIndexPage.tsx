@@ -11,6 +11,7 @@ interface Props {
   onJoin: (channelId: string, message?: string) => Promise<void>
   onOpen: (channel: Channel) => void
   onJoinVoice: (channel: Channel) => void
+  onInvite?: (channel: Channel) => void
   onClose?: () => void
 }
 
@@ -25,13 +26,14 @@ function visibilityLabel(v: string): string {
   return '[public]'
 }
 
-export default function ChannelIndexPage({ token, joinedChannelIds, onJoin, onOpen, onJoinVoice, onClose }: Props) {
+export default function ChannelIndexPage({ token, joinedChannelIds, onJoin, onOpen, onJoinVoice, onInvite, onClose }: Props) {
   const [entries, setEntries] = useState<ChannelIndexEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [requestingId, setRequestingId] = useState<string | null>(null)
   const [requestMessages, setRequestMessages] = useState<Record<string, string>>({})
   const [pendingJoinId, setPendingJoinId] = useState<string | null>(null)
+  const [filter, setFilter] = useState('')
 
   useEffect(() => {
     load()
@@ -82,17 +84,23 @@ export default function ChannelIndexPage({ token, joinedChannelIds, onJoin, onOp
 
     if (isMember) {
       const channel: Channel = { id: entry.id, name: entry.name, type: entry.type, visibility: entry.visibility, isArchived: false, createdAt: entry.createdAt, creatorId: null }
-      if (entry.type === 'VOICE') {
-        return (
-          <button type="button" className={styles.actionBtn} onClick={() => onJoinVoice(channel)}>
-            [connect]
-          </button>
-        )
-      }
       return (
-        <button type="button" className={styles.actionBtn} onClick={() => onOpen(channel)}>
-          [open]
-        </button>
+        <>
+          {entry.type === 'VOICE' ? (
+            <button type="button" className={styles.actionBtn} onClick={() => onJoinVoice(channel)}>
+              [connect]
+            </button>
+          ) : (
+            <button type="button" className={styles.actionBtn} onClick={() => onOpen(channel)}>
+              [open]
+            </button>
+          )}
+          {onInvite && (
+            <button type="button" className={styles.actionBtn} onClick={() => onInvite(channel)}>
+              [invite]
+            </button>
+          )}
+        </>
       )
     }
 
@@ -171,6 +179,13 @@ export default function ChannelIndexPage({ token, joinedChannelIds, onJoin, onOp
     <div className={styles.root}>
       <div className={styles.header}>
         <span className={styles.title}>channel index</span>
+        <input
+          className={styles.filterInput}
+          type="text"
+          placeholder="search channels..."
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+        />
         <button type="button" className={styles.refreshBtn} onClick={load}>[refresh]</button>
         {onClose && (
           <button type="button" className={styles.closeBtn} onClick={onClose}>[×]</button>
@@ -184,13 +199,17 @@ export default function ChannelIndexPage({ token, joinedChannelIds, onJoin, onOp
         </div>
       )}
 
-      {loading ? (
-        <div className={styles.loading}>loading...</div>
-      ) : entries.length === 0 ? (
-        <div className={styles.empty}>no channels in the public index yet.</div>
-      ) : (
+      {(() => {
+        const q = filter.trim().toLowerCase()
+        const filtered = q
+          ? entries.filter(e => e.name.toLowerCase().includes(q) || (e.topic ?? '').toLowerCase().includes(q))
+          : entries
+        if (loading) return <div className={styles.loading}>loading...</div>
+        if (entries.length === 0) return <div className={styles.empty}>no channels in the public index yet.</div>
+        if (filtered.length === 0) return <div className={styles.empty}>no channels match "{filter}".</div>
+        return (
         <div className={styles.grid}>
-          {entries.map(entry => (
+          {filtered.map(entry => (
             <div key={entry.id} className={styles.card}>
               <div className={styles.cardHeader}>
                 <span className={styles.typeIcon}>{typeIcon(entry.type)}</span>
@@ -221,7 +240,8 @@ export default function ChannelIndexPage({ token, joinedChannelIds, onJoin, onOp
             </div>
           ))}
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

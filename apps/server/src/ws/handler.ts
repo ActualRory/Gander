@@ -146,7 +146,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         if (userSockets.size === 1) {
           const connectedUser = await prisma.user.findUnique({
             where: { id: userId },
-            select: { id: true, username: true, displayName: true, subtitle: true, avatarUrl: true, createdAt: true, lastSeenAt: true, role: true, isBanned: true, timeoutUntil: true },
+            select: { id: true, username: true, displayName: true, subtitle: true, avatarUrl: true, createdAt: true, lastSeenAt: true, role: true, isBanned: true, isArchived: true, timeoutUntil: true },
           })
           if (connectedUser) {
             broadcastAll({
@@ -167,6 +167,12 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
     try { switch (event.type) {
       case 'channel:join': {
         const { channelId } = event.payload
+        // Only channel members may join the room — prevents non-members from
+        // receiving typing/presence events for channels they can't see
+        const membership = await prisma.channelMember.findUnique({
+          where: { userId_channelId: { userId, channelId } },
+        })
+        if (!membership) break
         if (!rooms.has(channelId)) rooms.set(channelId, new Set())
         rooms.get(channelId)!.add(socket)
         joinedChannels.add(channelId)
@@ -255,13 +261,31 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
 
       case 'message:send': {
         const { channelId, content, replyToId, attachmentIds, tempId } = event.payload
-        // Reject timed-out or banned users
+        // Reject timed-out or banned users — tell the sender why so the client
+        // can remove the optimistic message and surface the reason
         const sender = await prisma.user.findUnique({
           where: { id: userId },
           select: { isBanned: true, timeoutUntil: true },
         })
         if (sender?.isBanned) { socket.close(4003, 'Banned'); return }
-        if (sender?.timeoutUntil && sender.timeoutUntil > new Date()) return
+        if (sender?.timeoutUntil && sender.timeoutUntil > new Date()) {
+          socket.send(JSON.stringify({
+            type: 'message:rejected',
+            payload: { channelId, ...(tempId ? { tempId } : {}), reason: 'timeout', until: sender.timeoutUntil.toISOString() },
+          }))
+          return
+        }
+        // Only members may post
+        const senderMembership = await prisma.channelMember.findUnique({
+          where: { userId_channelId: { userId, channelId } },
+        })
+        if (!senderMembership) {
+          socket.send(JSON.stringify({
+            type: 'message:rejected',
+            payload: { channelId, ...(tempId ? { tempId } : {}), reason: 'not_member' },
+          }))
+          return
+        }
         // Clear typing indicator when message is sent
         clearTyping(channelId, userId)
         const hasContent = content.trim().length > 0
@@ -397,18 +421,14 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
           },
         }
 
-        if (isDm) {
-          // DM/GROUP: deliver only to channel members
-          const members = await prisma.channelMember.findMany({
-            where: { channelId },
-            select: { userId: true },
-          })
-          for (const { userId: memberId } of members) {
-            broadcastToUser(memberId, outEvent)
-          }
-        } else {
-          // TEXT: deliver to all connected users (everyone can see all text channels)
-          broadcastAll(outEvent)
+        // Deliver only to channel members — applies to TEXT channels too, so
+        // private channel traffic never reaches non-members' sockets
+        const members = await prisma.channelMember.findMany({
+          where: { channelId },
+          select: { userId: true },
+        })
+        for (const { userId: memberId } of members) {
+          broadcastToUser(memberId, outEvent)
         }
         break
       }

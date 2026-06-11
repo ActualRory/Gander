@@ -8,14 +8,14 @@ import type { UserRole as SharedUserRole, ChannelType, ChannelVisibility } from 
 function serializeUser(u: {
   id: string; username: string; displayName: string; subtitle: string | null
   avatarUrl: string | null; createdAt: Date; lastSeenAt: Date | null
-  role: string; isBanned: boolean; timeoutUntil: Date | null
+  role: string; isBanned: boolean; isArchived: boolean; timeoutUntil: Date | null
 }) {
   return {
     id: u.id, username: u.username, displayName: u.displayName,
     subtitle: u.subtitle, avatarUrl: u.avatarUrl,
     createdAt: u.createdAt.toISOString(),
     lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
-    role: u.role as SharedUserRole, isBanned: u.isBanned,
+    role: u.role as SharedUserRole, isBanned: u.isBanned, isArchived: u.isArchived,
     timeoutUntil: u.timeoutUntil?.toISOString() ?? null,
   }
 }
@@ -33,7 +33,7 @@ function serializeChannel(ch: {
 
 const MOD_SELECT = {
   id: true, username: true, displayName: true, subtitle: true, avatarUrl: true,
-  createdAt: true, lastSeenAt: true, role: true, isBanned: true, timeoutUntil: true,
+  createdAt: true, lastSeenAt: true, role: true, isBanned: true, isArchived: true, timeoutUntil: true,
 } as const
 
 export const adminRoutes: FastifyPluginAsync = async (app) => {
@@ -170,6 +170,40 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     ])
     await writeAuditLog(userId, 'user.unban', id, 'user')
     broadcastAll({ type: 'user:unbanned', payload: { userId: id } })
+    return reply.status(204).send()
+  })
+
+  // POST /api/admin/users/:id/archive — ADMIN+ only (soft-hide departed accounts)
+  app.post('/users/:id/archive', { preHandler: [requireRole('ADMIN')] }, async (req, reply) => {
+    const { userId } = req.user as { userId: string }
+    const { id } = req.params as { id: string }
+
+    const [actor, target] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { role: true } }),
+      prisma.user.findUnique({ where: { id }, select: { role: true, isArchived: true } }),
+    ])
+    if (!actor || !target) return reply.status(404).send({ error: 'Not found' })
+    if (target.isArchived) return reply.status(409).send({ error: 'User is already archived' })
+    if (rankOf(target.role as UserRole) >= rankOf(actor.role as UserRole)) {
+      return reply.status(403).send({ error: 'Cannot archive a user at or above your role' })
+    }
+    if (target.role === 'ROOT') return reply.status(403).send({ error: 'Cannot archive ROOT' })
+
+    await prisma.user.update({ where: { id }, data: { isArchived: true } })
+    await writeAuditLog(userId, 'user.archive', id, 'user')
+    broadcastAll({ type: 'user:archived', payload: { userId: id } })
+    forceDisconnectUser(id)
+    return reply.status(204).send()
+  })
+
+  // POST /api/admin/users/:id/unarchive — ADMIN+ only
+  app.post('/users/:id/unarchive', { preHandler: [requireRole('ADMIN')] }, async (req, reply) => {
+    const { userId } = req.user as { userId: string }
+    const { id } = req.params as { id: string }
+
+    await prisma.user.update({ where: { id }, data: { isArchived: false } })
+    await writeAuditLog(userId, 'user.unarchive', id, 'user')
+    broadcastAll({ type: 'user:unarchived', payload: { userId: id } })
     return reply.status(204).send()
   })
 
@@ -313,6 +347,18 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     broadcastAll({ type: 'channel:updated', payload: serializeChannel(updated) })
     if (isArchived === true) broadcastAll({ type: 'channel:archived', payload: { channelId: id } })
     if (visibility) broadcastAll({ type: 'channel:visibility_changed', payload: { channelId: id, visibility: visibility as any } })
+    // DEFAULT channels are ones every user is in — joining everyone keeps that invariant
+    if (visibility === 'DEFAULT') {
+      const allUsers = await prisma.user.findMany({
+        where: { isBanned: false, isArchived: false },
+        select: { id: true },
+      })
+      await prisma.channelMember.createMany({
+        data: allUsers.map(u => ({ userId: u.id, channelId: id })),
+        skipDuplicates: true,
+      })
+      broadcastAll({ type: 'channel:created', payload: serializeChannel(updated) })
+    }
     return reply.status(204).send()
   })
 
@@ -535,17 +581,22 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /api/admin/stats
   app.get('/stats', async () => {
-    const [userCount, messageCount, channelCount, storageResult] = await Promise.all([
+    const [userCount, messageCount, channelCount, storageResult, voiceResult] = await Promise.all([
       prisma.user.count(),
       prisma.message.count({ where: { isSystem: false } }),
       prisma.channel.count({ where: { type: { notIn: ['DM', 'GROUP'] } } }),
       prisma.attachment.aggregate({ _sum: { size: true } }),
+      prisma.$queryRaw<[{ total: bigint | null }]>`
+        SELECT SUM(EXTRACT(EPOCH FROM ("leftAt" - "joinedAt")))::bigint AS total
+        FROM "VoiceSession" WHERE "leftAt" IS NOT NULL
+      `,
     ])
     return {
       userCount,
       messageCount,
       channelCount,
       totalAttachmentBytes: storageResult._sum.size ?? 0,
+      totalVoiceSeconds: Number(voiceResult[0]?.total ?? 0),
     }
   })
 

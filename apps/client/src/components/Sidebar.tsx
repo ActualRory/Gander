@@ -68,6 +68,8 @@ interface Props {
   notifications: Notification[]
   onMarkNotificationRead: (id: string) => void
   onMarkAllNotificationsRead: () => void
+  onNotificationClick: (n: Notification) => void
+  onInvitePeople: (channel: Channel) => void
 }
 
 interface ContextState {
@@ -94,7 +96,7 @@ const ADMIN_ROLES: UserRole[] = ['ADMIN', 'SUPERADMIN', 'ROOT']
 function isMod(role: UserRole) { return MOD_ROLES.includes(role) }
 function isAdmin(role: UserRole) { return ADMIN_ROLES.includes(role) }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onArchiveChannel, onLeaveChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId, onBrowseChannels, currentUserRole, token, notifications, onMarkNotificationRead, onMarkAllNotificationsRead }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onArchiveChannel, onLeaveChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId, onBrowseChannels, currentUserRole, token, notifications, onMarkNotificationRead, onMarkAllNotificationsRead, onNotificationClick, onInvitePeople }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -182,6 +184,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
       },
     ]
     items.push({ label: 'copy link', action: () => void navigator.clipboard.writeText(`#${channel.name}`) })
+    items.push({ label: 'invite people', action: () => onInvitePeople(channel) })
     const canManage = channel.creatorId === currentUserId || isMod(currentUserRole)
     if (canManage) {
       items.push({ label: 'rename', action: () => startRename(channel) })
@@ -428,6 +431,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
             notifications={notifications}
             onMarkRead={onMarkNotificationRead}
             onMarkAllRead={onMarkAllNotificationsRead}
+            onNotificationClick={onNotificationClick}
           />
         </div>
 

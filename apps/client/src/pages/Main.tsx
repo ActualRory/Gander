@@ -31,6 +31,7 @@ import ContextMenu from '../components/ContextMenu.tsx'
 import { RNNoiseProcessor, rnnoiseSupported } from '../lib/rnnoiseProcessor.ts'
 import UpdateBanner from '../components/UpdateBanner.tsx'
 import RecoverySetupModal from '../components/RecoverySetupModal.tsx'
+import InvitePeopleModal from '../components/InvitePeopleModal.tsx'
 import { useAppUpdater } from '../lib/useAppUpdater.ts'
 import { useAndroidUpdateCheck } from '../lib/useAndroidUpdateCheck.ts'
 import styles from './Main.module.css'
@@ -192,6 +193,8 @@ export default function Main({ auth, onLogout }: Props) {
   const [showRecoverySetup, setShowRecoverySetup] = useState(false)
   const [hiddenUtilityIds, setHiddenUtilityIds] = useState<Set<string>>(() => loadHiddenUtilities(auth.userId))
   const [windowFocused, setWindowFocused] = useState(true)
+  const [inviteTarget, setInviteTarget] = useState<Channel | null>(null)
+  const windowFocusedRef = useRef(true)
   const wsRef = useRef<GanderWS | null>(null)
   const activeChannelRef = useRef<Channel | null>(null)
   const channelsRef = useRef<Channel[]>([])
@@ -287,6 +290,7 @@ export default function Main({ auth, onLogout }: Props) {
   useEffect(() => { channelsRef.current = channels }, [channels])
   useEffect(() => { dmChannelsRef.current = dmChannels }, [dmChannels])
   useEffect(() => { mutedChannelIdsRef.current = mutedChannelIds }, [mutedChannelIds])
+  useEffect(() => { windowFocusedRef.current = windowFocused }, [windowFocused])
 
   // Broadcast own rich presence activity whenever context changes
   useEffect(() => {
@@ -557,6 +561,17 @@ export default function Main({ auth, onLogout }: Props) {
         setUsers(prev => prev.map(u => u.id === event.payload.userId ? { ...u, isBanned: false } : u))
       } else if (event.type === 'user:timedout') {
         setUsers(prev => prev.map(u => u.id === event.payload.userId ? { ...u, timeoutUntil: event.payload.timeoutUntil } : u))
+        if (event.payload.userId === auth.userId) {
+          setErrorMessage(`you have been timed out until ${new Date(event.payload.timeoutUntil).toLocaleString()}`)
+          // Timeouts also apply to voice — disconnect immediately (Disconnected
+          // handler resets all voice state)
+          const vcId = voiceChannelIdRef.current
+          if (vcId && voiceRoomRef.current) {
+            wsRef.current?.send({ type: 'voice:leave', payload: { channelId: vcId } })
+            intentionalDisconnectRef.current = true
+            voiceRoomRef.current.disconnect()
+          }
+        }
       } else if (event.type === 'user:untimeout') {
         setUsers(prev => prev.map(u => u.id === event.payload.userId ? { ...u, timeoutUntil: null } : u))
       } else if (event.type === 'user:role_changed') {
@@ -571,7 +586,31 @@ export default function Main({ auth, onLogout }: Props) {
         const { channelId, visibility } = event.payload
         setChannels(prev => prev.map(c => c.id === channelId ? { ...c, visibility } : c))
       } else if (event.type === 'notification:new') {
-        setNotifications(prev => [event.payload, ...prev])
+        const n = event.payload
+        const meta = (n.meta ?? {}) as { channelId?: string }
+        // Mention while already looking at that channel with the window focused →
+        // mark read immediately, like Discord
+        if (n.type === 'mention' && meta.channelId && meta.channelId === activeChannelRef.current?.id && windowFocusedRef.current) {
+          api.markNotificationRead(auth.token, n.id).catch(() => {})
+          setNotifications(prev => [{ ...n, read: true }, ...prev])
+        } else {
+          setNotifications(prev => [n, ...prev])
+          // Non-mention notifications (invites, password resets, …) also raise a
+          // desktop notification — mentions already get one via the message:new path
+          if (n.type !== 'mention') {
+            sendNotification({ title: n.title, ...(n.body ? { body: n.body } : {}) })
+          }
+        }
+      } else if (event.type === 'user:archived') {
+        const { userId } = event.payload
+        if (userId === auth.userId) {
+          localStorage.removeItem('gander_auth')
+          onLogout()
+        } else {
+          setUsers(prev => prev.map(u => u.id === userId ? { ...u, isArchived: true } : u))
+        }
+      } else if (event.type === 'user:unarchived') {
+        setUsers(prev => prev.map(u => u.id === event.payload.userId ? { ...u, isArchived: false } : u))
       }
     })
 
@@ -1246,6 +1285,17 @@ export default function Main({ auth, onLogout }: Props) {
     markChannelRead(ch.id)
   }
 
+  function handleNotificationClick(n: import('@gander/shared').Notification) {
+    const meta = (n.meta ?? {}) as { channelId?: string; messageId?: string }
+    if (meta.channelId && meta.messageId) {
+      // Mention — jump straight to the message (notification time ≈ message time)
+      handleNavigateToMessage(meta.channelId, meta.messageId, n.createdAt)
+    } else if (meta.channelId) {
+      // Channel invite etc. — open the channel
+      handleNavigateToChannel(meta.channelId)
+    }
+  }
+
   function handleToggleMuted(channelId: string) {
     setMutedChannelIds(prev => {
       const next = new Set(prev)
@@ -1439,6 +1489,8 @@ export default function Main({ auth, onLogout }: Props) {
         notifications={notifications}
         onMarkNotificationRead={id => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
         onMarkAllNotificationsRead={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+        onNotificationClick={handleNotificationClick}
+        onInvitePeople={setInviteTarget}
       />
       <main className={styles.content}>
         <button
@@ -1508,6 +1560,7 @@ export default function Main({ auth, onLogout }: Props) {
                 onJoin={handleJoinChannel}
                 onOpen={openChannel}
                 onJoinVoice={handleJoinVoice}
+                onInvite={setInviteTarget}
                 onClose={channels.length > 0 ? () => setShowChannelIndex(false) : undefined}
               />
             )
@@ -1540,7 +1593,7 @@ export default function Main({ auth, onLogout }: Props) {
         })()}
       </main>
       <SocialPanel
-        users={users}
+        users={users.filter(u => !u.isArchived)}
         onlineUserIds={onlineUserIds}
         userActivities={userActivities}
         onUserClick={handleUserLeftClick}
@@ -1591,6 +1644,15 @@ export default function Main({ auth, onLogout }: Props) {
           token={auth.token}
           onDone={() => setShowRecoverySetup(false)}
           onSkip={() => setShowRecoverySetup(false)}
+        />
+      )}
+      {inviteTarget && (
+        <InvitePeopleModal
+          token={auth.token}
+          channel={inviteTarget}
+          users={users}
+          currentUserId={auth.userId}
+          onClose={() => setInviteTarget(null)}
         />
       )}
     </div>

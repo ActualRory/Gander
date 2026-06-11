@@ -94,6 +94,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(403).send({ error: 'Account banned' })
     }
 
+    if (user.isArchived) {
+      return reply.status(403).send({ error: 'Account archived — contact an admin to restore access' })
+    }
+
     if (user.hashVersion !== 'bcrypt') {
       await prisma.user.update({
         where: { id: user.id },

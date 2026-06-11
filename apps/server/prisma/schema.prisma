@@ -68,6 +68,7 @@ model User {
   lastSeenAt   DateTime?
   role         UserRole  @default(MEMBER)
   isBanned     Boolean   @default(false)
+  isArchived   Boolean   @default(false)
   timeoutUntil DateTime?
 
   memberships     ChannelMember[]

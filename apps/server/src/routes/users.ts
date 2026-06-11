@@ -17,6 +17,7 @@ const USER_SELECT = {
   lastSeenAt: true,
   role: true,
   isBanned: true,
+  isArchived: true,
   timeoutUntil: true,
 } as const
 

@@ -38,6 +38,34 @@ function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+function formatRemaining(untilIso: string): string {
+  const ms = new Date(untilIso).getTime() - Date.now()
+  if (ms <= 0) return 'expired'
+  const minutes = Math.ceil(ms / 60000)
+  if (minutes < 60) return `${minutes}m left`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h left`
+  return `${Math.floor(hours / 24)}d left`
+}
+
+// Discord-style timeout presets (minutes). MODs are capped at 48h server-side.
+const TIMEOUT_PRESETS: { label: string; minutes: number }[] = [
+  { label: '5m', minutes: 5 },
+  { label: '30m', minutes: 30 },
+  { label: '1h', minutes: 60 },
+  { label: '6h', minutes: 360 },
+  { label: '1d', minutes: 1440 },
+  { label: '3d', minutes: 4320 },
+  { label: '1w', minutes: 10080 },
+]
+
+function formatVoiceTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -173,10 +201,13 @@ function UsersTab({ token, currentUserId, currentUserRole }: { token: string; cu
                   </td>
                   <td>
                     {user.isBanned && <span className={styles.bannedBadge}>[banned]</span>}
-                    {isTimedOut && !user.isBanned && (
-                      <span className={styles.timedOutBadge} title={`until ${formatDateTime(user.timeoutUntil!)}`}>[timed out]</span>
+                    {user.isArchived && !user.isBanned && <span className={styles.archivedBadge}>[archived]</span>}
+                    {isTimedOut && !user.isBanned && !user.isArchived && (
+                      <span className={styles.timedOutBadge} title={`until ${formatDateTime(user.timeoutUntil!)}`}>
+                        [timed out · {formatRemaining(user.timeoutUntil!)}]
+                      </span>
                     )}
-                    {!user.isBanned && !isTimedOut && <span className={styles.okBadge}>—</span>}
+                    {!user.isBanned && !isTimedOut && !user.isArchived && <span className={styles.okBadge}>—</span>}
                   </td>
                   <td className={styles.dateCell}>{formatDate(user.createdAt)}</td>
                   <td className={styles.numCell}>{user.messageCount}</td>
@@ -199,6 +230,13 @@ function UsersTab({ token, currentUserId, currentUserRole }: { token: string; cu
                       )}
                       {isAdmin && !isSelf && canActOn && (
                         <button className={styles.actBtn} disabled={working} onClick={() => { setRenameTarget(user.id); setRenameName(user.displayName) }}>[rename]</button>
+                      )}
+                      {isAdmin && canActOn && (
+                        user.isArchived ? (
+                          <button className={styles.actBtn} disabled={working} onClick={() => act(() => api.adminUnarchiveUser(token, user.id))}>[unarchive]</button>
+                        ) : (
+                          <button className={styles.actBtn} disabled={working} onClick={() => { if (confirm(`Archive ${user.displayName}? They will be hidden and unable to log in until unarchived.`)) act(() => api.adminArchiveUser(token, user.id)) }}>[archive]</button>
+                        )
                       )}
                       {user.isBanned && (
                         <button className={styles.actBtn} disabled={working} onClick={() => handleExpandBans(user.id)}>[bans]</button>
@@ -224,12 +262,21 @@ function UsersTab({ token, currentUserId, currentUserRole }: { token: string; cu
                     <td colSpan={6}>
                       <div className={styles.inlineForm}>
                         <span className={styles.formLabel}>timeout {user.displayName}:</span>
+                        {TIMEOUT_PRESETS.filter(p => isAdmin || p.minutes <= 2880).map(p => (
+                          <button
+                            key={p.label}
+                            className={`${styles.actBtn} ${timeoutDuration === String(p.minutes) ? styles.presetActive : ''}`}
+                            onClick={() => setTimeoutDuration(String(p.minutes))}
+                          >
+                            [{p.label}]
+                          </button>
+                        ))}
                         <input
                           className={styles.formInput}
                           type="number"
                           min="1"
                           max={isAdmin ? 99999 : 2880}
-                          placeholder={`minutes (max ${isAdmin ? '∞' : '2880'})`}
+                          placeholder="custom (min)"
                           value={timeoutDuration}
                           onChange={e => setTimeoutDuration(e.target.value)}
                         />
@@ -240,7 +287,7 @@ function UsersTab({ token, currentUserId, currentUserRole }: { token: string; cu
                           value={timeoutReason}
                           onChange={e => setTimeoutReason(e.target.value)}
                         />
-                        <button className={styles.actBtn} disabled={working} onClick={() => handleTimeout(user.id)}>[apply]</button>
+                        <button className={styles.actBtn} disabled={working || !timeoutDuration} onClick={() => handleTimeout(user.id)}>[apply]</button>
                         <button className={styles.cancelBtn} onClick={() => setTimeoutTarget(null)}>[cancel]</button>
                       </div>
                     </td>
@@ -849,7 +896,7 @@ function FilesTab({ token }: { token: string }) {
 // ─── Stats tab ────────────────────────────────────────────────────────────────
 
 function StatsTab({ token }: { token: string }) {
-  const [stats, setStats] = useState<{ userCount: number; messageCount: number; channelCount: number; totalAttachmentBytes: number } | null>(null)
+  const [stats, setStats] = useState<{ userCount: number; messageCount: number; channelCount: number; totalAttachmentBytes: number; totalVoiceSeconds: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -879,6 +926,10 @@ function StatsTab({ token }: { token: string }) {
         <div className={styles.statCard}>
           <div className={styles.statValue}>{formatSize(stats.totalAttachmentBytes)}</div>
           <div className={styles.statLabel}>attachments</div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.statValue}>{formatVoiceTime(stats.totalVoiceSeconds)}</div>
+          <div className={styles.statLabel}>total voice time</div>
         </div>
       </div>
     </div>

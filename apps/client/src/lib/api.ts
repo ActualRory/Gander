@@ -341,6 +341,12 @@ export const api = {
   leaveChannel: (token: string, channelId: string) =>
     request<void>(`/api/channels/${channelId}/membership`, { method: 'DELETE', ...authed(token) }),
 
+  getChannelMembers: (token: string, channelId: string) =>
+    request<{ userId: string; role: string; joinedAt: string }[]>(`/api/channels/${channelId}/members`, authed(token)),
+
+  inviteToChannel: (token: string, channelId: string, userId: string) =>
+    request<void>(`/api/channels/${channelId}/invite`, { method: 'POST', body: JSON.stringify({ userId }), ...authed(token) }),
+
   // Admin — users
   adminGetUsers: (token: string) =>
     request<(User & { messageCount: number })[]>('/api/admin/users', authed(token)),
@@ -365,6 +371,12 @@ export const api = {
 
   adminSetDisplayName: (token: string, userId: string, displayName: string) =>
     request<void>(`/api/admin/users/${userId}/displayName`, { method: 'PATCH', body: JSON.stringify({ displayName }), ...authed(token) }),
+
+  adminArchiveUser: (token: string, userId: string) =>
+    request<void>(`/api/admin/users/${userId}/archive`, { method: 'POST', ...authed(token) }),
+
+  adminUnarchiveUser: (token: string, userId: string) =>
+    request<void>(`/api/admin/users/${userId}/unarchive`, { method: 'POST', ...authed(token) }),
 
   // Admin — channels
   adminGetChannels: (token: string) =>
@@ -413,7 +425,7 @@ export const api = {
 
   // Admin — stats
   adminGetStats: (token: string) =>
-    request<{ userCount: number; messageCount: number; channelCount: number; totalAttachmentBytes: number }>('/api/admin/stats', authed(token)),
+    request<{ userCount: number; messageCount: number; channelCount: number; totalAttachmentBytes: number; totalVoiceSeconds: number }>('/api/admin/stats', authed(token)),
 
   // Admin — files
   adminGetFiles: (token: string, params?: { sort?: string; limit?: number; cursor?: string }) => {

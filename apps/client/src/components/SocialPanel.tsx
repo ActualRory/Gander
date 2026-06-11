@@ -19,6 +19,13 @@ function getStatus(userId: string, onlineUserIds: Set<string>, userActivities: R
   return userActivities[userId] ?? 'Online'
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  MODERATOR: 'mod',
+  ADMIN: 'admin',
+  SUPERADMIN: 's.admin',
+  ROOT: 'root',
+}
+
 function parseQuery(raw: string): { q: string; from?: string } {
   const fromMatch = raw.match(/\bfrom:(\S+)/i)
   const from = fromMatch?.[1]
@@ -82,7 +89,10 @@ export default function SocialPanel({ users, onlineUserIds, userActivities, onUs
       >
         <Avatar displayName={u.displayName} userId={u.id} avatarUrl={u.avatarUrl} size={28} />
         <span className={styles.userInfo}>
-          <span className={styles.userName}>{u.displayName}</span>
+          <span className={styles.userName}>
+            {u.displayName}
+            {ROLE_LABELS[u.role] && <span className={styles.roleTag}>[{ROLE_LABELS[u.role]}]</span>}
+          </span>
           <span className={styles.status}>{status}</span>
         </span>
       </li>

@@ -81,10 +81,79 @@
   touch-action: pan-y;
 }
 
+.messageGrouped {
+  margin-top: 2px;
+}
+
+.messagePending {
+  opacity: 0.55;
+}
+
 .messageRow {
+  position: relative;
   display: flex;
   gap: 8px;
   align-items: flex-start;
+  padding: 2px 8px;
+  margin: 0 -8px;
+}
+
+.message:hover .messageRow {
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
+}
+
+/* Hover timestamp shown in the avatar gutter on grouped messages */
+.gutterTime {
+  width: 38px;
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  padding-top: 2px;
+  text-align: center;
+  color: var(--text-muted);
+  opacity: 0;
+  user-select: none;
+}
+
+.message:hover .gutterTime {
+  opacity: 1;
+}
+
+/* Quick-action toolbar shown on message hover (desktop pointers only) */
+.msgActions {
+  position: absolute;
+  top: -14px;
+  right: 4px;
+  display: none;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  z-index: 5;
+}
+
+.message:hover .msgActions {
+  display: flex;
+}
+
+@media (hover: none) {
+  .message:hover .msgActions {
+    display: none;
+  }
+}
+
+.msgActionBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 7px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.msgActionBtn:hover {
+  color: var(--accent);
+  background: var(--bg-elevated);
 }
 
 .messageBody {
@@ -161,6 +230,74 @@
   word-break: break-word;
 }
 
+/* ---- Drag-and-drop upload overlay ---- */
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--bg-base) 80%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.dropOverlayBox {
+  border: 1px dashed var(--accent-dim);
+  background: var(--bg-surface);
+  color: var(--accent);
+  font-size: 14px;
+  padding: 24px 40px;
+  max-width: 80%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editedTag {
+  color: var(--text-muted);
+  font-size: 10px;
+  user-select: none;
+}
+
+/* ---- Markdown ---- */
+.codeBlock {
+  display: block;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  margin: 4px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+  max-width: min(85vw, 640px);
+}
+
+.inlineCode {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.spoiler {
+  background: var(--border);
+  color: transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.spoiler * {
+  visibility: hidden;
+}
+
+.spoilerRevealed {
+  background: color-mix(in srgb, var(--border) 45%, transparent);
+}
+
 .link {
   color: #e07840;
   text-decoration: none;
@@ -188,6 +325,11 @@
 
 .scrollToBottomBtn:hover {
   color: var(--text-primary);
+  border-color: var(--accent-dim);
+}
+
+.scrollToBottomBtnNew {
+  color: var(--accent);
   border-color: var(--accent-dim);
 }
 
@@ -239,6 +381,23 @@
 
 .input::placeholder {
   color: var(--text-muted);
+}
+
+.sendErrorBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 20px;
+  border-top: 1px solid #5a3030;
+  background: color-mix(in srgb, #5a3030 25%, transparent);
+  color: #c87060;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .replyBanner {

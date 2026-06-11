@@ -86,7 +86,12 @@ export default function UserProfilePopup({
       <div className={styles.body}>
         <div className={styles.avatarRow}>
           <Avatar displayName={user.displayName} userId={user.id} avatarUrl={user.avatarUrl} size={40} />
-          <div className={styles.displayName}>{user.displayName}</div>
+          <div className={styles.displayName}>
+            {user.displayName}
+            {user.role !== 'MEMBER' && (
+              <span className={styles.roleBadge}>[{user.role.toLowerCase()}]</span>
+            )}
+          </div>
         </div>
 
         {isOwnProfile ? (

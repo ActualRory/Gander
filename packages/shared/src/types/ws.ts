@@ -35,6 +35,9 @@ export type ServerEvent =
   | { type: 'channel:archived'; payload: { channelId: string } }
   | { type: 'channel:visibility_changed'; payload: { channelId: string; visibility: import('./channel.js').ChannelVisibility } }
   | { type: 'notification:new'; payload: Notification }
+  | { type: 'user:archived'; payload: { userId: string } }
+  | { type: 'user:unarchived'; payload: { userId: string } }
+  | { type: 'message:rejected'; payload: { channelId: string; tempId?: string; reason: 'timeout' | 'banned' | 'not_member'; until?: string } }
 
 // Events sent from client → server
 export type ClientEvent =

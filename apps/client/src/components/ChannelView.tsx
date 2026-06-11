@@ -153,12 +153,67 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     }
   }
   const [isAtBottom, setIsAtBottom] = useState(true)
+  // Messages received from others while scrolled up — shown on the scroll-to-bottom button
+  const [newWhileScrolled, setNewWhileScrolled] = useState(0)
+  // Server rejected a sent message (timeout / not a member) — shown above the input
+  const [sendError, setSendError] = useState<string | null>(null)
+  // Re-render when the current user's timeout expires so the input unlocks
+  const [, setTimeoutTick] = useState(0)
+  const myTimeoutUntil = users.find(u => u.id === currentUserId)?.timeoutUntil ?? null
+  const isTimedOut = myTimeoutUntil !== null && new Date(myTimeoutUntil).getTime() > Date.now()
+
+  useEffect(() => {
+    if (!isTimedOut || !myTimeoutUntil) return
+    const remaining = new Date(myTimeoutUntil).getTime() - Date.now()
+    const timer = setTimeout(() => setTimeoutTick(t => t + 1), remaining + 500)
+    return () => clearTimeout(timer)
+  }, [myTimeoutUntil, isTimedOut])
   const [videoConfirm, setVideoConfirm] = useState<{ files: File[] } | null>(null)
+  // Touch swipe-right-to-reply gesture state
+  const swipeState = useRef<{ msgId: string; startX: number; startY: number; dx: number; active: boolean; el: HTMLElement } | null>(null)
+
+  function handleMsgPointerDown(msg: Message, e: React.PointerEvent) {
+    startMsgLongPress(msg.id, e.clientX, e.clientY)
+    if (e.pointerType === 'touch') {
+      swipeState.current = { msgId: msg.id, startX: e.clientX, startY: e.clientY, dx: 0, active: false, el: e.currentTarget as HTMLElement }
+    }
+  }
+
+  function handleMsgPointerMove(msg: Message, e: React.PointerEvent) {
+    const s = swipeState.current
+    if (!s || s.msgId !== msg.id) return
+    const dx = e.clientX - s.startX
+    const dy = e.clientY - s.startY
+    if (!s.active) {
+      if (Math.abs(dy) > 24) { swipeState.current = null; return }
+      if (dx <= 16) return
+      s.active = true
+      cancelMsgLongPress()
+    }
+    s.dx = dx
+    const clamped = Math.max(0, Math.min(dx - 16, 96))
+    s.el.style.transition = ''
+    s.el.style.transform = `translateX(${clamped}px)`
+  }
+
+  function endMsgSwipe(msg: Message | null) {
+    const s = swipeState.current
+    if (!s) return
+    s.el.style.transition = 'transform 0.15s ease-out'
+    s.el.style.transform = ''
+    if (msg && s.active && s.dx - 16 >= 64) {
+      setReplyingTo(msg)
+      textareaRef.current?.focus()
+    }
+    swipeState.current = null
+  }
 
   const mentionUsers = mentionQuery !== null
     ? users.filter(u =>
-        u.displayName.toLowerCase().includes(mentionQuery.toLowerCase()) ||
-        u.username.toLowerCase().includes(mentionQuery.toLowerCase())
+        !u.isArchived && (
+          u.displayName.toLowerCase().includes(mentionQuery.toLowerCase()) ||
+          u.username.toLowerCase().includes(mentionQuery.toLowerCase())
+        )
       ).slice(0, 8)
     : []
 
@@ -248,6 +303,9 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           if (prev.some(m => m.id === event.payload.id)) return prev
           return [...prev, event.payload]
         })
+        if (event.payload.authorId !== currentUserId && !isAtBottomRef.current) {
+          setNewWhileScrolled(n => n + 1)
+        }
       }
       if (event.type === 'message:edited' && event.payload.channelId === channel.id) {
         setMessages(prev => prev.map(m => m.id === event.payload.id ? event.payload : m))
@@ -263,8 +321,29 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       if (event.type === 'typing:update' && event.payload.channelId === channel.id) {
         setTypingUserIds(event.payload.userIds.filter(id => id !== currentUserId))
       }
+      if (event.type === 'message:rejected' && event.payload.channelId === channel.id) {
+        // Remove the optimistic message and tell the user why it wasn't sent
+        const { tempId, reason, until } = event.payload
+        if (tempId) {
+          pendingOwnMsgs.current.delete(tempId)
+          setMessages(prev => prev.filter(m => m.id !== tempId))
+        }
+        const msg = reason === 'timeout'
+          ? `message not sent — you are timed out${until ? ` until ${new Date(until).toLocaleString()}` : ''}`
+          : reason === 'not_member'
+            ? 'message not sent — you are not a member of this channel'
+            : 'message not sent'
+        setSendError(msg)
+      }
     })
   }, [channel.id, ws])
+
+  // Auto-dismiss send errors
+  useEffect(() => {
+    if (!sendError) return
+    const timer = setTimeout(() => setSendError(null), 8000)
+    return () => clearTimeout(timer)
+  }, [sendError])
 
   // Keep lastMessageCreatedAtRef current so the reconnect handler can use it.
   // Only update from confirmed server messages — skip optimistic placeholders whose
@@ -391,7 +470,10 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
     isAtBottomRef.current = atBottom
     setIsAtBottom(atBottom)
-    if (atBottom) onMarkRead()
+    if (atBottom) {
+      setNewWhileScrolled(0)
+      onMarkRead()
+    }
     // Load older messages when scrolled near the top
     if (el.scrollTop < 200 && hasOlder && !loadingOlder) {
       loadOlderMessages()
@@ -403,6 +485,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
     isAtBottomRef.current = true
     setIsAtBottom(true)
+    setNewWhileScrolled(0)
   }
 
   function jumpToMessage(id: string) {
@@ -466,6 +549,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   }
 
   function send() {
+    if (isTimedOut) return
     const trimmed = input.trim()
     const readyIds = pendingAttachments.filter(p => p.attachmentId !== null).map(p => p.attachmentId as string)
     if (!trimmed && readyIds.length === 0) return
@@ -609,6 +693,18 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectMention(mentionUsers[mentionIndex].username); return }
       if (e.key === 'Escape') { setMentionQuery(null); return }
     }
+    if (e.key === 'ArrowUp' && input === '' && editingMessageId === null) {
+      // Discord behaviour: up-arrow in an empty input edits your most recent message
+      const lastOwn = [...messages].reverse().find(m =>
+        m.authorId === currentUserId && !m.isSystem && m.content && !pendingOwnMsgs.current.has(m.id)
+      )
+      if (lastOwn) {
+        e.preventDefault()
+        setEditingMessageId(lastOwn.id)
+        setEditInput(lastOwn.content)
+      }
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       send()
@@ -628,13 +724,34 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     }
   }
 
+  const dragCounter = useRef(0)
+  const [dragActive, setDragActive] = useState(false)
+
   function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'copy'
   }
 
+  function handleDragEnter(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    if (e.dataTransfer.types.includes('Files')) {
+      dragCounter.current++
+      setDragActive(true)
+    }
+  }
+
+  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    if (dragCounter.current > 0) {
+      dragCounter.current--
+      if (dragCounter.current === 0) setDragActive(false)
+    }
+  }
+
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault()
+    dragCounter.current = 0
+    setDragActive(false)
     void handleFilesSelected(e.dataTransfer.files)
   }
 
@@ -698,10 +815,16 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   }
 
   return (
-    <div className={styles.root} onDragOver={handleDragOver} onDrop={handleDrop}>
+    <div className={styles.root} onDragOver={handleDragOver} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDrop={handleDrop}>
       <div className={styles.watermark} aria-hidden="true">
         <pre className={styles.watermarkLogo}>{LOGO}</pre>
       </div>
+
+      {dragActive && (
+        <div className={styles.dropOverlay}>
+          <div className={styles.dropOverlayBox}>drop files to upload to {channelLabel}</div>
+        </div>
+      )}
 
       <header className={styles.header}>
         <span className={styles.channelName}>{channelLabel}</span>
@@ -783,17 +906,25 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           const prevMsg = messages[i - 1]
           const showDateSep = !prevMsg ||
             new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString()
+          const isPending = pendingOwnMsgs.current.has(msg.id)
+          // Discord-style grouping: consecutive messages from the same author within
+          // 7 minutes collapse into one block (no repeated avatar/name/time)
+          const grouped = !!prevMsg && !msg.isSystem && !prevMsg.isSystem &&
+            prevMsg.authorId === msg.authorId && !msg.replyTo &&
+            !showDateSep && !isFirstUnread &&
+            new Date(msg.createdAt).getTime() - new Date(prevMsg.createdAt).getTime() < 7 * 60 * 1000
 
           return (
             <div
               key={msg.id}
               data-msg-id={msg.id}
               ref={isFirstUnread ? el => { firstUnreadRef.current = el } : undefined}
-              className={styles.message}
+              className={`${styles.message}${grouped ? ` ${styles.messageGrouped}` : ''}${isPending ? ` ${styles.messagePending}` : ''}`}
               onContextMenu={msg.isSystem ? e => e.preventDefault() : e => { e.preventDefault(); setMsgMenu({ msgId: msg.id, x: e.clientX, y: e.clientY }) }}
-              onPointerDown={msg.isSystem ? undefined : e => startMsgLongPress(msg.id, e.clientX, e.clientY)}
-              onPointerUp={cancelMsgLongPress}
-              onPointerCancel={cancelMsgLongPress}
+              onPointerDown={msg.isSystem ? undefined : e => handleMsgPointerDown(msg, e)}
+              onPointerMove={msg.isSystem ? undefined : e => handleMsgPointerMove(msg, e)}
+              onPointerUp={() => { cancelMsgLongPress(); endMsgSwipe(msg.isSystem ? null : msg) }}
+              onPointerCancel={() => { cancelMsgLongPress(); endMsgSwipe(null) }}
               onPointerLeave={cancelMsgLongPress}
             >
               {showDateSep && (
@@ -847,13 +978,48 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                 </div>
               ) : (
               <div className={styles.messageRow}>
+              {!isPending && (
+                <div className={styles.msgActions}>
+                  <button
+                    type="button"
+                    className={styles.msgActionBtn}
+                    title="add reaction"
+                    onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setReactionPicker({ msgId: msg.id, x: r.left, y: r.bottom + 4 }) }}
+                  >[+]</button>
+                  <button
+                    type="button"
+                    className={styles.msgActionBtn}
+                    title="reply"
+                    onClick={() => { setReplyingTo(msg); textareaRef.current?.focus() }}
+                  >[↩]</button>
+                  {msg.authorId === currentUserId && (
+                    <button
+                      type="button"
+                      className={styles.msgActionBtn}
+                      title="edit"
+                      onClick={() => { setEditingMessageId(msg.id); setEditInput(msg.content) }}
+                    >[edit]</button>
+                  )}
+                  <button
+                    type="button"
+                    className={styles.msgActionBtn}
+                    title="more"
+                    onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setMsgMenu({ msgId: msg.id, x: r.right, y: r.bottom + 4 }) }}
+                  >[⋯]</button>
+                </div>
+              )}
+              {grouped ? (
+                <span className={styles.gutterTime}>{formatTimeShort(msg.createdAt)}</span>
+              ) : (
               <Avatar
                 displayName={msg.authorName}
                 avatarUrl={users.find(u => u.id === msg.authorId)?.avatarUrl}
                 userId={msg.authorId}
                 size={38}
               />
+              )}
               <div className={styles.messageBody}>
+              {!grouped && (
               <div className={styles.meta}>
                 <span
                   className={styles.author}
@@ -864,6 +1030,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                   <span className={styles.postNumber}>#{msg.postNumber}{msg.editedAt ? '*' : ''}</span>
                 )}
               </div>
+              )}
               {msg.replyTo && (
                 <div
                   className={styles.replyQuote}
@@ -896,7 +1063,14 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                   <span className={styles.editHint}>[enter] save  [esc] cancel</span>
                 </div>
               ) : (
-                msg.content && <p className={styles.content}>{renderContent(msg.content, currentUsername, channels, users, token, jumpToPost, onNavigateToChannel, onNavigateToUtility)}</p>
+                msg.content && (
+                  <p className={styles.content}>
+                    {renderContent(msg.content, currentUsername, channels, users, token, jumpToPost, onNavigateToChannel, onNavigateToUtility)}
+                    {msg.editedAt && (msg.postNumber == null || grouped) && (
+                      <span className={styles.editedTag}> (edited)</span>
+                    )}
+                  </p>
+                )
               )}
               {msg.attachments.length > 0 && (
                 <div className={styles.messageAttachments}>
@@ -1031,8 +1205,10 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       </div>
 
       {!isAtBottom && (
-        <button className={styles.scrollToBottomBtn} onClick={scrollToBottom}>
-          ↓ scroll to bottom
+        <button className={`${styles.scrollToBottomBtn}${newWhileScrolled > 0 ? ` ${styles.scrollToBottomBtnNew}` : ''}`} onClick={scrollToBottom}>
+          {newWhileScrolled > 0
+            ? `↓ ${newWhileScrolled} new message${newWhileScrolled === 1 ? '' : 's'}`
+            : '↓ scroll to bottom'}
         </button>
       )}
 
@@ -1264,6 +1440,13 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         </div>
       )}
 
+      {sendError && (
+        <div className={styles.sendErrorBanner}>
+          <span>{sendError}</span>
+          <button type="button" className={styles.replyBannerCancel} onClick={() => setSendError(null)}>×</button>
+        </div>
+      )}
+
       <form className={styles.inputBar} onSubmit={e => { e.preventDefault(); send() }}>
         <input
           ref={fileInputRef}
@@ -1277,9 +1460,12 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         <textarea
           ref={textareaRef}
           className={styles.input}
-          placeholder={`message ${channelLabel}`}
+          placeholder={isTimedOut && myTimeoutUntil
+            ? `you are timed out until ${new Date(myTimeoutUntil).toLocaleString()}`
+            : `message ${channelLabel}`}
           value={input}
           rows={1}
+          disabled={isTimedOut}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
@@ -1369,6 +1555,12 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+// Compact 24h time for the grouped-message gutter (must fit the 38px avatar column)
+function formatTimeShort(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
 function getDateLabel(iso: string): string {
   const d = new Date(iso)
   const today = new Date()
@@ -1396,6 +1588,16 @@ function extractLibraryLinks(text: string): { type: 'book' | 'shelf'; id: string
   return results
 }
 
+interface RenderCtx {
+  currentUsername: string
+  channels: Channel[]
+  users: User[]
+  token: string
+  onJumpToPost: (n: number) => void
+  onNavigateToChannel: (channelId: string) => void
+  onNavigateToUtility: ((id: 'library' | 'file-manager' | 'gandle') => void) | undefined
+}
+
 function renderContent(
   text: string,
   currentUsername: string,
@@ -1406,19 +1608,87 @@ function renderContent(
   onNavigateToChannel: (channelId: string) => void,
   onNavigateToUtility: ((id: 'library' | 'file-manager' | 'gandle') => void) | undefined,
 ): React.ReactNode {
+  const ctx: RenderCtx = { currentUsername, channels, users, token, onJumpToPost, onNavigateToChannel, onNavigateToUtility }
+  return renderMarkdown(text, ctx)
+}
+
+// Layer 1: fenced code blocks (```...```) — content inside is rendered literally
+function renderMarkdown(text: string, ctx: RenderCtx): React.ReactNode {
+  const parts: React.ReactNode[] = []
+  const fenceRe = /```(?:[a-zA-Z0-9+#-]*\n)?([\s\S]*?)```/g
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = fenceRe.exec(text)) !== null) {
+    if (m.index > last) parts.push(...renderInlineMd(text.slice(last, m.index), ctx, `s${last}`))
+    parts.push(
+      <pre key={`f${m.index}`} className={styles.codeBlock}><code>{m[1].replace(/\n$/, '')}</code></pre>
+    )
+    last = m.index + m[0].length
+  }
+  if (last < text.length) parts.push(...renderInlineMd(text.slice(last), ctx, `s${last}`))
+  return parts.length > 0 ? parts : text
+}
+
+// Layer 2: inline formatting — `code`, **bold**, ||spoiler||, ~~strike~~, *italic*.
+// Formatted spans (except code) recurse so nesting works; plain runs go to renderEntities.
+function renderInlineMd(text: string, ctx: RenderCtx, kp: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = []
+  const re = /`([^`\n]+)`|\*\*([\s\S]+?)\*\*|\|\|([\s\S]+?)\|\||~~([\s\S]+?)~~|\*([^*\n]+)\*/g
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(...renderEntities(text.slice(last, m.index), ctx, `${kp}-p${last}`))
+    const key = `${kp}-i${m.index}`
+    if (m[1] !== undefined) {
+      parts.push(<code key={key} className={styles.inlineCode}>{m[1]}</code>)
+    } else if (m[2] !== undefined) {
+      parts.push(<strong key={key}>{renderInlineMd(m[2], ctx, key)}</strong>)
+    } else if (m[3] !== undefined) {
+      parts.push(<Spoiler key={key}>{renderInlineMd(m[3], ctx, key)}</Spoiler>)
+    } else if (m[4] !== undefined) {
+      parts.push(<s key={key}>{renderInlineMd(m[4], ctx, key)}</s>)
+    } else if (m[5] !== undefined) {
+      parts.push(<em key={key}>{renderInlineMd(m[5], ctx, key)}</em>)
+    }
+    last = m.index + m[0].length
+  }
+  if (last < text.length) parts.push(...renderEntities(text.slice(last), ctx, `${kp}-p${last}`))
+  return parts
+}
+
+function Spoiler({ children }: { children: React.ReactNode }) {
+  const [revealed, setRevealed] = useState(false)
+  return (
+    <span
+      className={revealed ? styles.spoilerRevealed : styles.spoiler}
+      onClick={() => { if (!revealed) setRevealed(true) }}
+      role={revealed ? undefined : 'button'}
+      tabIndex={revealed ? undefined : 0}
+      onKeyDown={e => { if (e.key === 'Enter') setRevealed(true) }}
+      title={revealed ? undefined : 'spoiler — click to reveal'}
+    >
+      {children}
+    </span>
+  )
+}
+
+// Layer 3: entities — URLs, @mentions, #post refs, #channel refs, [[book/shelf]] chips
+function renderEntities(text: string, ctx: RenderCtx, kp: string): React.ReactNode[] {
+  const { currentUsername, channels, users, token, onJumpToPost, onNavigateToChannel, onNavigateToUtility } = ctx
   const parts: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
-  CONTENT_REGEX.lastIndex = 0
-  while ((match = CONTENT_REGEX.exec(text)) !== null) {
+  const re = new RegExp(CONTENT_REGEX.source, 'g')
+  while ((match = re.exec(text)) !== null) {
     if (match.index > last) parts.push(text.slice(last, match.index))
+    const key = `${kp}-${match.index}`
 
     if (match[1] !== undefined) {
       // [[book:id]] or [[shelf:id]] — inline chip (full card rendered below message)
       const libType = match[1] as 'book' | 'shelf'
       const libId = match[2]
       parts.push(
-        <span key={match.index} className={styles.channelLink}>
+        <span key={key} className={styles.channelLink}>
           [{libType}: {libId.slice(0, 8)}…]
         </span>
       )
@@ -1429,7 +1699,7 @@ function renderContent(
       const mentionUser = users.find(u => u.username.toLowerCase() === handle.toLowerCase())
       const displayHandle = mentionUser?.displayName ?? handle
       parts.push(
-        <span key={match.index} className={`${styles.mention} ${isSelf ? styles.mentionSelf : ''}`}>
+        <span key={key} className={`${styles.mention} ${isSelf ? styles.mentionSelf : ''}`}>
           @{displayHandle}
         </span>
       )
@@ -1437,7 +1707,7 @@ function renderContent(
       // #postNumber — hover quote chip
       const num = parseInt(match[4], 10)
       parts.push(
-        <PostLinkChip key={match.index} postNumber={num} token={token} onJumpToPost={onJumpToPost} />
+        <PostLinkChip key={key} postNumber={num} token={token} onJumpToPost={onJumpToPost} />
       )
     } else if (match[5] !== undefined) {
       // #channel-name — navigation chip
@@ -1446,7 +1716,7 @@ function renderContent(
       if (ch) {
         parts.push(
           <ChannelLinkChip
-            key={match.index}
+            key={key}
             channel={ch}
             token={token}
             onNavigate={() => onNavigateToChannel(ch.id)}
@@ -1457,7 +1727,7 @@ function renderContent(
         const fakeChannel = { id: chName, name: chName, type: 'TEXT' } as Channel
         parts.push(
           <ChannelLinkChip
-            key={match.index}
+            key={key}
             channel={fakeChannel}
             token={token}
             onNavigate={() => onNavigateToUtility(chName as 'library' | 'file-manager' | 'gandle')}
@@ -1471,7 +1741,7 @@ function renderContent(
       const url = match[0]
       parts.push(
         <a
-          key={match.index}
+          key={key}
           className={styles.link}
           href={url}
           onClick={e => { e.preventDefault(); void openUrl(url) }}
@@ -1484,5 +1754,5 @@ function renderContent(
     last = match.index + match[0].length
   }
   if (last < text.length) parts.push(text.slice(last))
-  return parts.length > 0 ? parts : text
+  return parts
 }

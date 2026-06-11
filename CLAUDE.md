@@ -50,6 +50,13 @@ gander/
 ### Channel names
 - Auto-lowercased + spaces→hyphens: `e.target.value.toLowerCase().replace(/\s+/g, '-')`
 
+### Message rendering (ChannelView.tsx)
+- Three-layer renderer: fenced code blocks → inline markdown (`` `code` ``, `**bold**`, `*italic*`, `~~strike~~`, `||spoiler||`) → entities (URLs, @mentions, #post, #channel-name, [[book/shelf]])
+- Consecutive messages from the same author within 7 min are grouped (no repeated avatar/meta; hover shows time in the avatar gutter)
+- Hover action toolbar (react/reply/edit/more) on desktop pointers; hidden via `@media (hover: none)`
+- Touch: long-press opens the message context menu, swipe-right replies
+- ArrowUp in an empty input edits your last message
+
 ### Running dev tools (bash)
 - `node`/`pnpm`/`rustc` not in Git Bash PATH — use `cmd.exe /c "..."` for tool invocations
 

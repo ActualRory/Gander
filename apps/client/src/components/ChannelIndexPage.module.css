@@ -23,6 +23,28 @@
   flex: 1;
 }
 
+.filterInput {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 4px 8px;
+  width: min(40vw, 220px);
+}
+
+@media (pointer: coarse) {
+  /* Prevent Android WebView auto-zoom on focus */
+  .filterInput {
+    font-size: max(16px, 0.85em);
+  }
+}
+
+.filterInput:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
 .refreshBtn {
   background: none;
   border: none;

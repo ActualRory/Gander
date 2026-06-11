@@ -359,6 +359,12 @@
   border-color: #c87060;
 }
 
+.presetActive {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  background: var(--bg-elevated);
+}
+
 .cancelBtn {
   background: none;
   border: none;

@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { prisma } from '../lib/prisma.js'
 import { broadcastAll, broadcastToUser, getVoiceParticipantCounts } from '../ws/handler.js'
 import { rankOf, writeAuditLog, type UserRole } from '../lib/auth.js'
+import { createNotification } from '../lib/notifier.js'
 import type { ChannelType, ChannelVisibility } from '@gander/shared'
 
 function serializeChannel(ch: {
@@ -342,6 +343,65 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     if (!channel) return reply.status(404).send({ error: 'Not found' })
     if (channel.type === 'DM' || channel.type === 'GROUP') return reply.status(400).send({ error: 'Cannot leave DM channels' })
     await prisma.channelMember.deleteMany({ where: { userId, channelId } })
+    return reply.status(204).send()
+  })
+
+  // GET /api/channels/:channelId/members — list members (members and mods only)
+  app.get('/:channelId/members', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
+    const { channelId } = req.params as { channelId: string }
+
+    const [actor, membership] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { role: true } }),
+      prisma.channelMember.findUnique({ where: { userId_channelId: { userId, channelId } } }),
+    ])
+    const isMod = rankOf(actor?.role as UserRole ?? 'MEMBER') >= rankOf('MODERATOR')
+    if (!membership && !isMod) return reply.status(403).send({ error: 'Forbidden' })
+
+    const members = await prisma.channelMember.findMany({
+      where: { channelId },
+      select: { userId: true, role: true, joinedAt: true },
+      orderBy: { joinedAt: 'asc' },
+    })
+    return members.map(m => ({ userId: m.userId, role: m.role, joinedAt: m.joinedAt.toISOString() }))
+  })
+
+  // POST /api/channels/:channelId/invite — add another user to a channel you're in
+  app.post('/:channelId/invite', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
+    const { channelId } = req.params as { channelId: string }
+    const { userId: targetId } = req.body as { userId: string }
+    if (!targetId) return reply.status(400).send({ error: 'userId required' })
+
+    const channel = await prisma.channel.findUnique({ where: { id: channelId } })
+    if (!channel) return reply.status(404).send({ error: 'Not found' })
+    if (channel.type === 'DM' || channel.type === 'GROUP') return reply.status(400).send({ error: 'Cannot invite to DM channels' })
+    if (channel.isArchived) return reply.status(410).send({ error: 'Channel is archived' })
+
+    const [actor, inviterMembership, target, existing] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { role: true, displayName: true } }),
+      prisma.channelMember.findUnique({ where: { userId_channelId: { userId, channelId } } }),
+      prisma.user.findUnique({ where: { id: targetId }, select: { isBanned: true, isArchived: true } }),
+      prisma.channelMember.findUnique({ where: { userId_channelId: { userId: targetId, channelId } } }),
+    ])
+    const isMod = rankOf(actor?.role as UserRole ?? 'MEMBER') >= rankOf('MODERATOR')
+    if (!inviterMembership && !isMod) return reply.status(403).send({ error: 'You must be a member to invite others' })
+    if (!target) return reply.status(404).send({ error: 'User not found' })
+    if (target.isBanned || target.isArchived) return reply.status(400).send({ error: 'Cannot invite this user' })
+    if (existing) return reply.status(409).send({ error: 'Already a member' })
+
+    await prisma.channelMember.create({ data: { userId: targetId, channelId } })
+    await writeAuditLog(userId, 'channel.invite', channelId, 'channel', { invitedUserId: targetId })
+
+    // Target's sidebar picks the channel up via channel:created
+    broadcastToUser(targetId, { type: 'channel:created', payload: serializeChannel(channel) })
+    await createNotification(
+      targetId,
+      'channel_invite',
+      `${actor?.displayName ?? 'Someone'} invited you to #${channel.name}`,
+      channel.topic ?? undefined,
+      { channelId },
+    )
     return reply.status(204).send()
   })
 
