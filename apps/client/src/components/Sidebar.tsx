@@ -70,6 +70,9 @@ interface Props {
   onMarkAllNotificationsRead: () => void
   onNotificationClick: (n: Notification) => void
   onInvitePeople: (channel: Channel) => void
+  channelsLoading: boolean
+  channelsError: string | null
+  onRetryChannels: () => void
 }
 
 interface ContextState {
@@ -96,7 +99,7 @@ const ADMIN_ROLES: UserRole[] = ['ADMIN', 'SUPERADMIN', 'ROOT']
 function isMod(role: UserRole) { return MOD_ROLES.includes(role) }
 function isAdmin(role: UserRole) { return ADMIN_ROLES.includes(role) }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onArchiveChannel, onLeaveChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId, onBrowseChannels, currentUserRole, token, notifications, onMarkNotificationRead, onMarkAllNotificationsRead, onNotificationClick, onInvitePeople }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onArchiveChannel, onLeaveChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId, onBrowseChannels, currentUserRole, token, notifications, onMarkNotificationRead, onMarkAllNotificationsRead, onNotificationClick, onInvitePeople, channelsLoading, channelsError, onRetryChannels }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
@@ -436,6 +439,24 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
         </div>
 
         <div className={styles.channelList}>
+          {/* Load feedback only matters when there is nothing to show — a
+              background refresh shouldn't blank out an already-populated list */}
+          {(visibleDMs.length === 0 && visibleText.length === 0 && visibleVoice.length === 0) && (
+            channelsError ? (
+              <div className={styles.loadState}>
+                <span className={styles.loadStateError}>couldn't reach the server</span>
+                <span className={styles.loadStateDetail}>{channelsError}</span>
+                <button type="button" className={styles.loadStateBtn} onClick={onRetryChannels}>[retry]</button>
+              </div>
+            ) : channelsLoading ? (
+              <div className={styles.loadState}>loading channels…</div>
+            ) : (
+              <div className={styles.loadState}>
+                <span>no channels yet</span>
+                <button type="button" className={styles.loadStateBtn} onClick={onBrowseChannels}>[browse channels]</button>
+              </div>
+            )
+          )}
           {visibleDMs.length > 0 && (
             <div className={styles.section}>
               <div className={styles.sectionHeader}>

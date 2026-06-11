@@ -10,7 +10,7 @@ import { platform } from '../lib/platform.ts'
 import type { Channel, User, UserRole } from '@gander/shared'
 import type { AuthState } from '../App.tsx'
 import { api } from '../lib/api.ts'
-import { GanderWS } from '../lib/ws.ts'
+import { GanderWS, type ConnectionStatus } from '../lib/ws.ts'
 import Sidebar from '../components/Sidebar.tsx'
 import ChannelView from '../components/ChannelView.tsx'
 import LibraryView from '../components/LibraryView.tsx'
@@ -194,6 +194,10 @@ export default function Main({ auth, onLogout }: Props) {
   const [hiddenUtilityIds, setHiddenUtilityIds] = useState<Set<string>>(() => loadHiddenUtilities(auth.userId))
   const [windowFocused, setWindowFocused] = useState(true)
   const [inviteTarget, setInviteTarget] = useState<Channel | null>(null)
+  const [connStatus, setConnStatus] = useState<ConnectionStatus>('connecting')
+  const [everConnected, setEverConnected] = useState(false)
+  const [baseLoading, setBaseLoading] = useState(true)
+  const [baseError, setBaseError] = useState<string | null>(null)
   const windowFocusedRef = useRef(true)
   const wsRef = useRef<GanderWS | null>(null)
   const activeChannelRef = useRef<Channel | null>(null)
@@ -356,13 +360,25 @@ export default function Main({ auth, onLogout }: Props) {
     }
   }, [unreadCounts, mentionCounts, mutedChannelIds])
 
-  useEffect(() => {
-    Promise.all([
-      api.getChannels(auth.token),
-      api.getChannelReadState(auth.token).catch(() => [] as { channelId: string; lastReadAt: string }[]),
-    ]).then(async ([fetchedChannels, serverReadState]) => {
+  // Load channels, DMs, users, and unread counts — with explicit loading/error
+  // state so a failed fetch (flaky mobile network, server down) never leaves a
+  // silently empty sidebar. Also re-run after every WS reconnect to catch up on
+  // events missed while disconnected.
+  async function loadBaseData() {
+    setBaseLoading(true)
+    setBaseError(null)
+    try {
+      const [fetchedChannels, serverReadState, dms, fetchedUsers] = await Promise.all([
+        api.getChannels(auth.token),
+        api.getChannelReadState(auth.token).catch(() => [] as { channelId: string; lastReadAt: string }[]),
+        api.getDMs(auth.token),
+        api.getUsers(auth.token),
+      ])
       setChannels(fetchedChannels)
+      setDmChannels(dms)
+      setUsers(fetchedUsers)
       if (fetchedChannels.length === 0) setShowChannelIndex(true)
+
       // Merge server read timestamps into localStorage — server wins for cross-device freshness
       for (const { channelId, lastReadAt } of serverReadState) {
         const local = loadLastRead(auth.userId, channelId)
@@ -370,15 +386,19 @@ export default function Main({ auth, onLogout }: Props) {
           localStorage.setItem(`gander:lastread:${auth.userId}:${channelId}`, lastReadAt)
         }
       }
-      // Bootstrap unread counts for text channels using the now-merged local timestamps
-      const channelLastReadAt: Record<string, string> = {}
+      // Bootstrap unread counts in one round-trip: text channels with a known
+      // lastRead, plus every DM (epoch default so never-opened DMs count fully)
+      const lastReadMap: Record<string, string> = {}
       for (const c of fetchedChannels) {
         if (c.type !== 'TEXT') continue
         const lastRead = loadLastRead(auth.userId, c.id)
-        if (lastRead) channelLastReadAt[c.id] = lastRead
+        if (lastRead) lastReadMap[c.id] = lastRead
       }
-      if (Object.keys(channelLastReadAt).length > 0) {
-        const results = await api.getUnreadCounts(auth.token, channelLastReadAt)
+      for (const c of dms) {
+        lastReadMap[c.id] = loadLastRead(auth.userId, c.id) ?? new Date(0).toISOString()
+      }
+      if (Object.keys(lastReadMap).length > 0) {
+        const results = await api.getUnreadCounts(auth.token, lastReadMap)
         const counts: Record<string, number> = {}
         const mentions: Record<string, number> = {}
         for (const { channelId, count, mentionCount } of results) {
@@ -388,40 +408,27 @@ export default function Main({ auth, onLogout }: Props) {
         setUnreadCounts(counts)
         setMentionCounts(mentions)
       }
-    })
+    } catch (err) {
+      setBaseError(err instanceof Error ? err.message : 'failed to load')
+    } finally {
+      setBaseLoading(false)
+    }
+  }
 
-    api.getDMs(auth.token).then(async dms => {
-      setDmChannels(dms)
-      // Bootstrap unread counts for DM channels — always include every DM.
-      // For channels with no lastRead (never opened), use epoch so all messages count.
-      const dmLastReadAt: Record<string, string> = {}
-      for (const c of dms) {
-        const lastRead = loadLastRead(auth.userId, c.id)
-        dmLastReadAt[c.id] = lastRead ?? new Date(0).toISOString()
-      }
-      if (Object.keys(dmLastReadAt).length > 0) {
-        const results = await api.getUnreadCounts(auth.token, dmLastReadAt)
-        setUnreadCounts(prev => {
-          const counts = { ...prev }
-          for (const { channelId, count } of results) {
-            if (count > 0) counts[channelId] = count
-          }
-          return counts
-        })
-        setMentionCounts(prev => {
-          const mentions = { ...prev }
-          for (const { channelId, mentionCount } of results) {
-            if (mentionCount > 0) mentions[channelId] = mentionCount
-          }
-          return mentions
-        })
-      }
-    })
-
-    api.getUsers(auth.token).then(setUsers)
+  useEffect(() => {
+    loadBaseData()
 
     const ws = new GanderWS(auth.token)
     wsRef.current = ws
+
+    setConnStatus(ws.status)
+    const unsubStatus = ws.onStatus(setConnStatus)
+    // Stale/invalid token or ban — reconnecting can't help, go back to login
+    ws.onAuthFail(() => {
+      localStorage.removeItem('gander_auth')
+      onLogout()
+    })
+    const unsubReconnect = ws.onReconnect(() => { loadBaseData() })
 
     const unsub = ws.on(event => {
       if (event.type === 'users:init') {
@@ -616,9 +623,35 @@ export default function Main({ auth, onLogout }: Props) {
 
     return () => {
       unsub()
+      unsubStatus()
+      unsubReconnect()
       ws.close()
     }
+  // loadBaseData and onLogout are stable for the lifetime of this auth session
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.token])
+
+  // Track first successful connection so the banner doesn't flash during boot
+  useEffect(() => {
+    if (connStatus === 'online') setEverConnected(true)
+  }, [connStatus])
+
+  // On resume from background / network return, reconnect immediately instead
+  // of waiting for the (possibly throttled) 3s retry timer — fixes the mobile
+  // "app opens to a dead view" problem
+  useEffect(() => {
+    function wake() {
+      if (document.visibilityState !== 'hidden') wsRef.current?.forceReconnect()
+    }
+    document.addEventListener('visibilitychange', wake)
+    window.addEventListener('online', wake)
+    window.addEventListener('focus', wake)
+    return () => {
+      document.removeEventListener('visibilitychange', wake)
+      window.removeEventListener('online', wake)
+      window.removeEventListener('focus', wake)
+    }
+  }, [])
 
   // Disconnect from voice on unmount
   useEffect(() => {
@@ -1397,6 +1430,12 @@ export default function Main({ auth, onLogout }: Props) {
       )}
       {errorMessage && <ErrorModal message={errorMessage} onClose={() => setErrorMessage(null)} />}
 
+      {connStatus !== 'online' && (everConnected || connStatus === 'offline') && (
+        <div className={styles.connBanner}>
+          {connStatus === 'connecting' ? 'reconnecting to server…' : 'connection lost — retrying…'}
+        </div>
+      )}
+
       {settingsOpen && (
         <SettingsModal
           displayName={auth.displayName}
@@ -1491,6 +1530,9 @@ export default function Main({ auth, onLogout }: Props) {
         onMarkAllNotificationsRead={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
         onNotificationClick={handleNotificationClick}
         onInvitePeople={setInviteTarget}
+        channelsLoading={baseLoading}
+        channelsError={baseError}
+        onRetryChannels={loadBaseData}
       />
       <main className={styles.content}>
         <button
