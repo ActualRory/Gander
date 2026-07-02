@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import goosehonkUrl from '../../sounds/goosehonk1.mp3?url'
 import hangupUrl from '../../sounds/goosebell_hangup1.mp3?url'
-import { Room, RoomEvent, Track, AudioPresets, VideoPresets, ScreenSharePresets, LocalAudioTrack, ConnectionQuality, createAudioAnalyser, type RemoteAudioTrack, type RemoteVideoTrack, type LocalVideoTrack } from 'livekit-client'
+import { Room, RoomEvent, Track, AudioPresets, VideoPresets, ScreenSharePresets, LocalAudioTrack, ConnectionQuality, DisconnectReason, createAudioAnalyser, type RemoteAudioTrack, type RemoteVideoTrack, type LocalVideoTrack } from 'livekit-client'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { Image as TauriImage } from '@tauri-apps/api/image'
@@ -165,6 +165,29 @@ function saveVoiceSettings(userId: string, settings: VoiceSettings) {
   localStorage.setItem(`gander:voice-settings:${userId}`, JSON.stringify(settings))
 }
 
+// Timestamped voice lifecycle log — lets user-reported "random disconnects" be
+// matched against the webview console (connect/reconnect/disconnect + reason)
+function vlog(...args: unknown[]) {
+  console.info(`[voice ${new Date().toISOString()}]`, ...args)
+}
+
+// LiveKit reports disconnects as a numeric protobuf enum — translate the values
+// users actually hit into actionable text (fall back to the raw enum name)
+function disconnectReasonLabel(reason: DisconnectReason): string {
+  switch (reason) {
+    case DisconnectReason.DUPLICATE_IDENTITY: return 'you connected to voice from another device or window'
+    case DisconnectReason.SERVER_SHUTDOWN: return 'the voice server shut down or restarted'
+    case DisconnectReason.PARTICIPANT_REMOVED: return 'you were removed from the voice channel'
+    case DisconnectReason.ROOM_DELETED:
+    case DisconnectReason.ROOM_CLOSED: return 'the voice channel was closed'
+    case DisconnectReason.SIGNAL_CLOSE: return 'connection to the voice server was lost'
+    case DisconnectReason.CONNECTION_TIMEOUT: return 'timed out reconnecting to the voice server'
+    case DisconnectReason.JOIN_FAILURE: return 'could not reach the voice server'
+    case DisconnectReason.STATE_MISMATCH: return 'connection state error — try rejoining'
+    default: return DisconnectReason[reason] ?? `unknown (${reason})`
+  }
+}
+
 export default function Main({ auth, onLogout }: Props) {
   const [channels, setChannels] = useState<Channel[]>([])
   const [dmChannels, setDmChannels] = useState<Channel[]>([])
@@ -217,6 +240,9 @@ export default function Main({ auth, onLogout }: Props) {
   const [isReceiving, setIsReceiving] = useState(false)
   const [speakingUserIds, setSpeakingUserIds] = useState<Set<string>>(new Set())
   const [voiceStats, setVoiceStats] = useState<VoiceStats | null>(null)
+  const [voiceReconnecting, setVoiceReconnecting] = useState(false)
+  // Last polled stats, kept in a ref so disconnect logging can include them
+  const lastVoiceStatsRef = useRef<VoiceStats | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [participantVolumes, setParticipantVolumes] = useState<Record<string, number>>({})
   const [participantVoiceState, setParticipantVoiceState] = useState<Record<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }>>({})
@@ -739,6 +765,7 @@ export default function Main({ auth, onLogout }: Props) {
       setIsDeafened(false)
 
       const { token, url } = await api.getVoiceToken(auth.token, channel.id)
+      vlog('joining', { channel: channel.name, url })
       const room = new Room({
         disconnectOnPageLeave: false,
         audioCaptureDefaults: { echoCancellation, noiseSuppression, autoGainControl, channelCount: 2, sampleRate: 48000 },
@@ -755,10 +782,17 @@ export default function Main({ auth, onLogout }: Props) {
 
       // Surface unexpected disconnects (after successful connect) via error modal
       room.on(RoomEvent.Disconnected, (reason) => {
+        vlog('disconnected', {
+          reason: reason !== undefined ? DisconnectReason[reason] ?? reason : 'undefined',
+          intentional: intentionalDisconnectRef.current,
+          lastStats: lastVoiceStatsRef.current,
+        })
         if (!intentionalDisconnectRef.current && reason !== undefined) {
-          setErrorMessage(`voice disconnected: ${reason}`)
+          setErrorMessage(`voice disconnected: ${disconnectReasonLabel(reason)}`)
         }
         intentionalDisconnectRef.current = false
+        setVoiceReconnecting(false)
+        lastVoiceStatsRef.current = null
         rnnoiseProcessorRef.current = null
         voiceRoomRef.current = null
         if (statsIntervalRef.current) { clearInterval(statsIntervalRef.current); statsIntervalRef.current = null }
@@ -775,6 +809,24 @@ export default function Main({ auth, onLogout }: Props) {
         setSpeakingUserIds(new Set())
         setVoiceStats(null)
         setSettingsOpen(false)
+      })
+
+      // Reconnect lifecycle — livekit-client retries automatically for a while
+      // before giving up; without these handlers that window is silent dead air
+      room.on(RoomEvent.SignalReconnecting, () => {
+        vlog('signal reconnecting', { lastStats: lastVoiceStatsRef.current })
+        setVoiceReconnecting(true)
+      })
+      room.on(RoomEvent.Reconnecting, () => {
+        vlog('reconnecting (full)', { lastStats: lastVoiceStatsRef.current })
+        setVoiceReconnecting(true)
+      })
+      room.on(RoomEvent.Reconnected, () => {
+        vlog('reconnected')
+        setVoiceReconnecting(false)
+      })
+      room.on(RoomEvent.MediaDevicesError, (err) => {
+        vlog('media devices error', err)
       })
 
       // Attach incoming audio/video tracks
@@ -871,6 +923,7 @@ export default function Main({ auth, onLogout }: Props) {
 
       await room.connect(url, token)
       await room.startAudio()
+      vlog('connected', { channel: channel.name })
 
       setVoiceStats({ quality: 'unknown', ping: null, jitter: null, packetsLost: null })
 
@@ -880,6 +933,7 @@ export default function Main({ auth, onLogout }: Props) {
           : quality === ConnectionQuality.Good ? 'good'
           : quality === ConnectionQuality.Poor ? 'poor'
           : 'unknown'
+        vlog('connection quality', q, lastVoiceStatsRef.current ?? {})
         setVoiceStats(prev => prev ? { ...prev, quality: q } : null)
       })
 
@@ -894,12 +948,17 @@ export default function Main({ auth, onLogout }: Props) {
           stats.forEach(report => {
             if (report.type === 'remote-inbound-rtp') {
               const s = report as { roundTripTime?: number; jitter?: number; fractionLost?: number }
-              setVoiceStats(prev => prev ? {
-                ...prev,
-                ping: s.roundTripTime != null ? Math.round(s.roundTripTime * 1000) : prev.ping,
-                jitter: s.jitter != null ? Math.round(s.jitter * 1000) : prev.jitter,
-                packetsLost: s.fractionLost != null ? +(s.fractionLost * 100).toFixed(1) : prev.packetsLost,
-              } : null)
+              setVoiceStats(prev => {
+                if (!prev) return null
+                const next = {
+                  ...prev,
+                  ping: s.roundTripTime != null ? Math.round(s.roundTripTime * 1000) : prev.ping,
+                  jitter: s.jitter != null ? Math.round(s.jitter * 1000) : prev.jitter,
+                  packetsLost: s.fractionLost != null ? +(s.fractionLost * 100).toFixed(1) : prev.packetsLost,
+                }
+                lastVoiceStatsRef.current = next
+                return next
+              })
             }
           })
         } catch { /* ignore */ }
@@ -930,7 +989,7 @@ export default function Main({ auth, onLogout }: Props) {
       wsRef.current?.send({ type: 'voice:join', payload: { channelId: channel.id } })
       setVoiceChannelId(channel.id)
     } catch (err) {
-      console.error('Failed to join voice channel:', err)
+      vlog('connect failed', err)
       voiceRoomRef.current = null
       const msg = err instanceof Error ? err.message : String(err)
       setErrorMessage(`voice connect failed: ${msg}`)
@@ -1432,6 +1491,10 @@ export default function Main({ auth, onLogout }: Props) {
         <div className={styles.connBanner}>
           {connStatus === 'connecting' ? 'reconnecting to server…' : 'connection lost — retrying…'}
         </div>
+      )}
+
+      {voiceReconnecting && (
+        <div className={styles.connBanner}>voice connection interrupted — reconnecting…</div>
       )}
 
       {settingsOpen && (

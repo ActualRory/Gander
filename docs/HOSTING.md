@@ -325,6 +325,11 @@ docker compose logs server
 ```
 Look for error messages. Most common causes: wrong `DATABASE_URL`, migration failure on startup.
 
+**Voice disconnects mid-call / users report random voice drops**
+See [VOICE-TROUBLESHOOTING.md](VOICE-TROUBLESHOOTING.md) — the client logs every
+voice connect/reconnect/disconnect with a reason to the webview console, and that
+doc maps each reason to a cause and fix.
+
 **Voice doesn't work / "could not establish signal connection"**
 - Check that `LIVEKIT_PUBLIC_URL` in your `.env` is set to your public IP on port 7880 (e.g. `ws://81.152.44.201:7880`), not `localhost` or an internal Docker hostname.
 - Check that TCP port 7880 is forwarded and the firewall allows it (see `sudo ufw allow 7880/tcp`).

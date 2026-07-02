@@ -6,6 +6,10 @@ keys:
 rtc:
   # Detects the host's public IP automatically for WebRTC ICE candidates.
   # Required for voice to work when clients are not on the same LAN.
+  # NOTE: resolved once at startup — restart this container if the public IP changes.
   use_external_ip: true
   port_range_start: 50000
   port_range_end: 50100
+  # ICE-over-TCP fallback for clients on UDP-blocked networks.
+  # Matches the 7881/tcp mapping in docker-compose.yml.
+  tcp_port: 7881

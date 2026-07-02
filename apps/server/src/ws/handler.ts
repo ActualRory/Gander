@@ -24,6 +24,39 @@ const voiceChannelStartTimes = new Map<string, number>()
 // userId → current VoiceSession DB id
 const userVoiceSessionId = new Map<string, string>()
 
+// userId → pending auto-leave timer. A brief chat-WS drop usually doesn't kill
+// the user's LiveKit connection, so broadcasting voice:leave immediately makes
+// them appear to disconnect from voice while everyone can still hear them.
+// Instead we wait out a grace period; a voice:join re-registration cancels it.
+const pendingVoiceLeave = new Map<string, ReturnType<typeof setTimeout>>()
+const VOICE_LEAVE_GRACE_MS = 20_000
+
+function cancelPendingVoiceLeave(userId: string) {
+  const timer = pendingVoiceLeave.get(userId)
+  if (timer) {
+    clearTimeout(timer)
+    pendingVoiceLeave.delete(userId)
+  }
+}
+
+// Remove a user from their current voice channel and broadcast the departure
+async function leaveVoice(userId: string) {
+  const channelId = userVoiceChannel.get(userId)
+  if (!channelId) return
+  voiceRooms.get(channelId)?.delete(userId)
+  if ((voiceRooms.get(channelId)?.size ?? 0) === 0) {
+    voiceChannelStartTimes.delete(channelId)
+  }
+  userVoiceChannel.delete(userId)
+  userVoiceState.delete(userId)
+  broadcastAll({ type: 'voice:leave', payload: { userId, channelId } })
+  const sessionId = userVoiceSessionId.get(userId)
+  if (sessionId) {
+    await prisma.voiceSession.update({ where: { id: sessionId }, data: { leftAt: new Date() } }).catch(() => {})
+    userVoiceSessionId.delete(userId)
+  }
+}
+
 // channelId → Map<userId, expiry timer>
 const channelTyping = new Map<string, Map<string, ReturnType<typeof setTimeout>>>()
 
@@ -190,8 +223,13 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
 
       case 'voice:join': {
         const { channelId } = event.payload
-        // Leave any current voice channel first
+        // WS reconnected within the grace period — cancel the scheduled auto-leave
+        cancelPendingVoiceLeave(userId)
         const prevChannelId = userVoiceChannel.get(userId)
+        // Re-registration for the channel they never left (post-reconnect sync) —
+        // skip the leave/join broadcast churn, which would honk at the whole channel
+        if (prevChannelId === channelId) break
+        // Leave any current voice channel first
         if (prevChannelId) {
           voiceRooms.get(prevChannelId)?.delete(userId)
           if ((voiceRooms.get(prevChannelId)?.size ?? 0) === 0) {
@@ -217,19 +255,8 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
       }
 
       case 'voice:leave': {
-        const { channelId } = event.payload
-        voiceRooms.get(channelId)?.delete(userId)
-        if ((voiceRooms.get(channelId)?.size ?? 0) === 0) {
-          voiceChannelStartTimes.delete(channelId)
-        }
-        userVoiceChannel.delete(userId)
-        userVoiceState.delete(userId)
-        broadcastAll({ type: 'voice:leave', payload: { userId, channelId } })
-        const sessionId = userVoiceSessionId.get(userId)
-        if (sessionId) {
-          await prisma.voiceSession.update({ where: { id: sessionId }, data: { leftAt: new Date() } }).catch(() => {})
-          userVoiceSessionId.delete(userId)
-        }
+        cancelPendingVoiceLeave(userId)
+        await leaveVoice(userId)
         break
       }
 
@@ -460,21 +487,17 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         const now = new Date()
         await prisma.user.update({ where: { id: userId }, data: { lastSeenAt: now } }).catch(() => {})
         broadcastAll({ type: 'user:offline', payload: { userId, lastSeenAt: now.toISOString() } })
-        // Auto-leave voice channel on disconnect
-        const voiceChannelId = userVoiceChannel.get(userId)
-        if (voiceChannelId) {
-          voiceRooms.get(voiceChannelId)?.delete(userId)
-          if ((voiceRooms.get(voiceChannelId)?.size ?? 0) === 0) {
-            voiceChannelStartTimes.delete(voiceChannelId)
-          }
-          userVoiceChannel.delete(userId)
-          userVoiceState.delete(userId)
-          broadcastAll({ type: 'voice:leave', payload: { userId, channelId: voiceChannelId } })
-          const sessionId = userVoiceSessionId.get(userId)
-          if (sessionId) {
-            await prisma.voiceSession.update({ where: { id: sessionId }, data: { leftAt: new Date() } }).catch(() => {})
-            userVoiceSessionId.delete(userId)
-          }
+        // Auto-leave voice after a grace period. The LiveKit connection usually
+        // survives a brief chat-WS drop, so an immediate leave broadcasts a
+        // phantom departure (user vanishes from the channel while still audible).
+        // If the WS reconnects in time, voice:join re-registration cancels this.
+        if (userVoiceChannel.has(userId)) {
+          const uid = userId
+          cancelPendingVoiceLeave(uid)
+          pendingVoiceLeave.set(uid, setTimeout(() => {
+            pendingVoiceLeave.delete(uid)
+            leaveVoice(uid).catch(() => {})
+          }, VOICE_LEAVE_GRACE_MS))
         }
         for (const channelId of joinedChannels) {
           broadcast(channelId, { type: 'presence:leave', payload: { userId, channelId } })
