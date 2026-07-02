@@ -72,6 +72,9 @@ export const api = {
   getChannelReadState: (token: string) =>
     request<{ channelId: string; lastReadAt: string }[]>('/api/channels/read', authed(token)),
 
+  getUnreads: (token: string) =>
+    request<{ channelId: string; lastReadAt: string | null; count: number; mentionCount: number }[]>('/api/channels/unreads', authed(token)),
+
   markChannelsRead: (token: string, reads: Array<{ channelId: string; lastReadAt: string }>) =>
     request<void>('/api/channels/read', {
       method: 'POST',

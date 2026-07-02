@@ -382,7 +382,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         }
 
         // Link attachments (only the uploader's unlinked ones)
-        let attachments: Array<{ id: string; storedName: string; mimeType: string; filename: string; size: number }> = []
+        let attachments: Array<{ id: string; storedName: string; mimeType: string; filename: string; size: number; width: number | null; height: number | null }> = []
         if (hasAttachments) {
           const safeIds = attachmentIds!.slice(0, 5)
           await prisma.attachment.updateMany({
@@ -391,7 +391,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
           })
           attachments = await prisma.attachment.findMany({
             where: { messageId: message.id },
-            select: { id: true, storedName: true, mimeType: true, filename: true, size: true },
+            select: { id: true, storedName: true, mimeType: true, filename: true, size: true, width: true, height: true },
           })
         }
 
@@ -415,6 +415,8 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
               mimeType: a.mimeType,
               filename: a.filename,
               size: a.size,
+              width: a.width,
+              height: a.height,
             })),
             isSystem: false,
             ...(tempId ? { tempId } : {}),

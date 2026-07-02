@@ -57,7 +57,7 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         replyTo: { select: { id: true, content: true, author: { select: { displayName: true } } } },
         reactions: { select: { reaction: true, userId: true } },
         mentions: { select: { userId: true } },
-        attachments: { select: { id: true, storedName: true, mimeType: true, filename: true, size: true } },
+        attachments: { select: { id: true, storedName: true, mimeType: true, filename: true, size: true, width: true, height: true } },
       },
       orderBy: { createdAt: after ? 'asc' : 'desc' },
       take: Number(limit),
@@ -96,6 +96,8 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
           mimeType: a.mimeType,
           filename: a.filename,
           size: a.size,
+          width: a.width,
+          height: a.height,
         })),
         isSystem: m.isSystem,
       }
@@ -166,7 +168,7 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         replyTo: { select: { id: true, content: true, author: { select: { displayName: true } } } },
         reactions: { select: { reaction: true, userId: true } },
         mentions: { select: { userId: true } },
-        attachments: { select: { id: true, storedName: true, mimeType: true, filename: true, size: true } },
+        attachments: { select: { id: true, storedName: true, mimeType: true, filename: true, size: true, width: true, height: true } },
       },
     })
 
@@ -196,6 +198,8 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         mimeType: a.mimeType,
         filename: a.filename,
         size: a.size,
+        width: a.width,
+        height: a.height,
       })),
       isSystem: updated.isSystem,
     }

@@ -79,6 +79,11 @@
 .message {
   margin-top: 14px;
   touch-action: pan-y;
+  /* CSS-only virtualization: off-screen messages skip layout/paint entirely.
+     The intrinsic-size estimate keeps the scrollbar stable; 'auto' remembers
+     the real size once a row has been rendered. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 64px;
 }
 
 .messageGrouped {
@@ -510,13 +515,15 @@
   line-height: 1.6;
 }
 
+/* Discord-style jump highlight: accent wash + left bar that holds, then fades */
 @keyframes msgHighlight {
-  0%   { background: var(--bg-elevated); }
-  100% { background: transparent; }
+  0%   { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
+  60%  { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
+  100% { background: transparent; box-shadow: inset 2px 0 0 transparent; }
 }
 
 .messageHighlight {
-  animation: msgHighlight 1.2s ease-out forwards;
+  animation: msgHighlight 2.4s ease-out forwards;
 }
 
 .mention {

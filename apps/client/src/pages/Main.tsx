@@ -107,11 +107,6 @@ function saveMuted(userId: string, muted: Set<string>) {
   localStorage.setItem(`gander:muted:${userId}`, JSON.stringify([...muted]))
 }
 
-function loadLastRead(userId: string, channelId: string): string | null {
-  return localStorage.getItem(`gander:lastread:${userId}:${channelId}`)
-}
-
-
 interface VoiceSettings {
   pttMode: boolean
   pttKey: string
@@ -200,6 +195,12 @@ export default function Main({ auth, onLogout }: Props) {
   const [baseError, setBaseError] = useState<string | null>(null)
   const windowFocusedRef = useRef(true)
   const wsRef = useRef<GanderWS | null>(null)
+  // Per-channel lastReadAt, server-authoritative (populated by loadBaseData).
+  // Kept in a ref — only consumed when snapshotting at channel-open time.
+  const lastReadMapRef = useRef<Record<string, string>>({})
+  // lastReadAt of the active channel, captured *before* it was marked read —
+  // drives the "new messages" divider in ChannelView
+  const [activeChannelLastRead, setActiveChannelLastRead] = useState<string | null>(null)
   const activeChannelRef = useRef<Channel | null>(null)
   const channelsRef = useRef<Channel[]>([])
   const dmChannelsRef = useRef<Channel[]>([])
@@ -368,46 +369,39 @@ export default function Main({ auth, onLogout }: Props) {
     setBaseLoading(true)
     setBaseError(null)
     try {
-      const [fetchedChannels, serverReadState, dms, fetchedUsers] = await Promise.all([
+      const [fetchedChannels, dms, fetchedUsers, unreads] = await Promise.all([
         api.getChannels(auth.token),
-        api.getChannelReadState(auth.token).catch(() => [] as { channelId: string; lastReadAt: string }[]),
         api.getDMs(auth.token),
         api.getUsers(auth.token),
+        api.getUnreads(auth.token),
       ])
       setChannels(fetchedChannels)
       setDmChannels(dms)
       setUsers(fetchedUsers)
       if (fetchedChannels.length === 0) setShowChannelIndex(true)
 
-      // Merge server read timestamps into localStorage — server wins for cross-device freshness
-      for (const { channelId, lastReadAt } of serverReadState) {
-        const local = loadLastRead(auth.userId, channelId)
-        if (!local || new Date(lastReadAt) > new Date(local)) {
-          localStorage.setItem(`gander:lastread:${auth.userId}:${channelId}`, lastReadAt)
-        }
+      // Server is the single source of truth for read state and unread counts
+      const counts: Record<string, number> = {}
+      const mentions: Record<string, number> = {}
+      const lrMap: Record<string, string> = {}
+      for (const u of unreads) {
+        if (u.lastReadAt) lrMap[u.channelId] = u.lastReadAt
+        if (u.count > 0) counts[u.channelId] = u.count
+        if (u.mentionCount > 0) mentions[u.channelId] = u.mentionCount
       }
-      // Bootstrap unread counts in one round-trip: text channels with a known
-      // lastRead, plus every DM (epoch default so never-opened DMs count fully)
-      const lastReadMap: Record<string, string> = {}
-      for (const c of fetchedChannels) {
-        if (c.type !== 'TEXT') continue
-        const lastRead = loadLastRead(auth.userId, c.id)
-        if (lastRead) lastReadMap[c.id] = lastRead
+      lastReadMapRef.current = lrMap
+      // The channel currently on screen is being read — don't badge it, and
+      // tell the server (covers refetch-after-reconnect races)
+      const activeId = activeChannelRef.current?.id
+      if (activeId) {
+        delete counts[activeId]
+        delete mentions[activeId]
+        const now = new Date().toISOString()
+        lastReadMapRef.current[activeId] = now
+        api.markChannelsRead(auth.token, [{ channelId: activeId, lastReadAt: now }]).catch(() => {})
       }
-      for (const c of dms) {
-        lastReadMap[c.id] = loadLastRead(auth.userId, c.id) ?? new Date(0).toISOString()
-      }
-      if (Object.keys(lastReadMap).length > 0) {
-        const results = await api.getUnreadCounts(auth.token, lastReadMap)
-        const counts: Record<string, number> = {}
-        const mentions: Record<string, number> = {}
-        for (const { channelId, count, mentionCount } of results) {
-          if (count > 0) counts[channelId] = count
-          if (mentionCount > 0) mentions[channelId] = mentionCount
-        }
-        setUnreadCounts(counts)
-        setMentionCounts(mentions)
-      }
+      setUnreadCounts(counts)
+      setMentionCounts(mentions)
     } catch (err) {
       setBaseError(err instanceof Error ? err.message : 'failed to load')
     } finally {
@@ -550,9 +544,9 @@ export default function Main({ auth, onLogout }: Props) {
       } else if (event.type === 'channel:read') {
         // Another device/tab marked this channel read — sync local state
         const { channelId, lastReadAt } = event.payload
-        const local = loadLastRead(auth.userId, channelId)
+        const local = lastReadMapRef.current[channelId]
         if (!local || new Date(lastReadAt) > new Date(local)) {
-          localStorage.setItem(`gander:lastread:${auth.userId}:${channelId}`, lastReadAt)
+          lastReadMapRef.current[channelId] = lastReadAt
         }
         setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
         setMentionCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
@@ -1239,7 +1233,7 @@ export default function Main({ auth, onLogout }: Props) {
     setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
     setMentionCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
     const lastReadAt = new Date().toISOString()
-    localStorage.setItem(`gander:lastread:${auth.userId}:${channelId}`, lastReadAt)
+    lastReadMapRef.current[channelId] = lastReadAt
     api.markChannelsRead(auth.token, [{ channelId, lastReadAt }]).catch(() => {})
   }
 
@@ -1259,6 +1253,9 @@ export default function Main({ auth, onLogout }: Props) {
 
   function openChannel(channel: Channel) {
     setPendingJump(null)
+    // Snapshot the pre-open read marker BEFORE marking read, so the
+    // "new messages" divider in ChannelView reflects what was actually unread
+    setActiveChannelLastRead(lastReadMapRef.current[channel.id] ?? null)
     setActiveChannel(channel)
     setActiveUtilityId(null)
     markChannelRead(channel.id)
@@ -1314,6 +1311,7 @@ export default function Main({ auth, onLogout }: Props) {
       })
     }
     setPendingJump({ messageId, anchorTime: createdAt })
+    setActiveChannelLastRead(lastReadMapRef.current[channelId] ?? null)
     setActiveChannel(ch)
     markChannelRead(ch.id)
   }
@@ -1611,7 +1609,10 @@ export default function Main({ auth, onLogout }: Props) {
           if (activeChannel && wsRef.current) {
             return (
               <ChannelView
-                key={activeChannel.id}
+                // Include the jump target so navigating to a message in the
+                // already-open channel remounts and anchor-loads around it —
+                // the target may be far outside the loaded message window
+                key={`${activeChannel.id}:${pendingJump?.messageId ?? ''}`}
                 channel={activeChannel}
                 token={auth.token}
                 ws={wsRef.current}
@@ -1620,7 +1621,7 @@ export default function Main({ auth, onLogout }: Props) {
                 currentUserId={auth.userId}
                 currentUserRole={currentUserRole}
                 onUserRightClick={handleUserRightClick}
-                lastReadAt={loadLastRead(auth.userId, activeChannel.id)}
+                lastReadAt={activeChannelLastRead}
                 onMarkRead={() => markChannelRead(activeChannel.id)}
                 onNavigateToChannel={handleNavigateToChannel}
                 onNavigateToUtility={openUtility}

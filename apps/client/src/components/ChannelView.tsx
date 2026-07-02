@@ -374,10 +374,16 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     })
   }, [channel.id, token, ws])
 
-  // Initial scroll: to first unread (centred) or to bottom
+  // Initial scroll: to first unread (centred) or to bottom.
+  // When jumping to a specific message, the jump effect owns the scroll —
+  // scrolling to bottom here would cancel its smooth scrollIntoView.
   useEffect(() => {
     if (loading) return
     requestAnimationFrame(() => {
+      if (jumpToMessageId) {
+        initialScrollDoneRef.current = true
+        return
+      }
       if (firstUnreadRef.current) {
         firstUnreadRef.current.scrollIntoView({ block: 'center' })
       } else {
@@ -386,6 +392,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       }
       initialScrollDoneRef.current = true
     })
+  // jumpToMessageId is fixed for the lifetime of this mount (part of the key)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading])
 
   // Auto-scroll on new messages only when already at bottom
@@ -397,10 +405,20 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     }
   }, [messages])
 
-  // Jump to a specific message after load (cross-channel navigation or pinned message click)
+  // Bound DOM size in long sessions: when reading at the bottom, drop the
+  // oldest messages beyond 400 (scrolling up reloads them from the server)
+  useEffect(() => {
+    if (messages.length <= 400 || !isAtBottomRef.current) return
+    setMessages(prev => prev.length > 400 ? prev.slice(prev.length - 350) : prev)
+    setHasOlder(true)
+  }, [messages.length])
+
+  // Jump to a specific message after load (notification click, search result,
+  // pinned message, cross-channel #post link). Deferred a frame so the rows
+  // have painted before we measure and scroll.
   useEffect(() => {
     if (loading || !jumpToMessageId) return
-    jumpToMessage(jumpToMessageId)
+    requestAnimationFrame(() => jumpToMessage(jumpToMessageId))
   // jumpToMessage is defined later but stable — fine as dep
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, jumpToMessageId])
@@ -493,7 +511,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     if (!el) return
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     el.classList.add(styles.messageHighlight)
-    setTimeout(() => el.classList.remove(styles.messageHighlight), 1200)
+    setTimeout(() => el.classList.remove(styles.messageHighlight), 2400)
   }
 
   async function handleFilesSelected(files: FileList | File[], skipConfirm = false) {
@@ -626,18 +644,50 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     setEditInput('')
   }
 
+  // Apply a reaction toggle to local state. `add` = true adds currentUserId,
+  // false removes it. Used optimistically and to revert on API failure.
+  function applyReactionLocally(messageId: string, reaction: string, add: boolean) {
+    setMessages(prev => prev.map(m => {
+      if (m.id !== messageId) return m
+      const existing = m.reactions.find(r => r.reaction === reaction)
+      let reactions
+      if (add) {
+        if (existing?.userIds.includes(currentUserId)) return m
+        reactions = existing
+          ? m.reactions.map(r => r.reaction === reaction
+              ? { ...r, count: r.count + 1, userIds: [...r.userIds, currentUserId] }
+              : r)
+          : [...m.reactions, { reaction, count: 1, userIds: [currentUserId] }]
+      } else {
+        if (!existing?.userIds.includes(currentUserId)) return m
+        reactions = m.reactions
+          .map(r => r.reaction === reaction
+            ? { ...r, count: r.count - 1, userIds: r.userIds.filter(id => id !== currentUserId) }
+            : r)
+          .filter(r => r.count > 0)
+      }
+      return { ...m, reactions }
+    }))
+  }
+
   async function handleToggleReaction(messageId: string, reaction: string) {
     const msg = messages.find(m => m.id === messageId)
     if (!msg) return
     const existing = msg.reactions.find(r => r.reaction === reaction)
     const alreadyReacted = existing?.userIds.includes(currentUserId) ?? false
+    // Optimistic: toggle locally first so the tag responds instantly; the WS
+    // reaction:updated broadcast confirms with authoritative state on success
+    applyReactionLocally(messageId, reaction, !alreadyReacted)
     try {
       if (alreadyReacted) {
         await api.removeReaction(token, messageId, reaction)
       } else {
         await api.addReaction(token, messageId, reaction)
       }
-    } catch { /* WS broadcast will correct state */ }
+    } catch {
+      // Revert the optimistic toggle — no broadcast will arrive on failure
+      applyReactionLocally(messageId, reaction, alreadyReacted)
+    }
   }
 
   function handleInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -1080,6 +1130,8 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                       src={resolveAttachmentUrl(att.url)}
                       alt={att.filename}
                       className={styles.messageImage}
+                      width={att.width ?? undefined}
+                      height={att.height ?? undefined}
                       loading="lazy"
                       onClick={() => setLightbox({ url: resolveAttachmentUrl(att.url), filename: att.filename })}
                       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setImgMenu({ url: resolveAttachmentUrl(att.url), filename: att.filename, x: e.clientX, y: e.clientY }) }}

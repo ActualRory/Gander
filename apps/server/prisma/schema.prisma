@@ -230,6 +230,8 @@ model Attachment {
   storedName String   @unique
   mimeType   String
   size       Int
+  width      Int?
+  height     Int?
   uploadedAt DateTime @default(now())
 
   uploaderId String

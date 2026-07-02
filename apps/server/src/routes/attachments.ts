@@ -1,9 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { createWriteStream } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { randomBytes } from 'node:crypto'
 import { prisma } from '../lib/prisma.js'
+import { probeImageSize } from '../lib/imageSize.js'
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
@@ -57,6 +59,8 @@ export const attachmentRoutes: FastifyPluginAsync = async (app) => {
       mimeType: string
       size: number
       url: string
+      width: number | null
+      height: number | null
     }> = []
 
     const parts = req.files()
@@ -84,8 +88,18 @@ export const attachmentRoutes: FastifyPluginAsync = async (app) => {
       const size = (part.file as unknown as { bytesRead: number }).bytesRead ?? 0
       const safeFilename = part.filename.replace(/[/\\]/g, '_').slice(0, 255)
 
+      // Probe intrinsic dimensions for images so clients can reserve layout
+      // space before the file loads (prevents scroll jumps)
+      let dims: { width: number; height: number } | null = null
+      if (mimeType.startsWith('image/')) {
+        dims = probeImageSize(await readFile(destPath))
+      }
+
       const attachment = await prisma.attachment.create({
-        data: { filename: safeFilename, storedName, mimeType, size, uploaderId: userId },
+        data: {
+          filename: safeFilename, storedName, mimeType, size, uploaderId: userId,
+          width: dims?.width ?? null, height: dims?.height ?? null,
+        },
       })
 
       results.push({
@@ -94,6 +108,8 @@ export const attachmentRoutes: FastifyPluginAsync = async (app) => {
         mimeType: attachment.mimeType,
         size: attachment.size,
         url: `/uploads/${storedName}`,
+        width: attachment.width,
+        height: attachment.height,
       })
     }
 

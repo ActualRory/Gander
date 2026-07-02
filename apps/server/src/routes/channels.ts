@@ -86,6 +86,42 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     }))
   })
 
+  // GET /api/channels/unreads — authoritative unread state for every channel the
+  // user is a member of, computed entirely server-side from UserChannelRead.
+  // Replaces the old client-driven flow where localStorage timestamps were
+  // posted to /api/messages/unread.
+  app.get('/unreads', async (req) => {
+    const { userId } = req.user as { userId: string }
+    const [memberships, reads] = await Promise.all([
+      prisma.channelMember.findMany({
+        where: { userId },
+        select: { channelId: true, channel: { select: { type: true } } },
+      }),
+      prisma.userChannelRead.findMany({ where: { userId } }),
+    ])
+    const readMap = new Map(reads.map(r => [r.channelId, r.lastReadAt]))
+
+    return Promise.all(memberships.map(async ({ channelId, channel }) => {
+      const lastReadAt = readMap.get(channelId) ?? null
+      const isDm = channel.type === 'DM' || channel.type === 'GROUP'
+      // Never-opened TEXT channels start read (joining shouldn't dump the whole
+      // backlog as unread); never-opened DMs count everything
+      if (!lastReadAt && !isDm) {
+        return { channelId, lastReadAt: null, count: 0, mentionCount: 0 }
+      }
+      const since = lastReadAt ?? new Date(0)
+      const [count, mentionCount] = await Promise.all([
+        prisma.message.count({
+          where: { channelId, authorId: { not: userId }, createdAt: { gt: since }, isSystem: false },
+        }),
+        prisma.mention.count({
+          where: { userId, message: { channelId, createdAt: { gt: since } } },
+        }),
+      ])
+      return { channelId, lastReadAt: lastReadAt?.toISOString() ?? null, count, mentionCount }
+    }))
+  })
+
   // GET /api/channels/read
   app.get('/read', async (req) => {
     const { userId } = req.user as { userId: string }
@@ -423,7 +459,7 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
         message: {
           include: {
             author: { select: { id: true, displayName: true } },
-            attachments: { select: { id: true, storedName: true, mimeType: true, filename: true, size: true } },
+            attachments: { select: { id: true, storedName: true, mimeType: true, filename: true, size: true, width: true, height: true } },
           },
         },
       },
@@ -449,6 +485,8 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
           mimeType: a.mimeType,
           filename: a.filename,
           size: a.size,
+          width: a.width,
+          height: a.height,
         })),
       },
     }))

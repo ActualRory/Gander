@@ -16,6 +16,8 @@ export interface AttachmentInfo {
   mimeType: string
   filename: string
   size: number      // bytes
+  width?: number | null   // intrinsic pixels — present for images uploaded after dimension probing
+  height?: number | null
 }
 
 export interface Message {
