@@ -40,12 +40,25 @@ function serializeUser(user: {
   }
 }
 
+// Login/register are unauthenticated — throttle hard to blunt brute-forcing
+const AUTH_RATE_LIMIT = { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }
+
 export const authRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/register', async (req, reply) => {
+  app.post('/register', AUTH_RATE_LIMIT, async (req, reply) => {
     const { username, displayName, password } = req.body as {
-      username: string
-      displayName: string
-      password: string
+      username?: string
+      displayName?: string
+      password?: string
+    }
+
+    if (typeof username !== 'string' || !/^[a-zA-Z0-9_.-]{2,32}$/.test(username)) {
+      return reply.status(400).send({ error: 'Username must be 2-32 characters (letters, numbers, _ . -)' })
+    }
+    if (typeof displayName !== 'string' || !displayName.trim() || displayName.trim().length > 50) {
+      return reply.status(400).send({ error: 'Display name must be 1-50 characters' })
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return reply.status(400).send({ error: 'Password must be at least 8 characters' })
     }
 
     const existing = await prisma.user.findUnique({ where: { username } })
@@ -58,7 +71,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const user = await prisma.user.create({
       data: {
         username,
-        displayName,
+        displayName: displayName.trim(),
         passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS),
         hashVersion: 'bcrypt',
         role: isFirstUser ? 'ROOT' : 'MEMBER',
@@ -81,8 +94,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return { token, user: serializeUser(user) }
   })
 
-  app.post('/login', async (req, reply) => {
-    const { username, password } = req.body as { username: string; password: string }
+  app.post('/login', AUTH_RATE_LIMIT, async (req, reply) => {
+    const { username, password } = req.body as { username?: string; password?: string }
+    if (typeof username !== 'string' || typeof password !== 'string') {
+      return reply.status(400).send({ error: 'Username and password required' })
+    }
 
     const user = await prisma.user.findUnique({ where: { username } })
     if (!user) return reply.status(401).send({ error: 'Unknown username' })

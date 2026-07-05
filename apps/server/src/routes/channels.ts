@@ -1,14 +1,15 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { prisma } from '../lib/prisma.js'
-import { broadcastAll, broadcastToUser, getVoiceParticipantCounts } from '../ws/handler.js'
+import { broadcastAll, broadcastToUser, broadcastToChannelMembers, broadcastToChannelAudience, getVoiceParticipantCounts } from '../ws/handler.js'
 import { rankOf, writeAuditLog, type UserRole } from '../lib/auth.js'
+import { canManageChannel, canPostInChannel, canReadChannel } from '../lib/channelAccess.js'
 import { createNotification } from '../lib/notifier.js'
-import type { ChannelType, ChannelVisibility } from '@gander/shared'
+import { CHANNEL_NAME_PATTERN, type ChannelMemberRole, type ChannelType, type ChannelVisibility } from '@gander/shared'
 
 function serializeChannel(ch: {
   id: string; name: string; type: string; topic: string | null
   createdAt: Date; creatorId: string | null; visibility: string; isArchived: boolean
-}) {
+}, memberRole?: string) {
   return {
     id: ch.id,
     name: ch.name,
@@ -18,7 +19,16 @@ function serializeChannel(ch: {
     creatorId: ch.creatorId,
     visibility: ch.visibility as ChannelVisibility,
     isArchived: ch.isArchived,
+    ...(memberRole ? { memberRole: memberRole as ChannelMemberRole } : {}),
   }
+}
+
+// Normalize a submitted channel name the same way the client does
+// (lowercase, spaces→hyphens) and validate the result.
+function normalizeChannelName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const name = raw.trim().toLowerCase().replace(/\s+/g, '-')
+  return CHANNEL_NAME_PATTERN.test(name) ? name : null
 }
 
 export const channelRoutes: FastifyPluginAsync = async (app) => {
@@ -39,7 +49,7 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     return memberships
       .filter(m => m.channel.type !== 'DM' && m.channel.type !== 'GROUP')
       .filter(m => isMod || !m.channel.isArchived)
-      .map(m => serializeChannel(m.channel))
+      .map(m => serializeChannel(m.channel, m.role))
   })
 
   // GET /api/channels/index — all public-index channels with stats
@@ -135,15 +145,25 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     const { reads } = req.body as { reads: Array<{ channelId: string; lastReadAt: string }> }
     if (!Array.isArray(reads) || reads.length === 0) return reply.status(204).send()
 
-    await Promise.all(reads.map(({ channelId, lastReadAt }) =>
-      prisma.userChannelRead.upsert({
-        where: { userId_channelId: { userId, channelId } },
-        create: { userId, channelId, lastReadAt: new Date(lastReadAt) },
-        update: { lastReadAt: new Date(lastReadAt) },
-      })
-    ))
-    for (const { channelId, lastReadAt } of reads) {
-      broadcastToUser(userId, { type: 'channel:read', payload: { channelId, lastReadAt } })
+    // Drop malformed timestamps; a stale/deleted channelId (FK violation) is
+    // harmless — skip it rather than failing the whole batch
+    const valid = reads.filter(r =>
+      typeof r?.channelId === 'string' && !isNaN(new Date(r.lastReadAt).getTime())
+    )
+    const applied = await Promise.all(valid.map(async ({ channelId, lastReadAt }) => {
+      try {
+        await prisma.userChannelRead.upsert({
+          where: { userId_channelId: { userId, channelId } },
+          create: { userId, channelId, lastReadAt: new Date(lastReadAt) },
+          update: { lastReadAt: new Date(lastReadAt) },
+        })
+        return { channelId, lastReadAt }
+      } catch {
+        return null
+      }
+    }))
+    for (const read of applied) {
+      if (read) broadcastToUser(userId, { type: 'channel:read', payload: read })
     }
     return reply.status(204).send()
   })
@@ -151,7 +171,15 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
   // POST /api/channels — create a new private channel
   app.post('/', async (req, reply) => {
     const { userId } = req.user as { userId: string }
-    const { name, type } = req.body as { name: string; type: 'TEXT' | 'VOICE' }
+    const { name: rawName, type } = req.body as { name?: unknown; type?: unknown }
+
+    const name = normalizeChannelName(rawName)
+    if (!name) {
+      return reply.status(400).send({ error: 'Channel name must be 1-50 characters (letters, numbers, hyphens)' })
+    }
+    if (type !== 'TEXT' && type !== 'VOICE') {
+      return reply.status(400).send({ error: 'Channel type must be TEXT or VOICE' })
+    }
 
     const channel = await prisma.channel.create({
       data: {
@@ -163,8 +191,8 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
       },
     })
     // Only broadcast to creator — channel is private
-    broadcastToUser(userId, { type: 'channel:created', payload: serializeChannel(channel) })
-    return reply.status(201).send(serializeChannel(channel))
+    broadcastToUser(userId, { type: 'channel:created', payload: serializeChannel(channel, 'MANAGER') })
+    return reply.status(201).send(serializeChannel(channel, 'MANAGER'))
   })
 
   // POST /api/channels/:channelId/join
@@ -312,24 +340,31 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'Nothing to update' })
     }
 
-    const channel = await prisma.channel.findUnique({ where: { id: channelId } })
-    if (!channel) return reply.status(404).send({ error: 'Not found' })
+    // Creator, channel MANAGER, or global mod may rename/set topic/archive
+    const access = await canManageChannel(userId, channelId)
+    if (!access.ok) return reply.status(access.status).send({ error: access.error })
+    const { channel } = access
 
-    const actor = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })
-    const isMod = rankOf(actor?.role as UserRole ?? 'MEMBER') >= rankOf('MODERATOR')
-    if (channel.creatorId !== userId && !isMod) return reply.status(403).send({ error: 'Forbidden' })
+    let newName: string | undefined
+    if (name !== undefined) {
+      const normalized = normalizeChannelName(name)
+      if (!normalized) {
+        return reply.status(400).send({ error: 'Channel name must be 1-50 characters (letters, numbers, hyphens)' })
+      }
+      newName = normalized
+    }
 
     const updated = await prisma.channel.update({
       where: { id: channelId },
       data: {
-        ...(name ? { name } : {}),
+        ...(newName ? { name: newName } : {}),
         ...(topic !== undefined ? { topic: topic.trim() || null } : {}),
         ...(isArchived !== undefined ? { isArchived } : {}),
       },
     })
 
-    broadcastAll({ type: 'channel:updated', payload: serializeChannel(updated) })
-    if (isArchived === true) broadcastAll({ type: 'channel:archived', payload: { channelId } })
+    await broadcastToChannelAudience(channelId, { type: 'channel:updated', payload: serializeChannel(updated) })
+    if (isArchived === true) await broadcastToChannelAudience(channelId, { type: 'channel:archived', payload: { channelId } })
 
     if (topic !== undefined && (topic.trim() || null) !== channel.topic) {
       const actorUser = await prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } })
@@ -338,7 +373,7 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
         const sysMsg = await prisma.message.create({
           data: { content, channelId, authorId: userId, isSystem: true },
         })
-        broadcastAll({
+        await broadcastToChannelMembers(channelId, {
           type: 'message:new',
           payload: {
             id: sysMsg.id, channelId, authorId: userId, authorName: actorUser.displayName,
@@ -365,9 +400,19 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     const isCreatorOfPrivate = channel.creatorId === userId && channel.visibility === 'PRIVATE'
     if (!isAdmin && !isCreatorOfPrivate) return reply.status(403).send({ error: 'Forbidden' })
 
+    // Capture the audience before deletion — the cascade wipes ChannelMember
+    const members = await prisma.channelMember.findMany({
+      where: { channelId },
+      select: { userId: true },
+    })
     await prisma.channel.delete({ where: { id: channelId } })
     await writeAuditLog(userId, 'channel.delete', channelId, 'channel', { name: channel.name })
-    broadcastAll({ type: 'channel:deleted', payload: { channelId } })
+    const deletedEvent = { type: 'channel:deleted' as const, payload: { channelId } }
+    if (channel.visibility !== 'PRIVATE') {
+      broadcastAll(deletedEvent)
+    } else {
+      for (const { userId: memberId } of members) broadcastToUser(memberId, deletedEvent)
+    }
     return reply.status(204).send()
   })
 
@@ -379,6 +424,78 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     if (!channel) return reply.status(404).send({ error: 'Not found' })
     if (channel.type === 'DM' || channel.type === 'GROUP') return reply.status(400).send({ error: 'Cannot leave DM channels' })
     await prisma.channelMember.deleteMany({ where: { userId, channelId } })
+    // Sync the leaver's other devices
+    broadcastToUser(userId, {
+      type: 'channel:removed',
+      payload: { channelId, channelName: channel.name, reason: 'left' },
+    })
+    return reply.status(204).send()
+  })
+
+  // DELETE /api/channels/:channelId/members/:targetUserId — kick a member
+  app.delete('/:channelId/members/:targetUserId', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
+    const { channelId, targetUserId } = req.params as { channelId: string; targetUserId: string }
+
+    if (targetUserId === userId) return reply.status(400).send({ error: 'Use leave instead of kicking yourself' })
+
+    const access = await canManageChannel(userId, channelId)
+    if (!access.ok) return reply.status(access.status).send({ error: access.error })
+    const { channel } = access
+    if (channel.type === 'DM' || channel.type === 'GROUP') return reply.status(400).send({ error: 'Cannot kick from DM channels' })
+
+    const targetMembership = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: targetUserId, channelId } },
+    })
+    if (!targetMembership) return reply.status(404).send({ error: 'Not a member' })
+
+    // A MANAGER may not kick another MANAGER — only the creator or a global mod can
+    if (targetMembership.role === 'MANAGER' && !access.isMod && channel.creatorId !== userId) {
+      return reply.status(403).send({ error: 'Only the channel creator or a moderator can kick a manager' })
+    }
+
+    await prisma.channelMember.delete({ where: { userId_channelId: { userId: targetUserId, channelId } } })
+    await writeAuditLog(userId, 'channel.kick', channelId, 'channel', { kickedUserId: targetUserId })
+    broadcastToUser(targetUserId, {
+      type: 'channel:removed',
+      payload: { channelId, channelName: channel.name, reason: 'kicked' },
+    })
+    return reply.status(204).send()
+  })
+
+  // PATCH /api/channels/:channelId/members/:targetUserId — promote/demote manager
+  app.patch('/:channelId/members/:targetUserId', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
+    const { channelId, targetUserId } = req.params as { channelId: string; targetUserId: string }
+    const { role } = req.body as { role?: string }
+
+    if (role !== 'MEMBER' && role !== 'MANAGER') {
+      return reply.status(400).send({ error: 'Role must be MEMBER or MANAGER' })
+    }
+
+    // Promotion/demotion is reserved for the creator or global mods —
+    // managers cannot mint other managers
+    const access = await canManageChannel(userId, channelId)
+    if (!access.ok) return reply.status(access.status).send({ error: access.error })
+    if (!access.isMod && access.channel.creatorId !== userId) {
+      return reply.status(403).send({ error: 'Only the channel creator or a moderator can change member roles' })
+    }
+
+    const targetMembership = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: targetUserId, channelId } },
+    })
+    if (!targetMembership) return reply.status(404).send({ error: 'Not a member' })
+
+    await prisma.channelMember.update({
+      where: { userId_channelId: { userId: targetUserId, channelId } },
+      data: { role },
+    })
+    await writeAuditLog(userId, 'channel.member_role', channelId, 'channel', { targetUserId, role })
+    // Target's sidebar refreshes its per-channel role via channel:updated
+    broadcastToUser(targetUserId, {
+      type: 'channel:updated',
+      payload: serializeChannel(access.channel, role),
+    })
     return reply.status(204).send()
   })
 
@@ -441,18 +558,27 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(204).send()
   })
 
-  // GET /api/channels/:channelId/preview
+  // GET /api/channels/:channelId/preview — metadata only, so any indexed
+  // (non-PRIVATE) channel may be previewed; PRIVATE requires membership
   app.get('/:channelId/preview', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
     const { channelId } = req.params as { channelId: string }
     const channel = await prisma.channel.findUnique({ where: { id: channelId } })
     if (!channel) return reply.status(404).send({ error: 'Not found' })
+    if (channel.visibility === 'PRIVATE') {
+      const access = await canReadChannel(userId, channelId)
+      if (!access.ok) return reply.status(404).send({ error: 'Not found' })
+    }
     const messageCount = await prisma.message.count({ where: { channelId, isSystem: false } })
     return { id: channel.id, name: channel.name, type: channel.type, topic: channel.topic, messageCount }
   })
 
   // GET /api/channels/:channelId/pins
-  app.get('/:channelId/pins', async (req) => {
+  app.get('/:channelId/pins', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
     const { channelId } = req.params as { channelId: string }
+    const access = await canReadChannel(userId, channelId)
+    if (!access.ok) return reply.status(access.status).send({ error: access.error })
     const pins = await prisma.pinnedMessage.findMany({
       where: { channelId },
       include: {
@@ -497,6 +623,12 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     const { userId } = req.user as { userId: string }
     const { channelId, messageId } = req.params as { channelId: string; messageId: string }
 
+    const access = await canPostInChannel(userId, channelId)
+    if (!access.ok) return reply.status(access.status).send({ error: access.error })
+
+    const targetMsg = await prisma.message.findUnique({ where: { id: messageId }, select: { channelId: true } })
+    if (!targetMsg || targetMsg.channelId !== channelId) return reply.status(404).send({ error: 'Not found' })
+
     const existing = await prisma.pinnedMessage.findUnique({
       where: { channelId_messageId: { channelId, messageId } },
     })
@@ -508,16 +640,14 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
     })
 
     if (!existing) {
-      const [pinner, pinnedMsg, channel] = await Promise.all([
+      const [pinner, pinnedMsg] = await Promise.all([
         prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } }),
         prisma.message.findUnique({ where: { id: messageId }, select: { content: true, author: { select: { displayName: true } } } }),
-        prisma.channel.findUnique({ where: { id: channelId }, select: { type: true } }),
       ])
       if (pinner && pinnedMsg) {
         const sysMsg = await prisma.message.create({
           data: { content: 'pinned', channelId, authorId: userId, replyToId: messageId, isSystem: true },
         })
-        const isDm = channel?.type === 'DM' || channel?.type === 'GROUP'
         const outEvent = {
           type: 'message:new' as const,
           payload: {
@@ -528,12 +658,7 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
             reactions: [], mentions: [], attachments: [], isSystem: true,
           },
         }
-        if (isDm) {
-          const members = await prisma.channelMember.findMany({ where: { channelId }, select: { userId: true } })
-          for (const { userId: memberId } of members) broadcastToUser(memberId, outEvent)
-        } else {
-          broadcastAll(outEvent)
-        }
+        await broadcastToChannelMembers(channelId, outEvent)
       }
     }
 
@@ -542,7 +667,10 @@ export const channelRoutes: FastifyPluginAsync = async (app) => {
 
   // DELETE /api/channels/:channelId/pins/:messageId
   app.delete('/:channelId/pins/:messageId', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
     const { channelId, messageId } = req.params as { channelId: string; messageId: string }
+    const access = await canPostInChannel(userId, channelId)
+    if (!access.ok) return reply.status(access.status).send({ error: access.error })
     await prisma.pinnedMessage.deleteMany({ where: { channelId, messageId } })
     return reply.status(204).send()
   })

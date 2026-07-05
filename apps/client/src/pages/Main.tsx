@@ -26,6 +26,7 @@ import type { CameraQuality, ScreenShareQuality } from '../components/SettingsMo
 import { type VideoTile } from '../components/VideoGrid.tsx'
 import StreamView from '../components/StreamView.tsx'
 import UserProfilePopup from '../components/UserProfilePopup.tsx'
+import QuickSwitcher from '../components/QuickSwitcher.tsx'
 import UserProfileModal from '../components/UserProfileModal.tsx'
 import ContextMenu from '../components/ContextMenu.tsx'
 import { RNNoiseProcessor, rnnoiseSupported } from '../lib/rnnoiseProcessor.ts'
@@ -34,6 +35,8 @@ import RecoverySetupModal from '../components/RecoverySetupModal.tsx'
 import InvitePeopleModal from '../components/InvitePeopleModal.tsx'
 import { useAppUpdater } from '../lib/useAppUpdater.ts'
 import { useAndroidUpdateCheck } from '../lib/useAndroidUpdateCheck.ts'
+import { useToast, toastApiError } from '../lib/toast.tsx'
+import { playMessageBlip } from '../lib/sounds.ts'
 import styles from './Main.module.css'
 
 interface Props {
@@ -165,6 +168,23 @@ function saveVoiceSettings(userId: string, settings: VoiceSettings) {
   localStorage.setItem(`gander:voice-settings:${userId}`, JSON.stringify(settings))
 }
 
+interface UiSettings {
+  messageSound: boolean
+}
+
+const UI_SETTINGS_DEFAULTS: UiSettings = { messageSound: false }
+
+function loadUiSettings(userId: string): UiSettings {
+  try {
+    const raw = localStorage.getItem(`gander:ui-settings:${userId}`)
+    return raw ? { ...UI_SETTINGS_DEFAULTS, ...JSON.parse(raw) } : UI_SETTINGS_DEFAULTS
+  } catch { return UI_SETTINGS_DEFAULTS }
+}
+
+function saveUiSettings(userId: string, settings: UiSettings) {
+  localStorage.setItem(`gander:ui-settings:${userId}`, JSON.stringify(settings))
+}
+
 // Timestamped voice lifecycle log — lets user-reported "random disconnects" be
 // matched against the webview console (connect/reconnect/disconnect + reason)
 function vlog(...args: unknown[]) {
@@ -189,6 +209,7 @@ function disconnectReasonLabel(reason: DisconnectReason): string {
 }
 
 export default function Main({ auth, onLogout }: Props) {
+  const toast = useToast()
   const [channels, setChannels] = useState<Channel[]>([])
   const [dmChannels, setDmChannels] = useState<Channel[]>([])
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null)
@@ -241,6 +262,12 @@ export default function Main({ auth, onLogout }: Props) {
   const [speakingUserIds, setSpeakingUserIds] = useState<Set<string>>(new Set())
   const [voiceStats, setVoiceStats] = useState<VoiceStats | null>(null)
   const [voiceReconnecting, setVoiceReconnecting] = useState(false)
+  // Voice channel currently being connected to — sidebar shows "connecting…"
+  const [voiceConnectingChannelId, setVoiceConnectingChannelId] = useState<string | null>(null)
+  const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false)
+  const [messageSound, setMessageSound] = useState(() => loadUiSettings(auth.userId).messageSound)
+  const messageSoundRef = useRef(messageSound)
+  useEffect(() => { messageSoundRef.current = messageSound }, [messageSound])
   // Last polled stats, kept in a ref so disconnect logging can include them
   const lastVoiceStatsRef = useRef<VoiceStats | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -385,6 +412,19 @@ export default function Main({ auth, onLogout }: Props) {
     } else {
       win.setOverlayIcon(undefined).catch(() => {})
     }
+    // Mirror unread state on the tray tooltip so a hidden-to-tray window
+    // still shows what's waiting
+    if (platform.hasTray) {
+      import('@tauri-apps/api/tray').then(({ TrayIcon }) =>
+        TrayIcon.getById('main').then(tray =>
+          tray?.setTooltip(
+            totalUnread > 0
+              ? `Gander — ${totalUnread} unread${hasMention ? ' (@)' : ''}`
+              : 'Gander'
+          )
+        )
+      ).catch(() => {})
+    }
   }, [unreadCounts, mentionCounts, mutedChannelIds])
 
   // Load channels, DMs, users, and unread counts — with explicit loading/error
@@ -480,6 +520,10 @@ export default function Main({ auth, onLogout }: Props) {
 
         // Desktop notification: mentions always fire (unless muted); regular only when unfocused
         if (authorId !== auth.userId && !isMuted) {
+          // Optional soft blip (settings toggle) — throttled inside playMessageBlip
+          if (messageSoundRef.current && (!isActiveChannel || !windowFocusedRef.current)) {
+            playMessageBlip()
+          }
           const ch = [...channelsRef.current, ...dmChannelsRef.current].find(c => c.id === channelId)
           const channelName = ch?.type === 'DM' ? `@${authorName}` : `#${ch?.name ?? channelId}`
           const truncated = content.length > 120 ? content.slice(0, 120) + '…' : content
@@ -562,6 +606,18 @@ export default function Main({ auth, onLogout }: Props) {
         setActiveChannel(prev => prev?.id === channelId ? null : prev)
         setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
         setMentionCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+      } else if (event.type === 'channel:removed') {
+        // We lost membership (kicked, or left on another device) — prune the
+        // channel instead of letting sends fail with not_member
+        const { channelId, channelName, reason } = event.payload
+        setChannels(prev => prev.filter(c => c.id !== channelId))
+        setDmChannels(prev => prev.filter(c => c.id !== channelId))
+        setActiveChannel(prev => prev?.id === channelId ? null : prev)
+        setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+        setMentionCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+        if (reason === 'kicked') {
+          toast(`you were removed from #${channelName}`, { variant: 'error' })
+        }
       } else if (event.type === 'user:updated') {
         const user = event.payload
         setUsers(prev => prev.map(u => u.id === user.id ? user : u))
@@ -678,6 +734,18 @@ export default function Main({ auth, onLogout }: Props) {
     return () => { voiceRoomRef.current?.disconnect() }
   }, [])
 
+  // Ctrl/Cmd+K — quick switcher (Discord-style)
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setQuickSwitcherOpen(open => !open)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   // Track window focus for rich presence
   useEffect(() => {
     const win = getCurrentWindow()
@@ -752,9 +820,11 @@ export default function Main({ auth, onLogout }: Props) {
       voiceRoomRef.current = null
     }
 
+    setVoiceConnectingChannelId(channel.id)
     try {
       if (!navigator.mediaDevices) {
         setErrorMessage('microphone access is not available — check your system permissions for Gander')
+        setVoiceConnectingChannelId(null)
         return
       }
 
@@ -908,9 +978,16 @@ export default function Main({ auth, onLogout }: Props) {
         }
       })
 
-      // Poll all analysers at 50ms (20fps) — purely local, no server round-trip
+      // Poll all analysers at 50ms (20fps) — purely local, no server round-trip.
+      // Track last-set values so silent ticks don't schedule 20 renders/sec.
+      let lastSpeaking = false
+      let lastReceiving = false
       speakingPollInterval = setInterval(() => {
-        setIsSpeaking((localAnalyser?.calculateVolume() ?? 0) > SPEAKING_THRESHOLD)
+        const nowSpeaking = (localAnalyser?.calculateVolume() ?? 0) > SPEAKING_THRESHOLD
+        if (nowSpeaking !== lastSpeaking) {
+          lastSpeaking = nowSpeaking
+          setIsSpeaking(nowSpeaking)
+        }
         const speaking = new Set<string>()
         for (const [identity, { calculateVolume }] of remoteAnalysers) {
           if (calculateVolume() > SPEAKING_THRESHOLD) speaking.add(identity)
@@ -918,7 +995,11 @@ export default function Main({ auth, onLogout }: Props) {
         setSpeakingUserIds(prev =>
           prev.size === speaking.size && [...speaking].every(id => prev.has(id)) ? prev : speaking
         )
-        setIsReceiving(speaking.size > 0)
+        const nowReceiving = speaking.size > 0
+        if (nowReceiving !== lastReceiving) {
+          lastReceiving = nowReceiving
+          setIsReceiving(nowReceiving)
+        }
       }, 50)
 
       await room.connect(url, token)
@@ -988,9 +1069,11 @@ export default function Main({ auth, onLogout }: Props) {
 
       wsRef.current?.send({ type: 'voice:join', payload: { channelId: channel.id } })
       setVoiceChannelId(channel.id)
+      setVoiceConnectingChannelId(null)
     } catch (err) {
       vlog('connect failed', err)
       voiceRoomRef.current = null
+      setVoiceConnectingChannelId(null)
       const msg = err instanceof Error ? err.message : String(err)
       setErrorMessage(`voice connect failed: ${msg}`)
     }
@@ -1230,13 +1313,23 @@ export default function Main({ auth, onLogout }: Props) {
   }
 
   async function handleCreateChannel(name: string, type: 'TEXT' | 'VOICE') {
-    const channel = await api.createChannel(auth.token, name, type)
-    if (type === 'TEXT') setActiveChannel(channel)
+    try {
+      const channel = await api.createChannel(auth.token, name, type)
+      setChannels(prev => prev.some(c => c.id === channel.id) ? prev : [...prev, channel])
+      if (type === 'TEXT') setActiveChannel(channel)
+      toast(`#${channel.name} created`, { variant: 'success' })
+    } catch (err) {
+      toastApiError(toast, err, "couldn't create channel")
+    }
   }
 
   async function handleSetTopic(channelId: string, topic: string) {
-    await api.setChannelTopic(auth.token, channelId, topic)
-    // channel:updated WS broadcast updates channels + activeChannel state
+    try {
+      await api.setChannelTopic(auth.token, channelId, topic)
+      // channel:updated WS broadcast updates channels + activeChannel state
+    } catch (err) {
+      toastApiError(toast, err, "couldn't set topic")
+    }
   }
 
   function handleNavigateToChannel(channelId: string) {
@@ -1254,26 +1347,43 @@ export default function Main({ auth, onLogout }: Props) {
   }
 
   async function handleRenameChannel(channelId: string, name: string) {
-    const updated = await api.renameChannel(auth.token, channelId, name)
-    setChannels(prev => prev.map(c => c.id === channelId ? updated : c))
-    if (activeChannel?.id === channelId) setActiveChannel(updated)
+    try {
+      const updated = await api.renameChannel(auth.token, channelId, name)
+      setChannels(prev => prev.map(c => c.id === channelId ? updated : c))
+      if (activeChannel?.id === channelId) setActiveChannel(updated)
+    } catch (err) {
+      toastApiError(toast, err, "couldn't rename channel")
+    }
   }
 
   async function handleLeaveChannel(channelId: string) {
-    await api.leaveChannel(auth.token, channelId)
-    setChannels(prev => prev.filter(c => c.id !== channelId))
-    if (activeChannel?.id === channelId) setActiveChannel(null)
-    if (voiceChannelId === channelId) await handleLeaveVoice()
+    try {
+      await api.leaveChannel(auth.token, channelId)
+      setChannels(prev => prev.filter(c => c.id !== channelId))
+      if (activeChannel?.id === channelId) setActiveChannel(null)
+      if (voiceChannelId === channelId) await handleLeaveVoice()
+    } catch (err) {
+      toastApiError(toast, err, "couldn't leave channel")
+    }
   }
 
   async function handleArchiveChannel(channelId: string) {
-    await api.archiveChannel(auth.token, channelId, true)
-    setChannels(prev => prev.map(c => c.id === channelId ? { ...c, isArchived: true } : c))
-    if (activeChannel?.id === channelId) setActiveChannel(null)
+    try {
+      await api.archiveChannel(auth.token, channelId, true)
+      setChannels(prev => prev.map(c => c.id === channelId ? { ...c, isArchived: true } : c))
+      if (activeChannel?.id === channelId) setActiveChannel(null)
+    } catch (err) {
+      toastApiError(toast, err, "couldn't archive channel")
+    }
   }
 
   async function handleDeleteChannel(channelId: string) {
-    await api.deleteChannel(auth.token, channelId)
+    try {
+      await api.deleteChannel(auth.token, channelId)
+    } catch (err) {
+      toastApiError(toast, err, "couldn't delete channel")
+      return
+    }
     setChannels(prev => prev.filter(c => c.id !== channelId))
     setDmChannels(prev => prev.filter(c => c.id !== channelId))
     if (activeChannel?.id === channelId) setActiveChannel(null)
@@ -1488,13 +1598,13 @@ export default function Main({ auth, onLogout }: Props) {
       {errorMessage && <ErrorModal message={errorMessage} onClose={() => setErrorMessage(null)} />}
 
       {connStatus !== 'online' && (everConnected || connStatus === 'offline') && (
-        <div className={styles.connBanner}>
+        <div className={styles.connBanner} role="status" aria-live="polite">
           {connStatus === 'connecting' ? 'reconnecting to server…' : 'connection lost — retrying…'}
         </div>
       )}
 
       {voiceReconnecting && (
-        <div className={styles.connBanner}>voice connection interrupted — reconnecting…</div>
+        <div className={styles.connBanner} role="status" aria-live="polite">voice connection interrupted — reconnecting…</div>
       )}
 
       {settingsOpen && (
@@ -1523,6 +1633,11 @@ export default function Main({ auth, onLogout }: Props) {
           cameraQuality={cameraQuality}
           screenShareQuality={screenShareQuality}
           screenShareAudio={screenShareAudio}
+          messageSound={messageSound}
+          onChangeMessageSound={on => {
+            setMessageSound(on)
+            saveUiSettings(auth.userId, { messageSound: on })
+          }}
           onChangeCameraQuality={setCameraQuality}
           onChangeScreenShareQuality={setScreenShareQuality}
           onChangeScreenShareAudio={setScreenShareAudio}
@@ -1594,6 +1709,7 @@ export default function Main({ auth, onLogout }: Props) {
         channelsLoading={baseLoading}
         channelsError={baseError}
         onRetryChannels={loadBaseData}
+        voiceConnectingChannelId={voiceConnectingChannelId}
       />
       <main className={styles.content}>
         <button
@@ -1735,14 +1851,69 @@ export default function Main({ auth, onLogout }: Props) {
         <ContextMenu
           x={userContextMenu.x}
           y={userContextMenu.y}
-          items={[
-            { label: 'open full profile', action: () => { handleOpenFullProfile(userContextMenu.userId); setUserContextMenu(null) } },
-            ...(userContextMenu.userId !== auth.userId ? [{
-              label: 'direct message',
-              action: () => { handleStartDM(userContextMenu.userId); setUserContextMenu(null) },
-            }] : []),
-          ]}
+          items={(() => {
+            const items: Array<{ label: string; danger?: boolean; action: () => void }> = [
+              { label: 'open full profile', action: () => { handleOpenFullProfile(userContextMenu.userId); setUserContextMenu(null) } },
+            ]
+            if (userContextMenu.userId !== auth.userId) {
+              items.push({
+                label: 'direct message',
+                action: () => { handleStartDM(userContextMenu.userId); setUserContextMenu(null) },
+              })
+              // Channel management on the active channel (Discord-style member actions)
+              const ch = activeChannel
+              const isModRole = ['MODERATOR', 'ADMIN', 'SUPERADMIN', 'ROOT'].includes(currentUserRole)
+              const canManageActive = !!ch && ch.type !== 'DM' && ch.type !== 'GROUP' &&
+                (isModRole || ch.creatorId === auth.userId || ch.memberRole === 'MANAGER')
+              if (ch && canManageActive) {
+                const targetId = userContextMenu.userId
+                if (isModRole || ch.creatorId === auth.userId) {
+                  items.push({
+                    label: `make manager of #${ch.name}`,
+                    action: async () => {
+                      setUserContextMenu(null)
+                      try {
+                        await api.setChannelMemberRole(auth.token, ch.id, targetId, 'MANAGER')
+                        toast(`${userContextMenuUser.displayName} is now a manager of #${ch.name}`, { variant: 'success' })
+                      } catch (err) {
+                        toastApiError(toast, err, "couldn't change member role")
+                      }
+                    },
+                  })
+                }
+                items.push({
+                  label: `kick from #${ch.name}`,
+                  danger: true,
+                  action: async () => {
+                    setUserContextMenu(null)
+                    try {
+                      await api.kickChannelMember(auth.token, ch.id, targetId)
+                      toast(`${userContextMenuUser.displayName} removed from #${ch.name}`, { variant: 'success' })
+                    } catch (err) {
+                      toastApiError(toast, err, "couldn't kick member")
+                    }
+                  },
+                })
+              }
+            }
+            return items
+          })()}
           onClose={() => setUserContextMenu(null)}
+        />
+      )}
+      {quickSwitcherOpen && (
+        <QuickSwitcher
+          channels={channels}
+          dmChannels={dmChannels}
+          users={users}
+          currentUserId={auth.userId}
+          unreadCounts={unreadCounts}
+          onSelectChannel={ch => {
+            if (ch.type === 'VOICE') void handleJoinVoice(ch)
+            else handleNavigateToChannel(ch.id)
+          }}
+          onSelectUser={userId => void handleStartDM(userId)}
+          onClose={() => setQuickSwitcherOpen(false)}
         />
       )}
       {showRecoverySetup && (

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useFocusTrap } from '../lib/useFocusTrap.ts'
 import styles from './ConfirmDeleteModal.module.css'
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 
 export default function ConfirmDeleteModal({ channelName, onConfirm, onClose }: Props) {
   const [value, setValue] = useState('')
+  const trapRef = useFocusTrap<HTMLDivElement>()
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -28,7 +30,7 @@ export default function ConfirmDeleteModal({ channelName, onConfirm, onClose }: 
 
   return (
     <div className={styles.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className={styles.modal}>
+      <div className={styles.modal} ref={trapRef} role="dialog" aria-modal="true" aria-label="confirm delete channel">
         <div className={styles.title}>delete channel</div>
         <p className={styles.warning}>
           this cannot be undone. type <span className={styles.channelName}>{channelName}</span> to confirm.

@@ -49,7 +49,7 @@ export const attachmentRoutes: FastifyPluginAsync = async (app) => {
   })
 
   // POST /api/attachments  — upload files (multipart/form-data, field name: "file")
-  app.post('/', async (req, reply) => {
+  app.post('/', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     const { userId } = req.user as { userId: string }
     const uploadsDir = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads')
 

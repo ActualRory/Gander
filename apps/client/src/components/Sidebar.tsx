@@ -4,6 +4,7 @@ import { platform } from '../lib/platform.ts'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import ChannelIndexModal from './ChannelIndexModal.tsx'
 import ConfirmDeleteModal from './ConfirmDeleteModal.tsx'
+import CreateChannelModal from './CreateChannelModal.tsx'
 import VoiceControls, { type VoiceStats } from './VoiceControls.tsx'
 import ParticipantVolumeMenu from './ParticipantVolumeMenu.tsx'
 import NotificationInbox from './NotificationInbox.tsx'
@@ -73,6 +74,7 @@ interface Props {
   channelsLoading: boolean
   channelsError: string | null
   onRetryChannels: () => void
+  voiceConnectingChannelId: string | null
 }
 
 interface ContextState {
@@ -99,8 +101,9 @@ const ADMIN_ROLES: UserRole[] = ['ADMIN', 'SUPERADMIN', 'ROOT']
 function isMod(role: UserRole) { return MOD_ROLES.includes(role) }
 function isAdmin(role: UserRole) { return ADMIN_ROLES.includes(role) }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onArchiveChannel, onLeaveChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId, onBrowseChannels, currentUserRole, token, notifications, onMarkNotificationRead, onMarkAllNotificationsRead, onNotificationClick, onInvitePeople, channelsLoading, channelsError, onRetryChannels }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onArchiveChannel, onLeaveChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId, onBrowseChannels, currentUserRole, token, notifications, onMarkNotificationRead, onMarkAllNotificationsRead, onNotificationClick, onInvitePeople, channelsLoading, channelsError, onRetryChannels, voiceConnectingChannelId }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
+  const [creating, setCreating] = useState<'TEXT' | 'VOICE' | null>(null)
   const [context, setContext] = useState<ContextState | null>(null)
   const [participantVolumeMenu, setParticipantVolumeMenu] = useState<ParticipantVolumeState | null>(null)
   const [renaming, setRenaming] = useState<Channel | null>(null)
@@ -188,14 +191,15 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
     ]
     items.push({ label: 'copy link', action: () => void navigator.clipboard.writeText(`#${channel.name}`) })
     items.push({ label: 'invite people', action: () => onInvitePeople(channel) })
-    const canManage = channel.creatorId === currentUserId || isMod(currentUserRole)
+    // Creator, channel MANAGER, or global mod — mirrors the server's canManageChannel
+    const canManage = channel.creatorId === currentUserId || channel.memberRole === 'MANAGER' || isMod(currentUserRole)
     if (canManage) {
       items.push({ label: 'rename', action: () => startRename(channel) })
       if (channel.type === 'TEXT') {
         items.push({ label: 'set topic', action: () => { setSettingTopic(channel); setTopicValue(channel.topic ?? '') } })
       }
     }
-    if (isMod(currentUserRole) && !channel.isArchived) {
+    if (canManage && !channel.isArchived) {
       items.push({ label: 'archive', action: () => onArchiveChannel?.(channel.id) })
     }
     if (channel.creatorId !== currentUserId) {
@@ -265,7 +269,10 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
         onPointerCancel={cancelLongPress}
         onPointerLeave={cancelLongPress}
       >
-        <span className={styles.channelLabel}># {c.name}</span>
+        <span className={styles.channelLabel}>
+          # {c.name}
+          {c.visibility === 'PRIVATE' && <span className={styles.privateMark} title="private channel">*</span>}
+        </span>
         {mentionCount > 0 && (
           <span className={`${styles.unreadMention} ${muted ? styles.unreadMuted : ''}`}>
             [@{mentionCount}]
@@ -327,6 +334,8 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           onPointerLeave={cancelLongPress}
         >
           ▸ {c.name}
+          {c.visibility === 'PRIVATE' && <span className={styles.privateMark} title="private channel">*</span>}
+          {voiceConnectingChannelId === c.id && <span className={styles.voiceConnecting}>connecting…</span>}
           {liveTimer && <span className={styles.voiceTimer}>{liveTimer}</span>}
         </button>
         {participants.map(uid => {
@@ -457,11 +466,14 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
               </div>
             )
           )}
-          {visibleDMs.length > 0 && (
+          {(visibleDMs.length > 0 || visibleText.length > 0 || visibleVoice.length > 0) && (
             <div className={styles.section}>
               <div className={styles.sectionHeader}>
                 <span>direct messages</span>
               </div>
+              {visibleDMs.length === 0 && (
+                <div className={styles.sectionHint}>no conversations yet — click a user to say hi</div>
+              )}
               {visibleDMs.map(c => renderDMChannel(c))}
             </div>
           )}
@@ -470,8 +482,9 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
             <div className={styles.sectionHeader}>
               <span>text channels</span>
               <div style={{ display: 'flex', gap: '4px' }}>
-                <button type="button" className={styles.addBtn} onClick={onBrowseChannels} title="browse channels">[⊕]</button>
-                <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)} title="show/hide">[+]</button>
+                <button type="button" className={styles.addBtn} onClick={() => setCreating('TEXT')} title="create channel" aria-label="create text channel">[new]</button>
+                <button type="button" className={styles.addBtn} onClick={onBrowseChannels} title="browse channels" aria-label="browse channels">[⊕]</button>
+                <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)} title="show/hide" aria-label="show or hide channels">[+]</button>
               </div>
             </div>
             {visibleText.map(c => renderTextChannel(c))}
@@ -480,7 +493,10 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span>voice channels</span>
-              <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)} title="show/hide">[+]</button>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <button type="button" className={styles.addBtn} onClick={() => setCreating('VOICE')} title="create channel" aria-label="create voice channel">[new]</button>
+                <button type="button" className={styles.addBtn} onClick={() => setIndexOpen(true)} title="show/hide" aria-label="show or hide channels">[+]</button>
+              </div>
             </div>
             {visibleVoice.map(c => renderVoiceChannel(c))}
           </div>
@@ -609,6 +625,14 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
           channelName={deleting.name}
           onConfirm={() => { onDeleteChannel(deleting.id); setDeleting(null) }}
           onClose={() => setDeleting(null)}
+        />
+      )}
+
+      {creating && (
+        <CreateChannelModal
+          initialType={creating}
+          onConfirm={(name, type) => { onCreateChannel(name, type); setCreating(null) }}
+          onClose={() => setCreating(null)}
         />
       )}
     </>

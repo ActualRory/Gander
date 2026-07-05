@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+﻿import { memo, useEffect, useRef, useState } from 'react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { createPortal } from 'react-dom'
+import { MAX_MESSAGE_LENGTH } from '@gander/shared'
 import type { Channel, Message, User, OgData, PinnedMessageEntry } from '@gander/shared'
 import type { GanderWS } from '../lib/ws.ts'
 import { api, resolveAttachmentUrl } from '../lib/api.ts'
+import { getServerConfig } from '../lib/config.ts'
+import { useToast, toastApiError } from '../lib/toast.tsx'
 import ContextMenu from './ContextMenu.tsx'
 import ReactionPicker from './ReactionPicker.tsx'
 import Avatar from './Avatar.tsx'
@@ -83,9 +86,12 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     ? (users.find(u => u.id === channel.otherUserId)?.displayName ?? channel.name)
     : `# ${channel.name}`
   const currentUsername = users.find(u => u.id === currentUserId)?.username ?? ''
+  const toast = useToast()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [hasOlder, setHasOlder] = useState(true)
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
@@ -100,6 +106,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     file: File
     previewUrl: string
     uploading: boolean
+    progress: number
     attachmentId: string | null
     error: string | null
   }>>([])
@@ -115,6 +122,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const [pinsOpen, setPinsOpen] = useState(false)
   const [pins, setPins] = useState<PinnedMessageEntry[]>([])
   const [pinsLoaded, setPinsLoaded] = useState(false)
+  const [pinsError, setPinsError] = useState<string | null>(null)
   const pinsBtnRef = useRef<HTMLButtonElement>(null)
   const pinsPanelRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -133,8 +141,67 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const firstUnreadRef = useRef<HTMLDivElement | null>(null)
   const isAtBottomRef = useRef(true)
   const initialScrollDoneRef = useRef(false)
-  // tempId → content: tracks optimistic messages awaiting server echo
-  const pendingOwnMsgs = useRef<Map<string, string>>(new Map())
+  // tempId → original payload: tracks optimistic messages awaiting server
+  // echo, and holds what's needed to re-send on retry
+  const pendingOwnMsgs = useRef<Map<string, { content: string; replyToId?: string; attachmentIds?: string[] }>>(new Map())
+  // tempId → delivery state. 'sending' = in flight, echo expected within 10s;
+  // 'queued' = WS offline, GanderWS will flush on reconnect; 'failed' = no
+  // echo/reject arrived — offer retry/discard instead of a forever-dimmed row.
+  const [pendingStates, setPendingStates] = useState<Record<string, 'sending' | 'queued' | 'failed'>>({})
+  const pendingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const [wsStatus, setWsStatus] = useState(ws.status)
+
+  function clearPendingTimer(tempId: string) {
+    const timer = pendingTimers.current.get(tempId)
+    if (timer) {
+      clearTimeout(timer)
+      pendingTimers.current.delete(tempId)
+    }
+  }
+
+  function startPendingTimer(tempId: string) {
+    clearPendingTimer(tempId)
+    pendingTimers.current.set(tempId, setTimeout(() => {
+      pendingTimers.current.delete(tempId)
+      setPendingStates(prev => prev[tempId] ? { ...prev, [tempId]: 'failed' } : prev)
+    }, 10_000))
+  }
+
+  function resolvePending(tempId: string) {
+    clearPendingTimer(tempId)
+    setPendingStates(prev => {
+      if (!(tempId in prev)) return prev
+      const next = { ...prev }
+      delete next[tempId]
+      return next
+    })
+  }
+
+  useEffect(() => ws.onStatus(setWsStatus), [ws])
+
+  // On reconnect GanderWS flushes its queue, so queued messages are now in
+  // flight — promote them to 'sending' and expect echoes
+  useEffect(() => {
+    if (wsStatus !== 'online') return
+    const queuedIds = Object.entries(pendingStates).filter(([, s]) => s === 'queued').map(([id]) => id)
+    if (queuedIds.length === 0) return
+    for (const id of queuedIds) startPendingTimer(id)
+    setPendingStates(prev => {
+      const next = { ...prev }
+      for (const id of queuedIds) next[id] = 'sending'
+      return next
+    })
+  // pendingStates read at transition time only
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wsStatus])
+
+  useEffect(() => {
+    const timers = pendingTimers.current
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer)
+      timers.clear()
+    }
+  }, [])
   // Ref to the createdAt of the last received message, for catch-up fetches after reconnect
   const lastMessageCreatedAtRef = useRef<string | null>(null)
   // Long-press timer for touch context menus on message rows
@@ -233,6 +300,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   // the target message is visible with full context (50 before + 50 after).
   useEffect(() => {
     setLoading(true)
+    setLoadError(null)
     setMessages([])
     setReplyingTo(null)
     setHasOlder(true)
@@ -240,6 +308,13 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     isAtBottomRef.current = true
 
     let cancelled = false
+    // A failed history load must look different from an empty channel —
+    // surface the error with a retry instead of "no messages yet"
+    const onLoadError = (err: unknown) => {
+      if (cancelled) return
+      setLoadError(err instanceof Error ? err.message : 'request failed')
+      setLoading(false)
+    }
     if (jumpAnchorTime) {
       // Load messages both before and after the anchor so the target message is
       // visible in context with newer messages that came after it.
@@ -256,9 +331,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           setHasOlder(beforeMsgs.length >= 50)
           setLoading(false)
         }
-      }).catch(() => {
-        if (!cancelled) setLoading(false)
-      })
+      }).catch(onLoadError)
     } else {
       api.getMessages(token, channel.id).then(msgs => {
         if (!cancelled) {
@@ -266,9 +339,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           setHasOlder(msgs.length >= 50)
           setLoading(false)
         }
-      }).catch(() => {
-        if (!cancelled) setLoading(false)
-      })
+      }).catch(onLoadError)
     }
 
     ws.send({ type: 'channel:join', payload: { channelId: channel.id } })
@@ -279,19 +350,22 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     }
   // jumpAnchorTime intentionally not in deps — read at mount only (ChannelView remounts on channel change)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channel.id, token, ws])
+  }, [channel.id, token, ws, reloadNonce])
 
   // Subscribe to incoming WS events
   useEffect(() => {
     return ws.on(event => {
       if (event.type === 'message:new' && event.payload.channelId === channel.id) {
+        if (event.payload.authorId === currentUserId && event.payload.tempId) {
+          resolvePending(event.payload.tempId)
+        }
         setMessages(prev => {
           // Replace our own optimistic message with the confirmed server message.
           // Prefer matching by tempId (exact); fall back to content match for old messages.
           if (event.payload.authorId === currentUserId && pendingOwnMsgs.current.size > 0) {
             const tempIdx = event.payload.tempId !== undefined
               ? prev.findIndex(m => m.id === event.payload.tempId)
-              : prev.findIndex(m => pendingOwnMsgs.current.has(m.id) && m.content === event.payload.content)
+              : prev.findIndex(m => pendingOwnMsgs.current.get(m.id)?.content === event.payload.content)
             if (tempIdx !== -1) {
               pendingOwnMsgs.current.delete(prev[tempIdx].id)
               const next = [...prev]
@@ -326,13 +400,18 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         const { tempId, reason, until } = event.payload
         if (tempId) {
           pendingOwnMsgs.current.delete(tempId)
+          resolvePending(tempId)
           setMessages(prev => prev.filter(m => m.id !== tempId))
         }
         const msg = reason === 'timeout'
           ? `message not sent — you are timed out${until ? ` until ${new Date(until).toLocaleString()}` : ''}`
           : reason === 'not_member'
             ? 'message not sent — you are not a member of this channel'
-            : 'message not sent'
+            : reason === 'too_long'
+              ? `message not sent — too long (max ${MAX_MESSAGE_LENGTH} characters)`
+              : reason === 'rate_limited'
+                ? 'message not sent — sending too fast, slow down'
+                : 'message not sent — server error, try again'
         setSendError(msg)
       }
     })
@@ -425,9 +504,11 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
 
   // Lazily load pins when the panel opens
   useEffect(() => {
-    if (!pinsOpen || pinsLoaded) return
-    api.getPins(token, channel.id).then(data => { setPins(data); setPinsLoaded(true) }).catch(() => { setPinsLoaded(true) })
-  }, [pinsOpen, pinsLoaded, token, channel.id])
+    if (!pinsOpen || pinsLoaded || pinsError) return
+    api.getPins(token, channel.id)
+      .then(data => { setPins(data); setPinsLoaded(true) })
+      .catch(err => setPinsError(err instanceof Error ? err.message : 'request failed'))
+  }, [pinsOpen, pinsLoaded, pinsError, token, channel.id])
 
   // Focus textarea on any printable keypress when nothing else is focused
   useEffect(() => {
@@ -515,7 +596,16 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   }
 
   async function handleFilesSelected(files: FileList | File[], skipConfirm = false) {
-    const validFiles = Array.from(files).filter(f => SUPPORTED_MIMES.has(f.type))
+    // Reject oversized files before streaming anything to the server
+    const { maxUploadMb } = await getServerConfig()
+    const maxBytes = maxUploadMb * 1024 * 1024
+    const all = Array.from(files)
+    const oversized = all.filter(f => f.size > maxBytes)
+    if (oversized.length > 0) {
+      const label = oversized.length === 1 ? `${oversized[0].name} is` : `${oversized.length} files are`
+      toast(`${label} too large (max ${maxUploadMb} MB)`, { variant: 'error' })
+    }
+    const validFiles = all.filter(f => SUPPORTED_MIMES.has(f.type) && f.size <= maxBytes)
     const available = 5 - pendingAttachments.length
     const toUpload = validFiles.slice(0, available)
     if (toUpload.length === 0) return
@@ -532,28 +622,32 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       file,
       previewUrl: URL.createObjectURL(file),
       uploading: true,
+      progress: 0,
       attachmentId: null,
       error: null,
     }))
     setPendingAttachments(prev => [...prev, ...newPending])
 
     try {
-      const uploaded = await api.uploadAttachments(token, toUpload)
+      const uploaded = await api.uploadAttachments(token, toUpload, fraction => {
+        setPendingAttachments(prev => prev.map(p => p.uploading ? { ...p, progress: fraction } : p))
+      })
       setPendingAttachments(prev => {
         const result = [...prev]
         let uploadedIdx = 0
         for (let i = 0; i < result.length; i++) {
           if (result[i].uploading && uploadedIdx < uploaded.length) {
-            result[i] = { ...result[i], uploading: false, attachmentId: uploaded[uploadedIdx].id }
+            result[i] = { ...result[i], uploading: false, progress: 1, attachmentId: uploaded[uploadedIdx].id }
             uploadedIdx++
           }
         }
         return result
       })
-    } catch {
+    } catch (err) {
       setPendingAttachments(prev => prev.map(p =>
         p.uploading ? { ...p, uploading: false, error: 'upload failed' } : p
       ))
+      toastApiError(toast, err, 'upload failed')
     }
   }
 
@@ -572,6 +666,10 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     const readyIds = pendingAttachments.filter(p => p.attachmentId !== null).map(p => p.attachmentId as string)
     if (!trimmed && readyIds.length === 0) return
     if (pendingAttachments.some(p => p.uploading)) return
+    if (trimmed.length > MAX_MESSAGE_LENGTH) {
+      setSendError(`message too long (${trimmed.length}/${MAX_MESSAGE_LENGTH} characters)`)
+      return
+    }
 
     // Optimistically add the message immediately so it's visible even if the WS
     // echo is lost (e.g. due to a brief network drop between send and broadcast).
@@ -593,8 +691,18 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       attachments: [],
       isSystem: false,
     }
-    pendingOwnMsgs.current.set(tempId, trimmed)
+    pendingOwnMsgs.current.set(tempId, {
+      content: trimmed,
+      ...(replyingTo ? { replyToId: replyingTo.id } : {}),
+      ...(readyIds.length > 0 ? { attachmentIds: readyIds } : {}),
+    })
     setMessages(prev => [...prev, optimistic])
+
+    // Track delivery: online sends expect an echo within 10s; offline sends
+    // sit in GanderWS's queue until reconnect
+    const initialState = ws.status === 'online' ? 'sending' : 'queued'
+    setPendingStates(prev => ({ ...prev, [tempId]: initialState }))
+    if (initialState === 'sending') startPendingTimer(tempId)
 
     ws.send({
       type: 'message:send',
@@ -613,6 +721,46 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     onMarkRead()
     scrollToBottom()
+  }
+
+  // Re-send a failed optimistic message under a fresh tempId
+  function retryPending(tempId: string) {
+    const payload = pendingOwnMsgs.current.get(tempId)
+    if (!payload) return
+    clearPendingTimer(tempId)
+    pendingOwnMsgs.current.delete(tempId)
+    const newTempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    pendingOwnMsgs.current.set(newTempId, payload)
+    setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: newTempId, createdAt: new Date().toISOString() } : m))
+    const initialState = ws.status === 'online' ? 'sending' : 'queued'
+    setPendingStates(prev => {
+      const next = { ...prev }
+      delete next[tempId]
+      next[newTempId] = initialState
+      return next
+    })
+    if (initialState === 'sending') startPendingTimer(newTempId)
+    ws.send({
+      type: 'message:send',
+      payload: {
+        channelId: channel.id,
+        content: payload.content,
+        tempId: newTempId,
+        ...(payload.replyToId ? { replyToId: payload.replyToId } : {}),
+        ...(payload.attachmentIds?.length ? { attachmentIds: payload.attachmentIds } : {}),
+      },
+    })
+  }
+
+  function discardPending(tempId: string) {
+    clearPendingTimer(tempId)
+    pendingOwnMsgs.current.delete(tempId)
+    setMessages(prev => prev.filter(m => m.id !== tempId))
+    setPendingStates(prev => {
+      const next = { ...prev }
+      delete next[tempId]
+      return next
+    })
   }
 
   async function jumpToPost(postNumber: number) {
@@ -639,9 +787,13 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     if (!trimmed) return
     try {
       await api.editMessage(token, editingMessageId, trimmed)
-    } catch { /* WS broadcast will update state on success; ignore errors */ }
-    setEditingMessageId(null)
-    setEditInput('')
+      // WS broadcast updates message state on success
+      setEditingMessageId(null)
+      setEditInput('')
+    } catch (err) {
+      // Keep the editor open with the draft so nothing is lost
+      toastApiError(toast, err, "couldn't save edit")
+    }
   }
 
   // Apply a reaction toggle to local state. `add` = true adds currentUserId,
@@ -684,9 +836,10 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       } else {
         await api.addReaction(token, messageId, reaction)
       }
-    } catch {
+    } catch (err) {
       // Revert the optimistic toggle — no broadcast will arrive on failure
       applyReactionLocally(messageId, reaction, alreadyReacted)
+      toastApiError(toast, err, "couldn't update reaction")
     }
   }
 
@@ -864,6 +1017,38 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     }
   }
 
+  // Stable-identity handler bundle for memoized rows: the object survives
+  // re-renders while its fields are reassigned to the freshest closures each
+  // render, so React.memo can skip unchanged rows without stale handlers.
+  const rowHandlersRef = useRef<RowHandlers>({} as RowHandlers)
+  const rowHandlers = rowHandlersRef.current
+  rowHandlers.openMsgMenu = (msgId, x, y) => setMsgMenu({ msgId, x, y })
+  rowHandlers.pointerDown = handleMsgPointerDown
+  rowHandlers.pointerMove = handleMsgPointerMove
+  rowHandlers.pointerUp = msg => { cancelMsgLongPress(); endMsgSwipe(msg) }
+  rowHandlers.pointerCancel = () => { cancelMsgLongPress(); endMsgSwipe(null) }
+  rowHandlers.pointerLeave = cancelMsgLongPress
+  rowHandlers.jumpToMessage = jumpToMessage
+  rowHandlers.openPins = () => setPinsOpen(true)
+  rowHandlers.openReactionPicker = (msgId, x, y) => setReactionPicker({ msgId, x, y })
+  rowHandlers.reply = msg => { setReplyingTo(msg); textareaRef.current?.focus() }
+  rowHandlers.startEdit = msg => { setEditingMessageId(msg.id); setEditInput(msg.content) }
+  rowHandlers.setEditDraft = setEditInput
+  rowHandlers.saveEdit = () => { void saveEdit() }
+  rowHandlers.cancelEdit = () => { setEditingMessageId(null); setEditInput('') }
+  rowHandlers.onUserRightClick = onUserRightClick
+  rowHandlers.toggleReaction = (msgId, reaction) => { void handleToggleReaction(msgId, reaction) }
+  rowHandlers.showReactionTooltip = (names, rect) => setReactionTooltip({ names, rect })
+  rowHandlers.hideReactionTooltip = () => setReactionTooltip(null)
+  rowHandlers.openLightbox = (url, filename) => setLightbox({ url, filename })
+  rowHandlers.openImgMenu = (url, filename, x, y) => setImgMenu({ url, filename, x, y })
+  rowHandlers.retryPending = retryPending
+  rowHandlers.discardPending = discardPending
+  rowHandlers.jumpToPost = postNumber => { void jumpToPost(postNumber) }
+  rowHandlers.onNavigateToChannel = onNavigateToChannel
+  rowHandlers.onNavigateToUtility = onNavigateToUtility
+  rowHandlers.setFirstUnreadEl = el => { firstUnreadRef.current = el }
+
   return (
     <div className={styles.root} onDragOver={handleDragOver} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDrop={handleDrop}>
       <div className={styles.watermark} aria-hidden="true">
@@ -878,6 +1063,14 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
 
       <header className={styles.header}>
         <span className={styles.channelName}>{channelLabel}</span>
+        {channel.type !== 'DM' && channel.type !== 'GROUP' && channel.visibility !== 'DEFAULT' && (
+          <span className={styles.channelTag} title={`${channel.visibility.toLowerCase().replace('_', '-')} channel`}>
+            [{channel.visibility.toLowerCase().replace('_', '-')}]
+          </span>
+        )}
+        {channel.memberRole === 'MANAGER' && (
+          <span className={styles.channelTag} title="you manage this channel">[manager]</span>
+        )}
         {channel.topic && (
           <>
             <span className={styles.headerDivider}>│</span>
@@ -905,7 +1098,13 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           }}
         >
           <div className={styles.pinsPanelHeader}>pinned messages</div>
-          {!pinsLoaded && <div className={styles.pinsEmpty}>loading...</div>}
+          {!pinsLoaded && !pinsError && <div className={styles.pinsEmpty}>loading...</div>}
+          {pinsError && (
+            <div className={styles.pinsEmpty}>
+              couldn't load pins{' '}
+              <button type="button" className={styles.retryBtn} onClick={() => setPinsError(null)}>[retry]</button>
+            </div>
+          )}
           {pinsLoaded && pins.length === 0 && <div className={styles.pinsEmpty}>no pinned messages</div>}
           {pinsLoaded && pins.map(p => (
             <div key={p.id} className={styles.pinEntry}>
@@ -925,9 +1124,14 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
               </div>
               <button
                 className={styles.pinUnpinBtn}
+                aria-label="unpin message"
                 onClick={async () => {
-                  await api.unpinMessage(token, channel.id, p.messageId)
-                  setPins(prev => prev.filter(x => x.messageId !== p.messageId))
+                  try {
+                    await api.unpinMessage(token, channel.id, p.messageId)
+                    setPins(prev => prev.filter(x => x.messageId !== p.messageId))
+                  } catch (err) {
+                    toastApiError(toast, err, "couldn't unpin message")
+                  }
                 }}
               >
                 [×]
@@ -948,7 +1152,18 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           <p className={styles.status}>beginning of conversation</p>
         )}
         {loading && <p className={styles.status}>loading...</p>}
-        {!loading && messages.length === 0 && (
+        {!loading && loadError && messages.length === 0 && (
+          <div className={styles.loadErrorBox}>
+            <p className={styles.status}>couldn't load messages</p>
+            <p className={styles.loadErrorDetail}>{loadError}</p>
+            <button
+              type="button"
+              className={styles.retryBtn}
+              onClick={() => setReloadNonce(n => n + 1)}
+            >[retry]</button>
+          </div>
+        )}
+        {!loading && !loadError && messages.length === 0 && (
           <p className={styles.status}>no messages yet — say something</p>
         )}
         {messages.map((msg, i) => {
@@ -957,6 +1172,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           const showDateSep = !prevMsg ||
             new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString()
           const isPending = pendingOwnMsgs.current.has(msg.id)
+          const pendingState = isPending ? pendingStates[msg.id] : undefined
           // Discord-style grouping: consecutive messages from the same author within
           // 7 minutes collapse into one block (no repeated avatar/name/time)
           const grouped = !!prevMsg && !msg.isSystem && !prevMsg.isSystem &&
@@ -965,292 +1181,25 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
             new Date(msg.createdAt).getTime() - new Date(prevMsg.createdAt).getTime() < 7 * 60 * 1000
 
           return (
-            <div
+            <MessageRow
               key={msg.id}
-              data-msg-id={msg.id}
-              ref={isFirstUnread ? el => { firstUnreadRef.current = el } : undefined}
-              className={`${styles.message}${grouped ? ` ${styles.messageGrouped}` : ''}${isPending ? ` ${styles.messagePending}` : ''}`}
-              onContextMenu={msg.isSystem ? e => e.preventDefault() : e => { e.preventDefault(); setMsgMenu({ msgId: msg.id, x: e.clientX, y: e.clientY }) }}
-              onPointerDown={msg.isSystem ? undefined : e => handleMsgPointerDown(msg, e)}
-              onPointerMove={msg.isSystem ? undefined : e => handleMsgPointerMove(msg, e)}
-              onPointerUp={() => { cancelMsgLongPress(); endMsgSwipe(msg.isSystem ? null : msg) }}
-              onPointerCancel={() => { cancelMsgLongPress(); endMsgSwipe(null) }}
-              onPointerLeave={cancelMsgLongPress}
-            >
-              {showDateSep && (
-                <div className={styles.dateSeparator}>
-                  <span>{getDateLabel(msg.createdAt)}</span>
-                </div>
-              )}
-              {isFirstUnread && (
-                <div className={styles.unreadDivider}>
-                  <span>new messages</span>
-                </div>
-              )}
-              {msg.isSystem ? (
-                <div className={styles.systemMsg}>
-                  {msg.content === 'pinned' && (
-                    <>
-                      {msg.replyTo && (
-                        <div
-                          className={styles.replyQuote}
-                          onClick={() => jumpToMessage(msg.replyTo!.id)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={e => { if (e.key === 'Enter') jumpToMessage(msg.replyTo!.id) }}
-                        >
-                          <span className={styles.replyQuoteAuthor}>↩ @{msg.replyTo.authorName}</span>
-                          <span className={styles.replyQuoteContent}>{msg.replyTo.content}</span>
-                        </div>
-                      )}
-                      <span className={styles.systemMsgActor}>{msg.authorName}</span>
-                      {' '}pinned a message to this channel.{' '}
-                      <button className={styles.systemMsgLink} onClick={() => setPinsOpen(true)}>[see all pins]</button>
-                    </>
-                  )}
-                  {msg.content !== 'pinned' && (() => {
-                    try {
-                      const d = JSON.parse(msg.content) as { type: string; from: string | null; to: string | null }
-                      if (d.type === 'topic_changed') {
-                        return (
-                          <>
-                            <span className={styles.systemMsgActor}>{msg.authorName}</span>
-                            {d.to
-                              ? <>{' '}changed the channel topic{d.from ? <> from <span className={styles.systemMsgQuote}>"{d.from}"</span></> : ''} to <span className={styles.systemMsgQuote}>"{d.to}"</span>.</>
-                              : <>{' '}cleared the channel topic{d.from ? <> (was <span className={styles.systemMsgQuote}>"{d.from}"</span>)</> : ''}.</>
-                            }
-                          </>
-                        )
-                      }
-                    } catch { /* unknown system message type */ }
-                    return null
-                  })()}
-                </div>
-              ) : (
-              <div className={styles.messageRow}>
-              {!isPending && (
-                <div className={styles.msgActions}>
-                  <button
-                    type="button"
-                    className={styles.msgActionBtn}
-                    title="add reaction"
-                    onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setReactionPicker({ msgId: msg.id, x: r.left, y: r.bottom + 4 }) }}
-                  >[+]</button>
-                  <button
-                    type="button"
-                    className={styles.msgActionBtn}
-                    title="reply"
-                    onClick={() => { setReplyingTo(msg); textareaRef.current?.focus() }}
-                  >[↩]</button>
-                  {msg.authorId === currentUserId && (
-                    <button
-                      type="button"
-                      className={styles.msgActionBtn}
-                      title="edit"
-                      onClick={() => { setEditingMessageId(msg.id); setEditInput(msg.content) }}
-                    >[edit]</button>
-                  )}
-                  <button
-                    type="button"
-                    className={styles.msgActionBtn}
-                    title="more"
-                    onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setMsgMenu({ msgId: msg.id, x: r.right, y: r.bottom + 4 }) }}
-                  >[⋯]</button>
-                </div>
-              )}
-              {grouped ? (
-                <span className={styles.gutterTime}>{formatTimeShort(msg.createdAt)}</span>
-              ) : (
-              <Avatar
-                displayName={msg.authorName}
-                avatarUrl={users.find(u => u.id === msg.authorId)?.avatarUrl}
-                userId={msg.authorId}
-                size={38}
-              />
-              )}
-              <div className={styles.messageBody}>
-              {!grouped && (
-              <div className={styles.meta}>
-                <span
-                  className={styles.author}
-                  onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onUserRightClick(msg.authorId, e.clientX, e.clientY) }}
-                >{msg.authorName}</span>
-                <span className={styles.time}>{formatTime(msg.createdAt)}</span>
-                {msg.postNumber != null && (
-                  <span className={styles.postNumber}>#{msg.postNumber}{msg.editedAt ? '*' : ''}</span>
-                )}
-              </div>
-              )}
-              {msg.replyTo && (
-                <div
-                  className={styles.replyQuote}
-                  onClick={() => jumpToMessage(msg.replyTo!.id)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={e => { if (e.key === 'Enter') jumpToMessage(msg.replyTo!.id) }}
-                >
-                  <span className={styles.replyQuoteAuthor}>↩ @{msg.replyTo.authorName}</span>
-                  <span className={styles.replyQuoteContent}>{msg.replyTo.content}</span>
-                </div>
-              )}
-              {editingMessageId === msg.id ? (
-                <div className={styles.editWrapper}>
-                  <textarea
-                    ref={editTextareaRef}
-                    className={styles.editTextarea}
-                    value={editInput}
-                    rows={1}
-                    onChange={e => {
-                      setEditInput(e.target.value)
-                      const el = editTextareaRef.current
-                      if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` }
-                    }}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void saveEdit() }
-                      if (e.key === 'Escape') { setEditingMessageId(null); setEditInput('') }
-                    }}
-                  />
-                  <span className={styles.editHint}>[enter] save  [esc] cancel</span>
-                </div>
-              ) : (
-                msg.content && (
-                  <p className={styles.content}>
-                    {renderContent(msg.content, currentUsername, channels, users, token, jumpToPost, onNavigateToChannel, onNavigateToUtility)}
-                    {msg.editedAt && (msg.postNumber == null || grouped) && (
-                      <span className={styles.editedTag}> (edited)</span>
-                    )}
-                  </p>
-                )
-              )}
-              {msg.attachments.length > 0 && (
-                <div className={styles.messageAttachments}>
-                  {msg.attachments.map(att => isImageMime(att.mimeType) ? (
-                    <img
-                      key={att.id}
-                      src={resolveAttachmentUrl(att.url)}
-                      alt={att.filename}
-                      className={styles.messageImage}
-                      width={att.width ?? undefined}
-                      height={att.height ?? undefined}
-                      loading="lazy"
-                      onClick={() => setLightbox({ url: resolveAttachmentUrl(att.url), filename: att.filename })}
-                      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setImgMenu({ url: resolveAttachmentUrl(att.url), filename: att.filename, x: e.clientX, y: e.clientY }) }}
-                      title={`${att.filename} (${formatBytes(att.size)})`}
-                    />
-                  ) : isVideoMime(att.mimeType) ? (
-                    <video
-                      key={att.id}
-                      src={resolveAttachmentUrl(att.url)}
-                      className={styles.messageVideo}
-                      controls
-                      preload="metadata"
-                      title={`${att.filename} (${formatBytes(att.size)})`}
-                    />
-                  ) : (
-                    <button
-                      key={att.id}
-                      type="button"
-                      className={styles.fileChip}
-                      onClick={() => void openUrl(resolveAttachmentUrl(att.url))}
-                      title={att.filename}
-                    >
-                      <span className={styles.fileChipIcon}>[file]</span>
-                      <span className={styles.fileChipName}>{att.filename}</span>
-                      <span className={styles.fileChipMeta}>{formatBytes(att.size)}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {msg.content && extractImageUrls(msg.content).map(url => {
-                const urlFilename = url.split('/').pop()?.split('?')[0] || 'image'
-                return (
-                  <img
-                    key={url}
-                    src={url}
-                    alt={url}
-                    className={styles.messageImage}
-                    loading="lazy"
-                    onClick={() => setLightbox({ url, filename: urlFilename })}
-                    onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setImgMenu({ url, filename: urlFilename, x: e.clientX, y: e.clientY }) }}
-                  />
-                )
-              })}
-              {msg.content && extractVideoUrls(msg.content).map(url => (
-                <video
-                  key={url}
-                  src={url}
-                  className={styles.messageVideo}
-                  controls
-                  preload="metadata"
-                />
-              ))}
-              {msg.content && (() => {
-                const webUrls = extractWebUrls(msg.content)
-                const ytId = webUrls.reduce<string | null>((id, url) => id ?? extractYouTubeId(url), null)
-                if (ytId) {
-                  return (
-                    <div className={styles.youtubeEmbed}>
-                      <iframe
-                        src={`https://www.youtube-nocookie.com/embed/${ytId}`}
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        allowFullScreen
-                        loading="lazy"
-                        title="YouTube video"
-                      />
-                    </div>
-                  )
-                }
-                const urlWithOg = webUrls.find(url => ogData.has(url))
-                const og = urlWithOg ? ogData.get(urlWithOg)! : null
-                if (!og || !urlWithOg) return null
-                return (
-                  <div
-                    className={styles.ogCard}
-                    onClick={() => void openUrl(urlWithOg)}
-                    role="link"
-                    tabIndex={0}
-                    onKeyDown={e => { if (e.key === 'Enter') void openUrl(urlWithOg) }}
-                  >
-                    <div className={styles.ogCardContent}>
-                      {og.siteName && <div className={styles.ogSiteName}>{og.siteName}</div>}
-                      {og.title && <div className={styles.ogTitle}>{og.title}</div>}
-                      {og.description && <div className={styles.ogDescription}>{og.description}</div>}
-                    </div>
-                    {og.imageUrl && <img src={og.imageUrl} alt="" className={styles.ogThumb} loading="lazy" />}
-                  </div>
-                )
-              })()}
-              {msg.content && extractLibraryLinks(msg.content).map(({ type, id }) => (
-                type === 'book'
-                  ? <BookLinkCard key={`book:${id}`} bookId={id} token={token} onNavigateToLibrary={onNavigateToUtility ? () => onNavigateToUtility('library') : undefined} />
-                  : <ShelfLinkCard key={`shelf:${id}`} shelfId={id} token={token} onNavigateToLibrary={onNavigateToUtility ? () => onNavigateToUtility('library') : undefined} />
-              ))}
-              {msg.reactions.length > 0 && (
-                <div className={styles.reactions}>
-                  {msg.reactions.map(r => {
-                    const reacted = r.userIds.includes(currentUserId)
-                    return (
-                      <button
-                        key={r.reaction}
-                        type="button"
-                        className={`${styles.reactionTag} ${reacted ? styles.reactionTagOwn : ''}`}
-                        onClick={() => handleToggleReaction(msg.id, r.reaction)}
-                        onMouseEnter={e => {
-                          const names = r.userIds.map(id => users.find(u => u.id === id)?.displayName ?? id)
-                          setReactionTooltip({ names, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })
-                        }}
-                        onMouseLeave={() => setReactionTooltip(null)}
-                      >
-                        [{r.reaction}] {r.count}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-              </div>
-              </div>
-              )}
-            </div>
+              msg={msg}
+              grouped={grouped}
+              showDateSep={showDateSep}
+              isFirstUnread={isFirstUnread}
+              isPending={isPending}
+              pendingState={pendingState}
+              isEditing={editingMessageId === msg.id}
+              editDraft={editingMessageId === msg.id ? editInput : null}
+              users={users}
+              channels={channels}
+              token={token}
+              currentUserId={currentUserId}
+              currentUsername={currentUsername}
+              ogData={ogData}
+              editTextareaRef={editTextareaRef}
+              handlers={rowHandlers}
+            />
           )
         })}
         <div ref={bottomRef} />
@@ -1293,14 +1242,18 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
               action: async () => {
                 const msgId = msgMenu.msgId
                 const isPinned = pinsLoaded && pins.some(p => p.messageId === msgId)
-                if (isPinned) {
-                  await api.unpinMessage(token, channel.id, msgId)
-                  setPins(prev => prev.filter(p => p.messageId !== msgId))
-                } else {
-                  await api.pinMessage(token, channel.id, msgId)
-                  const updated = await api.getPins(token, channel.id)
-                  setPins(updated)
-                  setPinsLoaded(true)
+                try {
+                  if (isPinned) {
+                    await api.unpinMessage(token, channel.id, msgId)
+                    setPins(prev => prev.filter(p => p.messageId !== msgId))
+                  } else {
+                    await api.pinMessage(token, channel.id, msgId)
+                    const updated = await api.getPins(token, channel.id)
+                    setPins(updated)
+                    setPinsLoaded(true)
+                  }
+                } catch (err) {
+                  toastApiError(toast, err, isPinned ? "couldn't unpin message" : "couldn't pin message")
                 }
               },
             },
@@ -1317,7 +1270,11 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
               action: async () => {
                 const msgId = msgMenu.msgId
                 setMsgMenu(null)
-                await api.deleteMessage(token, msgId)
+                try {
+                  await api.deleteMessage(token, msgId)
+                } catch (err) {
+                  toastApiError(toast, err, "couldn't delete message")
+                }
               },
             }] : []),
           ]}
@@ -1473,7 +1430,12 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
                   <span className={styles.pendingThumbFileName}>{p.file.name}</span>
                 </div>
               )}
-              {p.uploading && <span className={styles.pendingThumbStatus}>...</span>}
+              {p.uploading && (
+                <>
+                  <span className={styles.pendingThumbStatus}>{Math.round(p.progress * 100)}%</span>
+                  <span className={styles.pendingThumbProgress} style={{ width: `${Math.round(p.progress * 100)}%` }} />
+                </>
+              )}
               {p.error && <span className={styles.pendingThumbStatus}>!</span>}
               <button type="button" className={styles.pendingThumbRemove} onClick={() => removePending(i)}>[x]</button>
             </div>
@@ -1482,7 +1444,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
       )}
 
       {typingUserIds.length > 0 && (
-        <div className={styles.typingBar}>
+        <div className={styles.typingBar} role="status" aria-live="polite">
           {(() => {
             const names = typingUserIds.map(id => users.find(u => u.id === id)?.displayName ?? '…')
             if (names.length === 1) return <><span className={styles.typingName}>{names[0]}</span> is typing...</>
@@ -1497,6 +1459,10 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           <span>{sendError}</span>
           <button type="button" className={styles.replyBannerCancel} onClick={() => setSendError(null)}>×</button>
         </div>
+      )}
+
+      {wsStatus !== 'online' && (
+        <div className={styles.offlineNote} role="status">offline — messages will be queued</div>
       )}
 
       <form className={styles.inputBar} onSubmit={e => { e.preventDefault(); send() }}>
@@ -1523,16 +1489,377 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           onPaste={handlePaste}
           autoComplete="off"
         />
+        {input.length >= MAX_MESSAGE_LENGTH - 500 && (
+          <span className={`${styles.charCounter}${input.trim().length > MAX_MESSAGE_LENGTH ? ` ${styles.charCounterOver}` : ''}`}>
+            {input.length}/{MAX_MESSAGE_LENGTH}
+          </span>
+        )}
         <button
           type="button"
           className={styles.attachButton}
           onClick={() => fileInputRef.current?.click()}
           title="attach file"
+          aria-label="attach file"
         >[file]</button>
       </form>
     </div>
   )
 }
+
+interface RowHandlers {
+  openMsgMenu: (msgId: string, x: number, y: number) => void
+  pointerDown: (msg: Message, e: React.PointerEvent) => void
+  pointerMove: (msg: Message, e: React.PointerEvent) => void
+  pointerUp: (msg: Message | null) => void
+  pointerCancel: () => void
+  pointerLeave: () => void
+  jumpToMessage: (id: string) => void
+  openPins: () => void
+  openReactionPicker: (msgId: string, x: number, y: number) => void
+  reply: (msg: Message) => void
+  startEdit: (msg: Message) => void
+  setEditDraft: (value: string) => void
+  saveEdit: () => void
+  cancelEdit: () => void
+  onUserRightClick: (userId: string, x: number, y: number) => void
+  toggleReaction: (msgId: string, reaction: string) => void
+  showReactionTooltip: (names: string[], rect: DOMRect) => void
+  hideReactionTooltip: () => void
+  openLightbox: (url: string, filename: string) => void
+  openImgMenu: (url: string, filename: string, x: number, y: number) => void
+  retryPending: (tempId: string) => void
+  discardPending: (tempId: string) => void
+  jumpToPost: (postNumber: number) => void
+  onNavigateToChannel: (channelId: string) => void
+  onNavigateToUtility?: (id: 'library' | 'file-manager' | 'gandle') => void
+  setFirstUnreadEl: (el: HTMLDivElement | null) => void
+}
+
+interface MessageRowProps {
+  msg: Message
+  grouped: boolean
+  showDateSep: boolean
+  isFirstUnread: boolean
+  isPending: boolean
+  pendingState: 'sending' | 'queued' | 'failed' | undefined
+  isEditing: boolean
+  editDraft: string | null
+  users: User[]
+  channels: Channel[]
+  token: string
+  currentUserId: string
+  currentUsername: string
+  ogData: Map<string, OgData>
+  editTextareaRef: React.RefObject<HTMLTextAreaElement | null>
+  handlers: RowHandlers
+}
+
+// Memoized row: with the handler bundle held referentially stable by the
+// parent, typing in the composer (or any state change that doesn't touch a
+// row's own props) skips reconciliation of every message row.
+const MessageRow = memo(function MessageRow({ msg, grouped, showDateSep, isFirstUnread, isPending, pendingState, isEditing, editDraft, users, channels, token, currentUserId, currentUsername, ogData, editTextareaRef, handlers: H }: MessageRowProps) {
+  return (
+    <div
+      data-msg-id={msg.id}
+      ref={isFirstUnread ? H.setFirstUnreadEl : undefined}
+      className={`${styles.message}${grouped ? ` ${styles.messageGrouped}` : ''}${isPending ? ` ${styles.messagePending}` : ''}${pendingState === 'failed' ? ` ${styles.messageFailed}` : ''}`}
+      onContextMenu={msg.isSystem ? e => e.preventDefault() : e => { e.preventDefault(); H.openMsgMenu(msg.id, e.clientX, e.clientY) }}
+      onPointerDown={msg.isSystem ? undefined : e => H.pointerDown(msg, e)}
+      onPointerMove={msg.isSystem ? undefined : e => H.pointerMove(msg, e)}
+      onPointerUp={() => H.pointerUp(msg.isSystem ? null : msg)}
+      onPointerCancel={H.pointerCancel}
+      onPointerLeave={H.pointerLeave}
+    >
+      {showDateSep && (
+        <div className={styles.dateSeparator}>
+          <span>{getDateLabel(msg.createdAt)}</span>
+        </div>
+      )}
+      {isFirstUnread && (
+        <div className={styles.unreadDivider}>
+          <span>new messages</span>
+        </div>
+      )}
+      {msg.isSystem ? (
+        <div className={styles.systemMsg}>
+          {msg.content === 'pinned' && (
+            <>
+              {msg.replyTo && (
+                <div
+                  className={styles.replyQuote}
+                  onClick={() => H.jumpToMessage(msg.replyTo!.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter') H.jumpToMessage(msg.replyTo!.id) }}
+                >
+                  <span className={styles.replyQuoteAuthor}>↩ @{msg.replyTo.authorName}</span>
+                  <span className={styles.replyQuoteContent}>{msg.replyTo.content}</span>
+                </div>
+              )}
+              <span className={styles.systemMsgActor}>{msg.authorName}</span>
+              {' '}pinned a message to this channel.{' '}
+              <button className={styles.systemMsgLink} onClick={H.openPins}>[see all pins]</button>
+            </>
+          )}
+          {msg.content !== 'pinned' && (() => {
+            try {
+              const d = JSON.parse(msg.content) as { type: string; from: string | null; to: string | null }
+              if (d.type === 'topic_changed') {
+                return (
+                  <>
+                    <span className={styles.systemMsgActor}>{msg.authorName}</span>
+                    {d.to
+                      ? <>{' '}changed the channel topic{d.from ? <> from <span className={styles.systemMsgQuote}>"{d.from}"</span></> : ''} to <span className={styles.systemMsgQuote}>"{d.to}"</span>.</>
+                      : <>{' '}cleared the channel topic{d.from ? <> (was <span className={styles.systemMsgQuote}>"{d.from}"</span>)</> : ''}.</>
+                    }
+                  </>
+                )
+              }
+            } catch { /* unknown system message type */ }
+            return null
+          })()}
+        </div>
+      ) : (
+      <div className={styles.messageRow}>
+      {!isPending && (
+        <div className={styles.msgActions}>
+          <button
+            type="button"
+            className={styles.msgActionBtn}
+            title="add reaction"
+            aria-label="add reaction"
+            onClick={e => { const r = e.currentTarget.getBoundingClientRect(); H.openReactionPicker(msg.id, r.left, r.bottom + 4) }}
+          >[+]</button>
+          <button
+            type="button"
+            className={styles.msgActionBtn}
+            title="reply"
+            aria-label="reply"
+            onClick={() => H.reply(msg)}
+          >[↩]</button>
+          {msg.authorId === currentUserId && (
+            <button
+              type="button"
+              className={styles.msgActionBtn}
+              title="edit"
+              aria-label="edit message"
+              onClick={() => H.startEdit(msg)}
+            >[edit]</button>
+          )}
+          <button
+            type="button"
+            className={styles.msgActionBtn}
+            title="more"
+            aria-label="more actions"
+            onClick={e => { const r = e.currentTarget.getBoundingClientRect(); H.openMsgMenu(msg.id, r.right, r.bottom + 4) }}
+          >[⋯]</button>
+        </div>
+      )}
+      {grouped ? (
+        <span className={styles.gutterTime}>{formatTimeShort(msg.createdAt)}</span>
+      ) : (
+      <Avatar
+        displayName={msg.authorName}
+        avatarUrl={users.find(u => u.id === msg.authorId)?.avatarUrl}
+        userId={msg.authorId}
+        size={38}
+      />
+      )}
+      <div className={styles.messageBody}>
+      {!grouped && (
+      <div className={styles.meta}>
+        <span
+          className={styles.author}
+          onContextMenu={e => { e.preventDefault(); e.stopPropagation(); H.onUserRightClick(msg.authorId, e.clientX, e.clientY) }}
+        >{msg.authorName}</span>
+        <span className={styles.time}>{formatTime(msg.createdAt)}</span>
+        {msg.postNumber != null && (
+          <span className={styles.postNumber}>#{msg.postNumber}{msg.editedAt ? '*' : ''}</span>
+        )}
+      </div>
+      )}
+      {msg.replyTo && (
+        <div
+          className={styles.replyQuote}
+          onClick={() => H.jumpToMessage(msg.replyTo!.id)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter') H.jumpToMessage(msg.replyTo!.id) }}
+        >
+          <span className={styles.replyQuoteAuthor}>↩ @{msg.replyTo.authorName}</span>
+          <span className={styles.replyQuoteContent}>{msg.replyTo.content}</span>
+        </div>
+      )}
+      {isEditing ? (
+        <div className={styles.editWrapper}>
+          <textarea
+            ref={editTextareaRef}
+            className={styles.editTextarea}
+            value={editDraft ?? ''}
+            rows={1}
+            onChange={e => {
+              H.setEditDraft(e.target.value)
+              const el = editTextareaRef.current
+              if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` }
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); H.saveEdit() }
+              if (e.key === 'Escape') H.cancelEdit()
+            }}
+          />
+          <span className={styles.editHint}>[enter] save  [esc] cancel</span>
+        </div>
+      ) : (
+        msg.content && (
+          <p className={styles.content}>
+            {renderContent(msg.content, currentUsername, channels, users, token, H.jumpToPost, H.onNavigateToChannel, H.onNavigateToUtility)}
+            {msg.editedAt && (msg.postNumber == null || grouped) && (
+              <span className={styles.editedTag}> (edited)</span>
+            )}
+          </p>
+        )
+      )}
+      {pendingState === 'queued' && (
+        <span className={styles.pendingNote}>queued — will send when reconnected</span>
+      )}
+      {pendingState === 'failed' && (
+        <span className={styles.pendingNote}>
+          failed to send ·{' '}
+          <button type="button" className={styles.pendingActionBtn} onClick={() => H.retryPending(msg.id)}>[retry]</button>{' '}
+          <button type="button" className={styles.pendingActionBtn} onClick={() => H.discardPending(msg.id)}>[discard]</button>
+        </span>
+      )}
+      {msg.attachments.length > 0 && (
+        <div className={styles.messageAttachments}>
+          {msg.attachments.map(att => isImageMime(att.mimeType) ? (
+            <img
+              key={att.id}
+              src={resolveAttachmentUrl(att.url)}
+              alt={att.filename}
+              className={styles.messageImage}
+              width={att.width ?? undefined}
+              height={att.height ?? undefined}
+              loading="lazy"
+              onClick={() => H.openLightbox(resolveAttachmentUrl(att.url), att.filename)}
+              onContextMenu={e => { e.preventDefault(); e.stopPropagation(); H.openImgMenu(resolveAttachmentUrl(att.url), att.filename, e.clientX, e.clientY) }}
+              title={`${att.filename} (${formatBytes(att.size)})`}
+            />
+          ) : isVideoMime(att.mimeType) ? (
+            <video
+              key={att.id}
+              src={resolveAttachmentUrl(att.url)}
+              className={styles.messageVideo}
+              controls
+              preload="metadata"
+              title={`${att.filename} (${formatBytes(att.size)})`}
+            />
+          ) : (
+            <button
+              key={att.id}
+              type="button"
+              className={styles.fileChip}
+              onClick={() => void openUrl(resolveAttachmentUrl(att.url))}
+              title={att.filename}
+            >
+              <span className={styles.fileChipIcon}>[file]</span>
+              <span className={styles.fileChipName}>{att.filename}</span>
+              <span className={styles.fileChipMeta}>{formatBytes(att.size)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {msg.content && extractImageUrls(msg.content).map(url => {
+        const urlFilename = url.split('/').pop()?.split('?')[0] || 'image'
+        return (
+          <img
+            key={url}
+            src={url}
+            alt={url}
+            className={styles.messageImage}
+            loading="lazy"
+            onClick={() => H.openLightbox(url, urlFilename)}
+            onContextMenu={e => { e.preventDefault(); e.stopPropagation(); H.openImgMenu(url, urlFilename, e.clientX, e.clientY) }}
+          />
+        )
+      })}
+      {msg.content && extractVideoUrls(msg.content).map(url => (
+        <video
+          key={url}
+          src={url}
+          className={styles.messageVideo}
+          controls
+          preload="metadata"
+        />
+      ))}
+      {msg.content && (() => {
+        const webUrls = extractWebUrls(msg.content)
+        const ytId = webUrls.reduce<string | null>((id, url) => id ?? extractYouTubeId(url), null)
+        if (ytId) {
+          return (
+            <div className={styles.youtubeEmbed}>
+              <iframe
+                src={`https://www.youtube-nocookie.com/embed/${ytId}`}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                loading="lazy"
+                title="YouTube video"
+              />
+            </div>
+          )
+        }
+        const urlWithOg = webUrls.find(url => ogData.has(url))
+        const og = urlWithOg ? ogData.get(urlWithOg)! : null
+        if (!og || !urlWithOg) return null
+        return (
+          <div
+            className={styles.ogCard}
+            onClick={() => void openUrl(urlWithOg)}
+            role="link"
+            tabIndex={0}
+            onKeyDown={e => { if (e.key === 'Enter') void openUrl(urlWithOg) }}
+          >
+            <div className={styles.ogCardContent}>
+              {og.siteName && <div className={styles.ogSiteName}>{og.siteName}</div>}
+              {og.title && <div className={styles.ogTitle}>{og.title}</div>}
+              {og.description && <div className={styles.ogDescription}>{og.description}</div>}
+            </div>
+            {og.imageUrl && <img src={og.imageUrl} alt="" className={styles.ogThumb} loading="lazy" />}
+          </div>
+        )
+      })()}
+      {msg.content && extractLibraryLinks(msg.content).map(({ type, id }) => (
+        type === 'book'
+          ? <BookLinkCard key={`book:${id}`} bookId={id} token={token} onNavigateToLibrary={H.onNavigateToUtility ? () => H.onNavigateToUtility!('library') : undefined} />
+          : <ShelfLinkCard key={`shelf:${id}`} shelfId={id} token={token} onNavigateToLibrary={H.onNavigateToUtility ? () => H.onNavigateToUtility!('library') : undefined} />
+      ))}
+      {msg.reactions.length > 0 && (
+        <div className={styles.reactions}>
+          {msg.reactions.map(r => {
+            const reacted = r.userIds.includes(currentUserId)
+            return (
+              <button
+                key={r.reaction}
+                type="button"
+                className={`${styles.reactionTag} ${reacted ? styles.reactionTagOwn : ''}`}
+                onClick={() => H.toggleReaction(msg.id, r.reaction)}
+                onMouseEnter={e => {
+                  const names = r.userIds.map(id => users.find(u => u.id === id)?.displayName ?? id)
+                  H.showReactionTooltip(names, (e.currentTarget as HTMLElement).getBoundingClientRect())
+                }}
+                onMouseLeave={H.hideReactionTooltip}
+              >
+                [{r.reaction}] {r.count}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      </div>
+      </div>
+      )}
+    </div>
+  )
+})
 
 const VIDEO_WARN_BYTES = 50 * 1024 * 1024 // 50 MB
 

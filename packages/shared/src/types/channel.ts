@@ -14,6 +14,9 @@ export interface Channel {
   otherUserId?: string
   visibility: ChannelVisibility
   isArchived: boolean
+  // The requesting user's per-channel role, populated on membership-scoped
+  // listings (GET /api/channels). Absent on public/index payloads.
+  memberRole?: ChannelMemberRole
 }
 
 export interface ChannelIndexEntry {

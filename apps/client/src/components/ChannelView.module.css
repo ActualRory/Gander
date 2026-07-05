@@ -1202,3 +1202,112 @@
 .systemMsgQuote {
   color: var(--text-secondary);
 }
+
+/* ── quality pass: load errors, send states, offline, char counter ── */
+
+.loadErrorBox {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.loadErrorBox .status {
+  margin: 0;
+}
+
+.loadErrorDetail {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin: 0;
+}
+
+.retryBtn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.retryBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.messageFailed {
+  opacity: 1;
+  border-left: 2px solid #c87060;
+  padding-left: 6px;
+}
+
+.pendingNote {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.messageFailed .pendingNote {
+  color: #c87060;
+}
+
+.pendingActionBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pendingActionBtn:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.offlineNote {
+  padding: 2px 20px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.charCounter {
+  align-self: flex-end;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 0 4px 6px 0;
+}
+
+.charCounterOver {
+  color: #c87060;
+}
+
+.channelTag {
+  font-size: 10px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+
+.pendingThumbProgress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent);
+  transition: width 0.15s ease-out;
+}
+
+/* Keyboard access to the hover action toolbar */
+.message:focus-within .msgActions {
+  display: flex;
+}

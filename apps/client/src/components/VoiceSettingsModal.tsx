@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useFocusTrap } from '../lib/useFocusTrap.ts'
 import styles from './VoiceSettingsModal.module.css'
 
 interface Props {
@@ -36,6 +37,7 @@ export default function VoiceSettingsModal({
   onChangeOutputVolume, onSwitchInputDevice, onSwitchOutputDevice,
   onChangeAudioProcessing, onChangeRnnoise, onClose,
 }: Props) {
+  const trapRef = useFocusTrap<HTMLDivElement>()
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([])
   const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([])
   const [capturingKey, setCapturingKey] = useState(false)
@@ -184,7 +186,7 @@ export default function VoiceSettingsModal({
 
   const modal = (
     <div className={styles.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className={styles.modal}>
+      <div className={styles.modal} ref={trapRef} role="dialog" aria-modal="true" aria-label="voice settings">
         <div className={styles.header}>
           <span className={styles.title}>⚙ voice settings</span>
           <button type="button" className={styles.closeBtn} onClick={onClose}>[x]</button>

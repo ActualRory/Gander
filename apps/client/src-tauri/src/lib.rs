@@ -28,7 +28,7 @@ pub fn run() {
                 let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
-                TrayIconBuilder::new()
+                TrayIconBuilder::with_id("main")
                     .icon(app.default_window_icon().unwrap().clone())
                     .menu(&menu)
                     .tooltip("Gander")

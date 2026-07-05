@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { randomBytes } from 'node:crypto'
 import { prisma } from '../lib/prisma.js'
+import { rankOf, type UserRole as AuthUserRole } from '../lib/auth.js'
 import { broadcastAll } from '../ws/handler.js'
 import type { UserRole } from '@gander/shared'
 
@@ -41,8 +42,13 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     }
   })
 
-  app.get('/', async () => {
+  app.get('/', async (req) => {
+    const { userId } = req.user as { userId: string }
+    const actor = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })
+    const isMod = rankOf((actor?.role as AuthUserRole) ?? 'MEMBER') >= rankOf('MODERATOR')
+    // Archived users are soft-deleted — hide them from regular members
     return prisma.user.findMany({
+      where: isMod ? {} : { isArchived: false },
       select: USER_SELECT,
       orderBy: { displayName: 'asc' },
     })

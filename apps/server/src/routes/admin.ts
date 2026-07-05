@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { prisma } from '../lib/prisma.js'
-import { broadcastAll, broadcastToUser, forceDisconnectUser } from '../ws/handler.js'
+import { broadcastAll, broadcastToUser, broadcastToChannelMembers, broadcastToChannelAudience, forceDisconnectUser } from '../ws/handler.js'
 import { requireRole, canPromoteTo, rankOf, writeAuditLog, type UserRole } from '../lib/auth.js'
 import { createNotification } from '../lib/notifier.js'
 import type { UserRole as SharedUserRole, ChannelType, ChannelVisibility } from '@gander/shared'
@@ -328,6 +328,9 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 
     // Visibility changes require SUPERADMIN+
     if (visibility !== undefined) {
+      if (!['PRIVATE', 'PUBLIC', 'SEMI_PUBLIC', 'DEFAULT'].includes(visibility)) {
+        return reply.status(400).send({ error: 'Invalid visibility' })
+      }
       const actor = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })
       if (rankOf(actor?.role as UserRole ?? 'MEMBER') < rankOf('SUPERADMIN')) {
         return reply.status(403).send({ error: 'Only SUPERADMIN+ can change visibility directly' })
@@ -344,8 +347,8 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       },
     })
     await writeAuditLog(userId, 'channel.admin_update', id, 'channel', { name, topic, isArchived, visibility })
-    broadcastAll({ type: 'channel:updated', payload: serializeChannel(updated) })
-    if (isArchived === true) broadcastAll({ type: 'channel:archived', payload: { channelId: id } })
+    await broadcastToChannelAudience(id, { type: 'channel:updated', payload: serializeChannel(updated) })
+    if (isArchived === true) await broadcastToChannelAudience(id, { type: 'channel:archived', payload: { channelId: id } })
     if (visibility) broadcastAll({ type: 'channel:visibility_changed', payload: { channelId: id, visibility: visibility as any } })
     // DEFAULT channels are ones every user is in — joining everyone keeps that invariant
     if (visibility === 'DEFAULT') {
@@ -370,9 +373,16 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     const channel = await prisma.channel.findUnique({ where: { id } })
     if (!channel) return reply.status(404).send({ error: 'Not found' })
 
+    // Capture the audience before deletion — the cascade wipes ChannelMember
+    const members = await prisma.channelMember.findMany({ where: { channelId: id }, select: { userId: true } })
     await prisma.channel.delete({ where: { id } })
     await writeAuditLog(userId, 'channel.delete', id, 'channel', { name: channel.name })
-    broadcastAll({ type: 'channel:deleted', payload: { channelId: id } })
+    const deletedEvent = { type: 'channel:deleted' as const, payload: { channelId: id } }
+    if (channel.visibility !== 'PRIVATE') {
+      broadcastAll(deletedEvent)
+    } else {
+      for (const { userId: memberId } of members) broadcastToUser(memberId, deletedEvent)
+    }
     return reply.status(204).send()
   })
 
@@ -395,7 +405,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       authorId: message.authorId,
       preview: message.content.slice(0, 100),
     })
-    broadcastAll({ type: 'message:deleted', payload: { id: message.id, channelId: message.channelId } })
+    await broadcastToChannelMembers(message.channelId, { type: 'message:deleted', payload: { id: message.id, channelId: message.channelId } })
     return reply.status(204).send()
   })
 

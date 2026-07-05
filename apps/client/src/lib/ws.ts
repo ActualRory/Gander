@@ -18,6 +18,9 @@ export class GanderWS {
   private token: string
   private wsUrl: string
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectAttempt = 0
+  private pingTimer: ReturnType<typeof setInterval> | null = null
+  private lastServerActivity = 0
   status: ConnectionStatus = 'connecting'
 
   constructor(token: string) {
@@ -41,7 +44,9 @@ export class GanderWS {
     ws.onopen = () => {
       ws.send(JSON.stringify({ type: 'auth', token: this.token }))
       this.authed = true
+      this.reconnectAttempt = 0
       this.setStatus('online')
+      this.startHeartbeat()
       for (const event of this.queue) {
         ws.send(JSON.stringify(event))
       }
@@ -53,7 +58,9 @@ export class GanderWS {
     }
 
     ws.onmessage = (e: MessageEvent<string>) => {
+      this.lastServerActivity = Date.now()
       const event = JSON.parse(e.data) as ServerEvent
+      if (event.type === 'pong') return
       for (const handler of this.handlers) handler(event)
     }
 
@@ -64,6 +71,7 @@ export class GanderWS {
     ws.onclose = (e: CloseEvent) => {
       this.authed = false
       this.ws = null
+      this.stopHeartbeat()
       this.setStatus('offline')
       // 4001 = bad/expired token, 4003 = banned — reconnecting won't help
       if (e.code === 4001 || e.code === 4003) {
@@ -72,8 +80,36 @@ export class GanderWS {
         return
       }
       if (!this.dead) {
-        this.reconnectTimer = setTimeout(() => this.connect(), 3000)
+        // Exponential backoff with jitter, capped at 30s. forceReconnect()
+        // (wake/online/focus) resets the attempt counter and retries at once.
+        const base = Math.min(3000 * 2 ** this.reconnectAttempt, 30_000)
+        const delay = base * (0.75 + Math.random() * 0.5)
+        this.reconnectAttempt++
+        this.reconnectTimer = setTimeout(() => this.connect(), delay)
       }
+    }
+  }
+
+  // App-level heartbeat: the browser can't send protocol pings, so send a
+  // ping event every 30s and treat >45s of server silence as a dead
+  // connection (half-open TCP would otherwise look "online" forever).
+  private startHeartbeat() {
+    this.stopHeartbeat()
+    this.lastServerActivity = Date.now()
+    this.pingTimer = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+      if (Date.now() - this.lastServerActivity > 45_000) {
+        this.ws.close()
+        return
+      }
+      this.ws.send(JSON.stringify({ type: 'ping', payload: { t: Date.now() } }))
+    }, 30_000)
+  }
+
+  private stopHeartbeat() {
+    if (this.pingTimer !== null) {
+      clearInterval(this.pingTimer)
+      this.pingTimer = null
     }
   }
 
@@ -89,6 +125,7 @@ export class GanderWS {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
+    this.reconnectAttempt = 0
     this.connect()
   }
 
@@ -121,6 +158,7 @@ export class GanderWS {
 
   close() {
     this.dead = true
+    this.stopHeartbeat()
     if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer)
     this.reconnectHandlers.clear()
     this.statusHandlers.clear()

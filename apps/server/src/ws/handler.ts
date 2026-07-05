@@ -1,7 +1,47 @@
 import type { WebSocket } from '@fastify/websocket'
 import type { FastifyRequest } from 'fastify'
-import type { ClientEvent, ServerEvent } from '@gander/shared'
+import { MAX_MESSAGE_LENGTH, type ClientEvent, type ServerEvent } from '@gander/shared'
 import { prisma } from '../lib/prisma.js'
+
+// Per-user token bucket for message sends: 10 burst, refills 1 per 500ms
+const MESSAGE_BUCKET_SIZE = 10
+const MESSAGE_REFILL_MS = 500
+const messageBuckets = new Map<string, { tokens: number; lastRefill: number }>()
+
+function takeMessageToken(userId: string): boolean {
+  const now = Date.now()
+  let bucket = messageBuckets.get(userId)
+  if (!bucket) {
+    bucket = { tokens: MESSAGE_BUCKET_SIZE, lastRefill: now }
+    messageBuckets.set(userId, bucket)
+  }
+  const refilled = Math.floor((now - bucket.lastRefill) / MESSAGE_REFILL_MS)
+  if (refilled > 0) {
+    bucket.tokens = Math.min(MESSAGE_BUCKET_SIZE, bucket.tokens + refilled)
+    bucket.lastRefill = now
+  }
+  if (bucket.tokens < 1) return false
+  bucket.tokens -= 1
+  return true
+}
+
+// Protocol-level heartbeat: ping all sockets every 30s, terminate any that
+// didn't pong since the previous tick — detects half-open TCP connections
+// that would otherwise linger as phantom "online" users.
+const socketAlive = new WeakMap<WebSocket, boolean>()
+const HEARTBEAT_INTERVAL_MS = 30_000
+setInterval(() => {
+  for (const sockets of connectedUsers.values()) {
+    for (const socket of sockets) {
+      if (socketAlive.get(socket) === false) {
+        socket.terminate()
+        continue
+      }
+      socketAlive.set(socket, false)
+      socket.ping()
+    }
+  }
+}, HEARTBEAT_INTERVAL_MS).unref()
 
 // channelId → set of connected sockets (text channel rooms)
 const rooms = new Map<string, Set<WebSocket>>()
@@ -49,7 +89,7 @@ async function leaveVoice(userId: string) {
   }
   userVoiceChannel.delete(userId)
   userVoiceState.delete(userId)
-  broadcastAll({ type: 'voice:leave', payload: { userId, channelId } })
+  await broadcastToChannelAudience(channelId, { type: 'voice:leave', payload: { userId, channelId } })
   const sessionId = userVoiceSessionId.get(userId)
   if (sessionId) {
     await prisma.voiceSession.update({ where: { id: sessionId }, data: { leftAt: new Date() } }).catch(() => {})
@@ -106,6 +146,33 @@ export function broadcastToUser(userId: string, event: ServerEvent) {
   }
 }
 
+// Deliver to channel members only — the same per-member pattern message:new
+// uses, so private channel traffic never reaches non-members' sockets.
+export async function broadcastToChannelMembers(channelId: string, event: ServerEvent) {
+  const members = await prisma.channelMember.findMany({
+    where: { channelId },
+    select: { userId: true },
+  })
+  for (const { userId } of members) {
+    broadcastToUser(userId, event)
+  }
+}
+
+// Deliver to everyone who can see the channel: members always; for channels
+// on the public index (visibility ≠ PRIVATE) everyone — occupancy and updates
+// of listed channels are public information (sidebar/index show them).
+export async function broadcastToChannelAudience(channelId: string, event: ServerEvent) {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    select: { visibility: true },
+  })
+  if (channel && channel.visibility !== 'PRIVATE') {
+    broadcastAll(event)
+  } else {
+    await broadcastToChannelMembers(channelId, event)
+  }
+}
+
 export function getVoiceParticipantCounts(): Record<string, number> {
   const result: Record<string, number> = {}
   for (const [channelId, members] of voiceRooms) {
@@ -148,23 +215,49 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
           connectedUsers.set(userId, userSockets)
         }
         userSockets.add(socket)
+        // Protocol heartbeat bookkeeping
+        socketAlive.set(socket, true)
+        socket.on('pong', () => socketAlive.set(socket, true))
         // Send current online list to the newly connected client
         socket.send(JSON.stringify({
           type: 'users:init',
           payload: { onlineUserIds: [...connectedUsers.keys()] },
         }))
-        // Send current voice room state
+        // Send current voice room state — but only for channels this user can
+        // see (member, or channel is publicly listed). Private voice rooms
+        // must not leak to outsiders.
+        const activeRoomIds = [...voiceRooms.entries()].filter(([, m]) => m.size > 0).map(([id]) => id)
+        const [visibleChannels, ownMemberships] = await Promise.all([
+          prisma.channel.findMany({
+            where: { id: { in: activeRoomIds } },
+            select: { id: true, visibility: true },
+          }),
+          prisma.channelMember.findMany({
+            where: { userId, channelId: { in: activeRoomIds } },
+            select: { channelId: true },
+          }),
+        ])
+        const memberOf = new Set(ownMemberships.map(m => m.channelId))
+        const visibleRoomIds = new Set(
+          visibleChannels
+            .filter(ch => ch.visibility !== 'PRIVATE' || memberOf.has(ch.id))
+            .map(ch => ch.id)
+        )
         const voiceRoomsSnapshot: Record<string, string[]> = {}
+        const visibleVoiceUsers = new Set<string>()
         for (const [channelId, members] of voiceRooms) {
-          if (members.size > 0) voiceRoomsSnapshot[channelId] = [...members]
+          if (members.size > 0 && visibleRoomIds.has(channelId)) {
+            voiceRoomsSnapshot[channelId] = [...members]
+            for (const uid of members) visibleVoiceUsers.add(uid)
+          }
         }
         const voiceStatesSnapshot: Record<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }> = {}
         for (const [uid, state] of userVoiceState) {
-          voiceStatesSnapshot[uid] = state
+          if (visibleVoiceUsers.has(uid)) voiceStatesSnapshot[uid] = state
         }
         const voiceStartTimesSnapshot: Record<string, number> = {}
         for (const [channelId, startTime] of voiceChannelStartTimes) {
-          voiceStartTimesSnapshot[channelId] = startTime
+          if (visibleRoomIds.has(channelId)) voiceStartTimesSnapshot[channelId] = startTime
         }
         socket.send(JSON.stringify({
           type: 'voice:init',
@@ -235,7 +328,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
           if ((voiceRooms.get(prevChannelId)?.size ?? 0) === 0) {
             voiceChannelStartTimes.delete(prevChannelId)
           }
-          broadcastAll({ type: 'voice:leave', payload: { userId, channelId: prevChannelId } })
+          await broadcastToChannelAudience(prevChannelId, { type: 'voice:leave', payload: { userId, channelId: prevChannelId } })
           const prevSessionId = userVoiceSessionId.get(userId)
           if (prevSessionId) {
             await prisma.voiceSession.update({ where: { id: prevSessionId }, data: { leftAt: new Date() } }).catch(() => {})
@@ -248,7 +341,7 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
         userVoiceChannel.set(userId, channelId)
         if (wasEmpty) voiceChannelStartTimes.set(channelId, Date.now())
         const startTime = voiceChannelStartTimes.get(channelId)!
-        broadcastAll({ type: 'voice:join', payload: { userId, channelId, startTime } })
+        await broadcastToChannelAudience(channelId, { type: 'voice:join', payload: { userId, channelId, startTime } })
         const session = await prisma.voiceSession.create({ data: { userId, channelId } }).catch(() => null)
         if (session) userVoiceSessionId.set(userId, session.id)
         break
@@ -262,8 +355,16 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
 
       case 'voice:state': {
         const { muted, deafened, videoEnabled = false, screenSharing = false } = event.payload
+        // Scope to the audience of the room the user is actually in
+        const voiceChannelId = userVoiceChannel.get(userId)
+        if (!voiceChannelId) break
         userVoiceState.set(userId, { muted, deafened, videoEnabled, screenSharing })
-        broadcastAll({ type: 'voice:state', payload: { userId, muted, deafened, videoEnabled, screenSharing } })
+        await broadcastToChannelAudience(voiceChannelId, { type: 'voice:state', payload: { userId, muted, deafened, videoEnabled, screenSharing } })
+        break
+      }
+
+      case 'ping': {
+        socket.send(JSON.stringify({ type: 'pong', payload: { t: Date.now() } }))
         break
       }
 
@@ -310,6 +411,20 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
           socket.send(JSON.stringify({
             type: 'message:rejected',
             payload: { channelId, ...(tempId ? { tempId } : {}), reason: 'not_member' },
+          }))
+          return
+        }
+        if (typeof content !== 'string' || content.length > MAX_MESSAGE_LENGTH) {
+          socket.send(JSON.stringify({
+            type: 'message:rejected',
+            payload: { channelId, ...(tempId ? { tempId } : {}), reason: 'too_long' },
+          }))
+          return
+        }
+        if (!takeMessageToken(userId)) {
+          socket.send(JSON.stringify({
+            type: 'message:rejected',
+            payload: { channelId, ...(tempId ? { tempId } : {}), reason: 'rate_limited' },
           }))
           return
         }
@@ -463,6 +578,15 @@ export async function wsHandler(socket: WebSocket, req: FastifyRequest) {
       }
     } } catch (err) {
       console.error('[ws] handler error:', err)
+      // A failed send would otherwise leave the client's optimistic message
+      // hanging forever — reject it so the UI can offer a retry
+      if (event.type === 'message:send' && socket.readyState === socket.OPEN) {
+        const { channelId, tempId } = event.payload
+        socket.send(JSON.stringify({
+          type: 'message:rejected',
+          payload: { channelId, ...(tempId ? { tempId } : {}), reason: 'failed' },
+        }))
+      }
     }
   })
 

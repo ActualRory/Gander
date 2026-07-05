@@ -84,7 +84,17 @@ export default function SocialPanel({ users, onlineUserIds, userActivities, onUs
       <li
         key={u.id}
         className={`${styles.user} ${isOffline ? styles.offline : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-label={u.displayName}
         onClick={e => onUserClick(u.id, e.clientX, e.clientY)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            const rect = e.currentTarget.getBoundingClientRect()
+            onUserClick(u.id, rect.left, rect.bottom)
+          }
+        }}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onUserRightClick(u.id, e.clientX, e.clientY) }}
       >
         <Avatar displayName={u.displayName} userId={u.id} avatarUrl={u.avatarUrl} size={28} />

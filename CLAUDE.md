@@ -40,6 +40,26 @@ gander/
 ### Fastify routes
 - All protected routes: `app.addHook('preHandler', async (req, reply) => { await req.jwtVerify() })`
 - `req.user` is `{ userId: string }` after verification
+- Error shape is always `{ error: string }` — `setErrorHandler` in `index.ts` keeps unhandled errors in that shape
+- Rate limiting via `@fastify/rate-limit` (global 300/min; login/register 5/min; per-route via `{ config: { rateLimit } }`)
+
+### Channel permissions (`apps/server/src/lib/channelAccess.ts`)
+- Every channel-scoped route goes through `canReadChannel` / `canPostInChannel` / `canManageChannel` — never inline membership checks
+- Read semantics: PUBLIC/DEFAULT readable by all; SEMI_PUBLIC → 403 Join required; PRIVATE → **404** (existence must not leak)
+- Write always requires membership (or global MOD+); archived channels are read-only (410)
+- Manage = creator | per-channel MANAGER | global MOD+; promote/demote MANAGER = creator or MOD+ only
+- WS broadcast scoping (`ws/handler.ts`): `broadcastToChannelMembers` (message events, system messages), `broadcastToChannelAudience` (channel/voice events — members, plus everyone if channel is not PRIVATE). Never `broadcastAll` for channel-scoped events
+- Kick/leave emit `channel:removed { channelId, channelName, reason }` to the affected user — client prunes the channel and toasts on 'kicked'
+
+### Toast system (`apps/client/src/lib/toast.tsx`)
+- `const toast = useToast()` + `toastApiError(toast, err, fallback)` for API failures
+- Rule: `ErrorModal` = blocking/rare (voice failures, auth); toast = every non-blocking mutation failure. No silent `.catch(() => {})`
+- Message length: `MAX_MESSAGE_LENGTH` (4000) in `packages/shared/src/constants.ts`, enforced server-side (WS + edit) and client-side (counter appears ≥3500)
+
+### WS resilience (`apps/client/src/lib/ws.ts` + `ws/handler.ts`)
+- Client pings every 30s, closes after 45s of server silence; server protocol-pings every 30s and terminates dead sockets
+- Reconnect: exponential backoff with jitter (3s→30s cap), reset by `forceReconnect()` on focus/online
+- Optimistic sends track `'sending' | 'queued' | 'failed'` per tempId; failed rows offer [retry]/[discard]
 
 ### CSS Modules
 - Co-located `.tsx` + `.module.css`
@@ -120,6 +140,10 @@ pnpm tauri android dev   # connects to running AVD
 - Client tsconfig: `allowImportingTsExtensions: true` + `noEmit: true` (bundler mode)
 - Tauri icons must exist for `tauri build` — generate with `pnpm tauri icon <image>`
 - WS rooms are in-process memory — multi-instance deployments need Redis Pub/Sub
+
+## Verification
+
+- `node scripts/verify-quality-pass.mjs` — end-to-end permission matrix, WS scoping, kick flow, rate limits, heartbeat (needs the dev stack up and a throwaway DB; registers `qa_*` users)
 
 ## V1 Status
 

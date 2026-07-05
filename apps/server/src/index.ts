@@ -4,6 +4,8 @@ import fastifyJwt from '@fastify/jwt'
 import fastifyWebsocket from '@fastify/websocket'
 import fastifyMultipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
+import fastifyRateLimit from '@fastify/rate-limit'
+import { MAX_MESSAGE_LENGTH } from '@gander/shared'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { authRoutes } from './routes/auth.js'
@@ -29,8 +31,31 @@ mkdirSync(UPLOADS_DIR, { recursive: true })
 
 const server = Fastify({ logger: true })
 
+// Every hand-rolled error in the app is `{ error: string }` — keep unhandled
+// errors (Prisma failures, throws) in the same shape instead of Fastify's
+// default { statusCode, error, message }
+server.setErrorHandler((err, req, reply) => {
+  const { code, statusCode, message } = err as { code?: string; statusCode?: number; message?: string }
+  if (code === 'P2025') return reply.status(404).send({ error: 'Not found' })
+  if (code === 'P2002' || code === 'P2003') {
+    return reply.status(400).send({ error: 'Invalid request' })
+  }
+  if (statusCode && statusCode < 500) {
+    return reply.status(statusCode).send({ error: message ?? 'Request failed' })
+  }
+  req.log.error(err)
+  return reply.status(500).send({ error: 'Internal server error' })
+})
+server.setNotFoundHandler((_req, reply) => reply.status(404).send({ error: 'Not found' }))
+
 await server.register(fastifyCors, { origin: true })
 await server.register(fastifyJwt, { secret: process.env.JWT_SECRET ?? 'dev-secret' })
+await server.register(fastifyRateLimit, {
+  max: 300,
+  timeWindow: '1 minute',
+  allowList: (req) => req.url.startsWith('/uploads/') || req.url === '/ws' || req.url === '/health',
+  errorResponseBuilder: () => ({ error: 'too many requests — slow down', statusCode: 429 }),
+})
 await server.register(fastifyWebsocket)
 const MAX_UPLOAD_BYTES = (Number(process.env.MAX_UPLOAD_MB) || 500) * 1024 * 1024
 await server.register(fastifyMultipart, {
@@ -64,5 +89,20 @@ await server.register(async (app) => {
 })
 
 server.get('/health', async () => ({ ok: true }))
+
+// Public config — single source of truth for client-side limits
+server.get('/api/config', async () => ({
+  maxUploadMb: Number(process.env.MAX_UPLOAD_MB) || 500,
+  maxMessageLength: MAX_MESSAGE_LENGTH,
+}))
+
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.LIVEKIT_API_SECRET) {
+    server.log.warn('LIVEKIT_API_SECRET is not set — voice token issuance is disabled')
+  }
+  if (!process.env.JWT_SECRET) {
+    server.log.warn('JWT_SECRET is not set — using the insecure dev default!')
+  }
+}
 
 await server.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' })

@@ -37,7 +37,9 @@ export type ServerEvent =
   | { type: 'notification:new'; payload: Notification }
   | { type: 'user:archived'; payload: { userId: string } }
   | { type: 'user:unarchived'; payload: { userId: string } }
-  | { type: 'message:rejected'; payload: { channelId: string; tempId?: string; reason: 'timeout' | 'banned' | 'not_member'; until?: string } }
+  | { type: 'message:rejected'; payload: { channelId: string; tempId?: string; reason: 'timeout' | 'banned' | 'not_member' | 'too_long' | 'rate_limited' | 'failed'; until?: string } }
+  | { type: 'channel:removed'; payload: { channelId: string; channelName: string; reason: 'kicked' | 'left' } }
+  | { type: 'pong'; payload?: { t: number } }
 
 // Events sent from client → server
 export type ClientEvent =
@@ -49,3 +51,4 @@ export type ClientEvent =
   | { type: 'voice:state'; payload: { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean } }
   | { type: 'typing:start'; payload: { channelId: string } }
   | { type: 'activity:update'; payload: { activity: string } }
+  | { type: 'ping'; payload?: { t: number } }

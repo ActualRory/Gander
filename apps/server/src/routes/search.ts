@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { prisma } from '../lib/prisma.js'
+import { rankOf, type UserRole } from '../lib/auth.js'
 
 export const searchRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', async (req, reply) => {
@@ -22,12 +23,28 @@ export const searchRoutes: FastifyPluginAsync = async (app) => {
       fromUserId = user.id
     }
 
+    // TEXT channels: searchable if the caller is a member or the channel is
+    // open-join (PUBLIC/DEFAULT). SEMI_PUBLIC/PRIVATE content stays member-only.
+    // Global mods search everything.
+    const actor = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })
+    const isMod = rankOf((actor?.role as UserRole) ?? 'MEMBER') >= rankOf('MODERATOR')
+
     const messages = await prisma.message.findMany({
       where: {
         content: { contains: q.trim(), mode: 'insensitive' },
         ...(fromUserId ? { authorId: fromUserId } : {}),
         OR: [
-          { channel: { type: { in: ['TEXT'] } } },
+          {
+            channel: {
+              type: { in: ['TEXT'] },
+              ...(isMod ? {} : {
+                OR: [
+                  { members: { some: { userId } } },
+                  { visibility: { in: ['PUBLIC', 'DEFAULT'] } },
+                ],
+              }),
+            },
+          },
           { channel: { type: { in: ['DM', 'GROUP'] }, members: { some: { userId } } } },
         ],
       },

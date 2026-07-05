@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import type { ReactionSummary } from '@gander/shared'
 import { prisma } from '../lib/prisma.js'
+import { canPostInChannel } from '../lib/channelAccess.js'
 import { broadcast } from '../ws/handler.js'
 
 const ALLOWED_REACTIONS = new Set([
@@ -32,7 +33,7 @@ export const reactionRoutes: FastifyPluginAsync = async (app) => {
   })
 
   // POST /api/reactions/:messageId  — add a reaction
-  app.post('/:messageId', async (req, reply) => {
+  app.post('/:messageId', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
     const { userId } = req.user as { userId: string }
     const { messageId } = req.params as { messageId: string }
     const { reaction } = req.body as { reaction: string }
@@ -43,6 +44,9 @@ export const reactionRoutes: FastifyPluginAsync = async (app) => {
 
     const message = await prisma.message.findUnique({ where: { id: messageId }, select: { id: true, channelId: true } })
     if (!message) return reply.status(404).send({ error: 'Message not found' })
+
+    const access = await canPostInChannel(userId, message.channelId)
+    if (!access.ok) return reply.status(access.status).send({ error: access.error })
 
     await prisma.reaction.upsert({
       where: { messageId_userId_reaction: { messageId, userId, reaction } },
@@ -55,13 +59,16 @@ export const reactionRoutes: FastifyPluginAsync = async (app) => {
   })
 
   // DELETE /api/reactions/:messageId?reaction=<tag>  — remove a reaction
-  app.delete('/:messageId', async (req, reply) => {
+  app.delete('/:messageId', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
     const { userId } = req.user as { userId: string }
     const { messageId } = req.params as { messageId: string }
     const { reaction } = req.query as { reaction: string }
 
     const message = await prisma.message.findUnique({ where: { id: messageId }, select: { id: true, channelId: true } })
     if (!message) return reply.status(404).send({ error: 'Message not found' })
+
+    const access = await canPostInChannel(userId, message.channelId)
+    if (!access.ok) return reply.status(access.status).send({ error: access.error })
 
     await prisma.reaction.deleteMany({ where: { messageId, userId, reaction } })
 

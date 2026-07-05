@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import type { Channel } from '@gander/shared'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
+import { useFocusTrap } from '../lib/useFocusTrap.ts'
 import styles from './ChannelIndexModal.module.css'
 
 const UTILITIES = [
@@ -36,6 +37,7 @@ export default function ChannelIndexModal({
   onToggleUtilityVisibility,
 }: Props) {
   const [context, setContext] = useState<ContextState | null>(null)
+  const trapRef = useFocusTrap<HTMLDivElement>()
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -79,7 +81,7 @@ export default function ChannelIndexModal({
   return (
     <>
       <div className={styles.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-        <div className={styles.modal}>
+        <div className={styles.modal} ref={trapRef} role="dialog" aria-modal="true" aria-label="show or hide channels">
           <div className={styles.header}>
             <span className={styles.title}>show / hide channels</span>
           </div>

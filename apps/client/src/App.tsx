@@ -5,6 +5,7 @@ import ServerSetup from './pages/ServerSetup.tsx'
 import { getServerUrl, clearServerUrl } from './lib/config.ts'
 import BootOverlay from './components/BootOverlay.tsx'
 import ContextMenu from './components/ContextMenu.tsx'
+import { ToastProvider } from './lib/toast.tsx'
 import bootSoundUrl from '../sounds/lovelyboot1.mp3?url'
 import poweronSoundUrl from '../sounds/firsttimelaunch2q.mp3?url'
 
@@ -108,7 +109,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <ToastProvider>
       {renderPage()}
       {!bootDone && (
         <BootOverlay
@@ -124,6 +125,6 @@ export default function App() {
           onClose={() => setTextMenu(null)}
         />
       )}
-    </>
+    </ToastProvider>
   )
 }

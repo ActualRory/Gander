@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import type { Channel, User } from '@gander/shared'
 import { api } from '../lib/api.ts'
 import Avatar from './Avatar.tsx'
+import { useFocusTrap } from '../lib/useFocusTrap.ts'
 import styles from './InvitePeopleModal.module.css'
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function InvitePeopleModal({ token, channel, users, currentUserId, onClose }: Props) {
+  const trapRef = useFocusTrap<HTMLDivElement>()
   const [memberIds, setMemberIds] = useState<Set<string> | null>(null)
   const [invitedIds, setInvitedIds] = useState<Set<string>>(new Set())
   const [workingId, setWorkingId] = useState<string | null>(null)
@@ -55,7 +57,7 @@ export default function InvitePeopleModal({ token, channel, users, currentUserId
 
   return (
     <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className={styles.box}>
+      <div className={styles.box} ref={trapRef} role="dialog" aria-modal="true" aria-label="invite people">
         <div className={styles.header}>
           <span className={styles.title}>invite people to #{channel.name}</span>
           <button type="button" className={styles.closeBtn} onClick={onClose}>[×]</button>

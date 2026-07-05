@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useFocusTrap } from '../lib/useFocusTrap.ts'
 import styles from './SettingsModal.module.css'
 
 export type CameraQuality = '360p' | '720p' | '1080p'
@@ -34,6 +35,8 @@ interface Props {
   cameraQuality: CameraQuality
   screenShareQuality: ScreenShareQuality
   screenShareAudio: boolean
+  messageSound: boolean
+  onChangeMessageSound: (on: boolean) => void
   onLogout: () => void
   onToggleMute: () => void
   onChangePttMode: (ptt: boolean) => void
@@ -58,11 +61,13 @@ export default function SettingsModal({
   noiseSuppression, echoCancellation, autoGainControl,
   rnnoiseEnabled, rnnoiseSupported,
   cameraQuality, screenShareQuality, screenShareAudio,
+  messageSound, onChangeMessageSound,
   onLogout, onToggleMute, onChangePttMode, onChangePttKey,
   onChangeOutputVolume, onSwitchInputDevice, onSwitchOutputDevice,
   onChangeAudioProcessing, onChangeRnnoise,
   onChangeCameraQuality, onChangeScreenShareQuality, onChangeScreenShareAudio, onClose,
 }: Props) {
+  const trapRef = useFocusTrap<HTMLDivElement>()
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([])
   const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([])
   const [capturingKey, setCapturingKey] = useState(false)
@@ -210,7 +215,7 @@ export default function SettingsModal({
 
   const modal = (
     <div className={styles.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className={styles.modal}>
+      <div className={styles.modal} ref={trapRef} role="dialog" aria-modal="true" aria-label="settings">
         <div className={styles.header}>
           <span className={styles.title}>⚙ settings</span>
           <button type="button" className={styles.closeBtn} onClick={onClose}>[x]</button>
@@ -371,6 +376,16 @@ export default function SettingsModal({
             <span>capture system audio</span>
           </label>
           <span className={styles.testNote}>takes effect on next toggle</span>
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionLabel}>notifications</div>
+          <label className={styles.toggleRow}>
+            <input type="checkbox" checked={messageSound}
+              onChange={e => onChangeMessageSound(e.target.checked)} />
+            <span>message sound</span>
+          </label>
+          <span className={styles.testNote}>soft blip for new messages while unfocused</span>
         </section>
 
         <section className={styles.section}>

@@ -350,6 +350,12 @@ export const api = {
   inviteToChannel: (token: string, channelId: string, userId: string) =>
     request<void>(`/api/channels/${channelId}/invite`, { method: 'POST', body: JSON.stringify({ userId }), ...authed(token) }),
 
+  kickChannelMember: (token: string, channelId: string, userId: string) =>
+    request<void>(`/api/channels/${channelId}/members/${userId}`, { method: 'DELETE', ...authed(token) }),
+
+  setChannelMemberRole: (token: string, channelId: string, userId: string, role: 'MEMBER' | 'MANAGER') =>
+    request<void>(`/api/channels/${channelId}/members/${userId}`, { method: 'PATCH', body: JSON.stringify({ role }), ...authed(token) }),
+
   // Admin — users
   adminGetUsers: (token: string) =>
     request<(User & { messageCount: number })[]>('/api/admin/users', authed(token)),
@@ -488,23 +494,41 @@ export const api = {
   markAllNotificationsRead: (token: string) =>
     request<void>('/api/notifications/read-all', { method: 'POST', ...authed(token) }),
 
-  uploadAttachments: async (token: string, files: File[]): Promise<AttachmentInfo[]> => {
+  // XHR instead of fetch — fetch has no upload-progress events
+  uploadAttachments: (token: string, files: File[], onProgress?: (fraction: number) => void): Promise<AttachmentInfo[]> => {
     const base = getServerUrl() ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
     const form = new FormData()
     for (const file of files.slice(0, 5)) {
       form.append('file', file)
     }
-    const res = await fetch(`${base}/api/attachments`, {
-      method: 'POST',
-      body: form,
-      headers: { Authorization: `Bearer ${token}` },
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${base}/api/attachments`)
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total)
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const body = JSON.parse(xhr.responseText) as { attachments: AttachmentInfo[] }
+            resolve(body.attachments)
+          } catch {
+            reject(new Error('Invalid server response'))
+          }
+        } else {
+          let message = `HTTP ${xhr.status}`
+          try {
+            const body = JSON.parse(xhr.responseText) as { error?: string }
+            if (body?.error) message = body.error
+          } catch { /* keep HTTP status message */ }
+          reject(new Error(message))
+        }
+      }
+      xhr.onerror = () => reject(new Error('Upload failed — network error'))
+      xhr.ontimeout = () => reject(new Error('Upload timed out'))
+      xhr.send(form)
     })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as { error?: string }
-      throw new Error(body?.error ?? `HTTP ${res.status}`)
-    }
-    const body = await res.json() as { attachments: AttachmentInfo[] }
-    return body.attachments
   },
 }
 

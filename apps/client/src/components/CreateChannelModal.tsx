@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useFocusTrap } from '../lib/useFocusTrap.ts'
 import styles from './CreateChannelModal.module.css'
 
 interface Props {
@@ -11,6 +12,7 @@ export default function CreateChannelModal({ onConfirm, onClose, initialType = '
   const [name, setName] = useState('')
   const [type, setType] = useState<'TEXT' | 'VOICE'>(initialType)
   const inputRef = useRef<HTMLInputElement>(null)
+  const trapRef = useFocusTrap<HTMLDivElement>()
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -32,7 +34,7 @@ export default function CreateChannelModal({ onConfirm, onClose, initialType = '
 
   return (
     <div className={styles.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className={styles.modal}>
+      <div className={styles.modal} ref={trapRef} role="dialog" aria-modal="true" aria-label="create channel">
         <div className={styles.title}>new channel</div>
 
         <div className={styles.typeToggle}>

@@ -1,7 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { MAX_MESSAGE_LENGTH } from '@gander/shared'
 import { prisma } from '../lib/prisma.js'
 import { rankOf, writeAuditLog, type UserRole } from '../lib/auth.js'
-import { broadcastAll, broadcastToUser } from '../ws/handler.js'
+import { canReadChannel } from '../lib/channelAccess.js'
+import { broadcastToChannelMembers } from '../ws/handler.js'
 
 export const messageRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', async (req, reply) => {
@@ -32,6 +34,7 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
 
   // GET /api/messages/by-post/:postNumber — look up a message globally by its post number
   app.get('/by-post/:postNumber', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
     const num = parseInt((req.params as { postNumber: string }).postNumber, 10)
     if (isNaN(num)) return reply.status(400).send({ error: 'Invalid post number' })
     const msg = await prisma.message.findUnique({
@@ -39,18 +42,31 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
       select: { id: true, channelId: true, createdAt: true },
     })
     if (!msg) return reply.status(404).send({ error: 'Not found' })
+    const access = await canReadChannel(userId, msg.channelId)
+    if (!access.ok) return reply.status(404).send({ error: 'Not found' })
     return { id: msg.id, channelId: msg.channelId, createdAt: msg.createdAt.toISOString() }
   })
 
-  app.get('/:channelId', async (req) => {
+  app.get('/:channelId', async (req, reply) => {
+    const { userId } = req.user as { userId: string }
     const { channelId } = req.params as { channelId: string }
     const { before, after, limit = '50' } = req.query as { before?: string; after?: string; limit?: string }
+
+    const access = await canReadChannel(userId, channelId)
+    if (!access.ok) return reply.status(access.status).send({ error: access.error })
+
+    const beforeDate = before ? new Date(before) : null
+    const afterDate = after ? new Date(after) : null
+    if ((beforeDate && isNaN(beforeDate.getTime())) || (afterDate && isNaN(afterDate.getTime()))) {
+      return reply.status(400).send({ error: 'Invalid cursor' })
+    }
+    const take = Math.min(Math.max(Number(limit) || 50, 1), 100)
 
     const rawMessages = await prisma.message.findMany({
       where: {
         channelId,
-        ...(before ? { createdAt: { lt: new Date(before) } } : {}),
-        ...(after ? { createdAt: { gt: new Date(after) } } : {}),
+        ...(beforeDate ? { createdAt: { lt: beforeDate } } : {}),
+        ...(afterDate ? { createdAt: { gt: afterDate } } : {}),
       },
       include: {
         author: { select: { id: true, displayName: true } },
@@ -60,7 +76,7 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
         attachments: { select: { id: true, storedName: true, mimeType: true, filename: true, size: true, width: true, height: true } },
       },
       orderBy: { createdAt: after ? 'asc' : 'desc' },
-      take: Number(limit),
+      take,
     })
 
     const messages = after ? rawMessages : rawMessages.reverse()
@@ -130,18 +146,10 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
       })
     }
 
-    const isDm = message.channel.type === 'DM' || message.channel.type === 'GROUP'
-    if (isDm) {
-      const members = await prisma.channelMember.findMany({
-        where: { channelId: message.channelId },
-        select: { userId: true },
-      })
-      for (const { userId: memberId } of members) {
-        broadcastToUser(memberId, { type: 'message:deleted', payload: { id: messageId, channelId: message.channelId } })
-      }
-    } else {
-      broadcastAll({ type: 'message:deleted', payload: { id: messageId, channelId: message.channelId } })
-    }
+    await broadcastToChannelMembers(message.channelId, {
+      type: 'message:deleted',
+      payload: { id: messageId, channelId: message.channelId },
+    })
 
     return reply.status(204).send()
   })
@@ -152,6 +160,9 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
     const { content } = req.body as { content: string }
 
     if (!content?.trim()) return reply.status(400).send({ error: 'Content required' })
+    if (content.length > MAX_MESSAGE_LENGTH) {
+      return reply.status(400).send({ error: `Message too long (max ${MAX_MESSAGE_LENGTH} characters)` })
+    }
 
     const existing = await prisma.message.findUnique({
       where: { id: messageId },
@@ -204,18 +215,7 @@ export const messageRoutes: FastifyPluginAsync = async (app) => {
       isSystem: updated.isSystem,
     }
 
-    const isDm = existing.channel.type === 'DM' || existing.channel.type === 'GROUP'
-    if (isDm) {
-      const members = await prisma.channelMember.findMany({
-        where: { channelId: existing.channelId },
-        select: { userId: true },
-      })
-      for (const { userId: memberId } of members) {
-        broadcastToUser(memberId, { type: 'message:edited', payload })
-      }
-    } else {
-      broadcastAll({ type: 'message:edited', payload })
-    }
+    await broadcastToChannelMembers(existing.channelId, { type: 'message:edited', payload })
 
     return payload
   })
