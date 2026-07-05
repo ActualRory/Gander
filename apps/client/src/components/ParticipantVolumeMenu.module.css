@@ -73,3 +73,44 @@
   font-size: 10px;
   margin-top: 4px;
 }
+
+/* Coarse pointers: menu presents as a bottom sheet */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 9998;
+  animation: backdropIn 0.15s ease;
+}
+
+@keyframes backdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.sheet {
+  inset: auto 0 0 0;
+  width: 100%;
+  min-width: 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  padding: 14px 16px;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  animation: sheetIn 0.15s ease;
+}
+
+@keyframes sheetIn {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+.sheet .slider {
+  height: 10px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.sheet .slider::-webkit-slider-thumb {
+  width: 18px;
+  height: 26px;
+}

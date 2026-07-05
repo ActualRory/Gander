@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import type { User, SearchResult } from '@gander/shared'
 import { api } from '../lib/api'
+import { useDrawerSwipe } from '../lib/useDrawerSwipe.ts'
+import { useLongPress } from '../lib/useLongPress.ts'
+import { useMediaQuery, MOBILE_LAYOUT } from '../lib/useMediaQuery.ts'
 import Avatar from './Avatar.tsx'
 import styles from './SocialPanel.module.css'
 
@@ -12,6 +15,9 @@ interface Props {
   onUserRightClick: (userId: string, x: number, y: number) => void
   token: string
   onNavigateToMessage: (channelId: string, messageId: string, createdAt: string) => void
+  isOpen: boolean
+  onOpen: () => void
+  onClose: () => void
 }
 
 function getStatus(userId: string, onlineUserIds: Set<string>, userActivities: Record<string, string>): string {
@@ -33,7 +39,7 @@ function parseQuery(raw: string): { q: string; from?: string } {
   return { q, from }
 }
 
-export default function SocialPanel({ users, onlineUserIds, userActivities, onUserClick, onUserRightClick, token, onNavigateToMessage }: Props) {
+export default function SocialPanel({ users, onlineUserIds, userActivities, onUserClick, onUserRightClick, token, onNavigateToMessage, isOpen, onOpen, onClose }: Props) {
   const [panelOpen, setPanelOpen] = useState(true)
   const [onlineOpen, setOnlineOpen] = useState(true)
   const [offlineOpen, setOfflineOpen] = useState(true)
@@ -42,6 +48,15 @@ export default function SocialPanel({ users, onlineUserIds, userActivities, onUs
   const [isSearching, setIsSearching] = useState(false)
   const [searchFocused, setSearchFocused] = useState(false)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const drawerRef = useRef<HTMLDivElement>(null)
+  const isMobileLayout = useMediaQuery(MOBILE_LAYOUT)
+  useDrawerSwipe({ side: 'right', isOpen, onOpen, onClose, drawerRef, enabled: isMobileLayout })
+  // Touch parity for the right-click-only user menu (one shared instance;
+  // the pressed row is stashed on pointerdown)
+  const userLongPressTarget = useRef<string | null>(null)
+  const userLongPress = useLongPress((x, y) => {
+    if (userLongPressTarget.current) onUserRightClick(userLongPressTarget.current, x, y)
+  })
 
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
@@ -61,7 +76,8 @@ export default function SocialPanel({ users, onlineUserIds, userActivities, onUs
   const online = users.filter(u => onlineUserIds.has(u.id))
   const offline = users.filter(u => !onlineUserIds.has(u.id))
 
-  if (!panelOpen) {
+  // Desktop-only collapse; in the mobile drawer the panel always renders full
+  if (!panelOpen && !isMobileLayout) {
     return (
       <div className={styles.collapsed}>
         <div className={styles.collapsedHeader}>
@@ -96,6 +112,10 @@ export default function SocialPanel({ users, onlineUserIds, userActivities, onUs
           }
         }}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onUserRightClick(u.id, e.clientX, e.clientY) }}
+        onPointerDown={e => { userLongPressTarget.current = u.id; userLongPress.onPointerDown(e) }}
+        onPointerUp={userLongPress.onPointerUp}
+        onPointerCancel={userLongPress.onPointerCancel}
+        onPointerLeave={userLongPress.onPointerLeave}
       >
         <Avatar displayName={u.displayName} userId={u.id} avatarUrl={u.avatarUrl} size={28} />
         <span className={styles.userInfo}>
@@ -110,7 +130,9 @@ export default function SocialPanel({ users, onlineUserIds, userActivities, onUs
   }
 
   return (
-    <div className={styles.panel}>
+    <>
+    {isOpen && <div className={styles.backdrop} onClick={onClose} />}
+    <div ref={drawerRef} className={`${styles.panel}${isOpen ? ` ${styles.open}` : ''}`}>
       <div className={styles.header}>
         <span className={styles.headerLabel}>members</span>
         <button
@@ -205,5 +227,6 @@ export default function SocialPanel({ users, onlineUserIds, userActivities, onUs
         </div>
       )}
     </div>
+    </>
   )
 }

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Channel, Notification, User, UserRole } from '@gander/shared'
 import { platform } from '../lib/platform.ts'
+import { useDrawerSwipe } from '../lib/useDrawerSwipe.ts'
+import { useLongPress } from '../lib/useLongPress.ts'
+import { useMediaQuery, MOBILE_LAYOUT } from '../lib/useMediaQuery.ts'
 import ContextMenu, { type ContextMenuItem } from './ContextMenu.tsx'
 import ChannelIndexModal from './ChannelIndexModal.tsx'
 import ConfirmDeleteModal from './ConfirmDeleteModal.tsx'
@@ -58,7 +61,12 @@ interface Props {
   participantVoiceState: Record<string, { muted: boolean; deafened: boolean; videoEnabled: boolean; screenSharing: boolean }>
   onWatchStream: (userId: string, type: 'screen' | 'camera') => void
   isOpen: boolean
+  onOpen: () => void
   onClose: () => void
+  onOpenQuickSwitcher: () => void
+  pttEnabled: boolean
+  onPttDown: () => void
+  onPttUp: () => void
   hiddenUtilityIds: Set<string>
   onToggleUtilityVisibility: (id: string) => void
   onOpenUtility: (id: 'library' | 'file-manager' | 'gandle' | 'admin') => void
@@ -101,7 +109,7 @@ const ADMIN_ROLES: UserRole[] = ['ADMIN', 'SUPERADMIN', 'ROOT']
 function isMod(role: UserRole) { return MOD_ROLES.includes(role) }
 function isAdmin(role: UserRole) { return ADMIN_ROLES.includes(role) }
 
-export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onArchiveChannel, onLeaveChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onClose, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId, onBrowseChannels, currentUserRole, token, notifications, onMarkNotificationRead, onMarkAllNotificationsRead, onNotificationClick, onInvitePeople, channelsLoading, channelsError, onRetryChannels, voiceConnectingChannelId }: Props) {
+export default function Sidebar({ channels, dmChannels, activeChannelId, currentUserId, hiddenChannelIds, unreadCounts, mentionCounts, mutedChannelIds, users, onlineUserIds, voiceChannelId, voiceParticipants, voiceChannelStartTimes, isMuted, isDeafened, isSpeaking, isReceiving, speakingUserIds, voiceStats, onSelectChannel, onCreateChannel, onRenameChannel, onDeleteChannel, onArchiveChannel, onLeaveChannel, onHideChannel, onToggleChannelVisibility, onMarkRead, onToggleMuted, onJoinVoice, onLeaveVoice, onToggleMute, onToggleDeafen, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onOpenSettings, onOpenDM, onHideDM, onSetTopic, displayName, participantVolumes, onSetParticipantVolume, participantVoiceState, onWatchStream, isOpen, onOpen, onClose, onOpenQuickSwitcher, pttEnabled, onPttDown, onPttUp, hiddenUtilityIds, onToggleUtilityVisibility, onOpenUtility, activeUtilityId, onBrowseChannels, currentUserRole, token, notifications, onMarkNotificationRead, onMarkAllNotificationsRead, onNotificationClick, onInvitePeople, channelsLoading, channelsError, onRetryChannels, voiceConnectingChannelId }: Props) {
   const [indexOpen, setIndexOpen] = useState(false)
   const [creating, setCreating] = useState<'TEXT' | 'VOICE' | null>(null)
   const [context, setContext] = useState<ContextState | null>(null)
@@ -114,6 +122,9 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
   const [utilityContext, setUtilityContext] = useState<{ id: string; label: string; x: number; y: number } | null>(null)
   const renameRef = useRef<HTMLInputElement>(null)
   const topicRef = useRef<HTMLInputElement>(null)
+  const drawerRef = useRef<HTMLElement>(null)
+  const isMobileLayout = useMediaQuery(MOBILE_LAYOUT)
+  useDrawerSwipe({ side: 'left', isOpen, onOpen, onClose, drawerRef, enabled: isMobileLayout })
   const [, setTick] = useState(0)
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 1000)
@@ -143,6 +154,14 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
   function cancelLongPress() {
     if (lpTimerRef.current !== null) { clearTimeout(lpTimerRef.current); lpTimerRef.current = null }
   }
+
+  // Touch parity for the right-click-only participant volume menu (one shared
+  // instance; the pressed participant is stashed on pointerdown)
+  const participantLongPressTarget = useRef<{ userId: string; userName: string } | null>(null)
+  const participantLongPress = useLongPress((x, y) => {
+    const t = participantLongPressTarget.current
+    if (t) setParticipantVolumeMenu({ x, y, userId: t.userId, userName: t.userName })
+  })
 
   function handleContextMenu(e: React.MouseEvent, channel: Channel) {
     e.preventDefault()
@@ -375,6 +394,10 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
                 e.stopPropagation()
                 setParticipantVolumeMenu({ x: e.clientX, y: e.clientY, userId: uid, userName: name })
               }}
+              onPointerDown={e => { participantLongPressTarget.current = { userId: uid, userName: name }; participantLongPress.onPointerDown(e) }}
+              onPointerUp={participantLongPress.onPointerUp}
+              onPointerCancel={participantLongPress.onPointerCancel}
+              onPointerLeave={participantLongPress.onPointerLeave}
             >
               <span className={styles.participantName}>{name}</span>
               {badge && <span className={styles.voiceStateBadge}>{badge}</span>}
@@ -434,7 +457,7 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
   return (
     <>
       {isOpen && <div className={styles.backdrop} onClick={onClose} />}
-      <nav className={`${styles.root}${isOpen ? ` ${styles.open}` : ''}`}>
+      <nav ref={drawerRef} className={`${styles.root}${isOpen ? ` ${styles.open}` : ''}`}>
         <div className={styles.serverName}>
           GANDER
           {appVersion && <span className={styles.version}>v{appVersion}</span>}
@@ -445,6 +468,13 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
             onMarkAllRead={onMarkAllNotificationsRead}
             onNotificationClick={onNotificationClick}
           />
+          <button
+            type="button"
+            className={styles.quickSwitchBtn}
+            onClick={onOpenQuickSwitcher}
+            title="quick switcher (ctrl+k)"
+            aria-label="open quick switcher"
+          >[⌕]</button>
         </div>
 
         <div className={styles.channelList}>
@@ -540,6 +570,9 @@ export default function Sidebar({ channels, dmChannels, activeChannelId, current
             onToggleCamera={onToggleCamera}
             onToggleScreenShare={onToggleScreenShare}
             onLeave={onLeaveVoice}
+            pttEnabled={pttEnabled}
+            onPttDown={onPttDown}
+            onPttUp={onPttUp}
           />
         )}
 

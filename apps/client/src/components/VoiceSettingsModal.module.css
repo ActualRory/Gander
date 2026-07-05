@@ -246,3 +246,39 @@
   color: var(--text-muted);
   letter-spacing: 0.05em;
 }
+
+/* Mobile: modal becomes a full-width bottom sheet */
+@media (max-width: 640px) {
+  .overlay {
+    align-items: flex-end;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px));
+    overflow-y: auto;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+  }
+}
+
+/* Touch: the PTT keybind is keyboard-only — point at the on-screen bar instead */
+.pttTouchHint {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .pttRow {
+    display: none;
+  }
+
+  .pttTouchHint {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 4px 0;
+  }
+}

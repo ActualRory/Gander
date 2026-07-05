@@ -70,6 +70,8 @@
 html, body, #root {
   height: 100%;
   overflow: hidden;
+  /* Stop the Android WebView pull-glow/bounce fighting inner scrollers */
+  overscroll-behavior: none;
 }
 
 /* Use dynamic viewport height on mobile so layout shrinks when soft keyboard opens */
@@ -107,7 +109,7 @@ button:hover {
   background: var(--border);
 }
 
-input, textarea {
+input, textarea, select {
   font-family: var(--font-mono);
   background: var(--bg-surface);
   border: 1px solid var(--border);
@@ -118,7 +120,7 @@ input, textarea {
   font-size: max(16px, 1em);
 }
 
-input:focus, textarea:focus {
+input:focus, textarea:focus, select:focus {
   border-color: var(--accent-dim);
 }
 

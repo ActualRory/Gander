@@ -89,3 +89,30 @@
   font-size: 10px;
   white-space: pre;
 }
+
+/* Mobile: anchor near the top so the soft keyboard doesn't cover results */
+@media (max-width: 640px) {
+  .overlay {
+    padding-top: max(8px, env(safe-area-inset-top, 0px));
+  }
+
+  .box {
+    width: calc(100vw - 16px);
+  }
+
+  .results {
+    max-height: 45dvh;
+  }
+}
+
+@media (pointer: coarse) {
+  /* Keyboard hints are meaningless on touch */
+  .hint {
+    display: none;
+  }
+
+  .result {
+    min-height: 44px;
+    align-items: center;
+  }
+}

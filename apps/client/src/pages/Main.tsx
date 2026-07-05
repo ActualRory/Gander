@@ -5,8 +5,9 @@ import { Room, RoomEvent, Track, AudioPresets, VideoPresets, ScreenSharePresets,
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { Image as TauriImage } from '@tauri-apps/api/image'
-import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { platform } from '../lib/platform.ts'
+import { initNotifications, notifyMessage, notifySystem, clearChannelNotification } from '../lib/notify.ts'
+import { isAppVisible } from '../lib/useAppVisibility.ts'
 import type { Channel, User, UserRole } from '@gander/shared'
 import type { AuthState } from '../App.tsx'
 import { api } from '../lib/api.ts'
@@ -225,6 +226,7 @@ export default function Main({ auth, onLogout }: Props) {
   const [userContextMenu, setUserContextMenu] = useState<{ userId: string; x: number; y: number } | null>(null)
   const [pendingJump, setPendingJump] = useState<{ messageId: string; anchorTime: string } | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [socialOpen, setSocialOpen] = useState(false)
   const [activeUtilityId, setActiveUtilityId] = useState<'library' | 'file-manager' | 'gandle' | 'admin' | null>(null)
   const [showChannelIndex, setShowChannelIndex] = useState(false)
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(() => auth.role ?? 'MEMBER')
@@ -242,6 +244,8 @@ export default function Main({ auth, onLogout }: Props) {
   // Per-channel lastReadAt, server-authoritative (populated by loadBaseData).
   // Kept in a ref — only consumed when snapshotting at channel-open time.
   const lastReadMapRef = useRef<Record<string, string>>({})
+  const lastHiddenAtRef = useRef<number | null>(null)
+  const pendingNotificationChannelIdRef = useRef<string | null>(null)
   // lastReadAt of the active channel, captured *before* it was marked read —
   // drives the "new messages" divider in ChannelView
   const [activeChannelLastRead, setActiveChannelLastRead] = useState<string | null>(null)
@@ -382,11 +386,20 @@ export default function Main({ auth, onLogout }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoTiles, streamViewUserId, streamViewType])
 
-  // Request notification permission on mount
+  // Notification setup: permission, Android notification channels, and
+  // tap-on-notification → open that chat. handleNavigateToChannel closes over
+  // state, so taps route through a ref; channels unknown at tap time (fresh
+  // launch) are stashed and consumed after loadBaseData.
+  const handleNavigateToChannelRef = useRef<(channelId: string) => void>(() => {})
+  useEffect(() => { handleNavigateToChannelRef.current = handleNavigateToChannel })
   useEffect(() => {
-    isPermissionGranted().then(granted => {
-      if (!granted) requestPermission().catch(() => {})
-    }).catch(() => {})
+    let cleanup: (() => void) | null = null
+    initNotifications(channelId => {
+      const known = [...channelsRef.current, ...dmChannelsRef.current].some(c => c.id === channelId)
+      if (known) handleNavigateToChannelRef.current(channelId)
+      else pendingNotificationChannelIdRef.current = channelId
+    }).then(fn => { cleanup = fn })
+    return () => { cleanup?.() }
   }, [])
 
   // Load notifications and check recovery setup on mount
@@ -468,6 +481,14 @@ export default function Main({ auth, onLogout }: Props) {
       }
       setUnreadCounts(counts)
       setMentionCounts(mentions)
+
+      // A notification was tapped before channels were loaded — open it now
+      const pendingId = pendingNotificationChannelIdRef.current
+      if (pendingId) {
+        pendingNotificationChannelIdRef.current = null
+        const target = [...fetchedChannels, ...dms].find(c => c.id === pendingId)
+        if (target) openChannel(target)
+      }
     } catch (err) {
       setBaseError(err instanceof Error ? err.message : 'failed to load')
     } finally {
@@ -518,25 +539,35 @@ export default function Main({ auth, onLogout }: Props) {
           }
         }
 
-        // Desktop notification: mentions always fire (unless muted); regular only when unfocused
         if (authorId !== auth.userId && !isMuted) {
           // Optional soft blip (settings toggle) — throttled inside playMessageBlip
           if (messageSoundRef.current && (!isActiveChannel || !windowFocusedRef.current)) {
             playMessageBlip()
           }
           const ch = [...channelsRef.current, ...dmChannelsRef.current].find(c => c.id === channelId)
-          const channelName = ch?.type === 'DM' ? `@${authorName}` : `#${ch?.name ?? channelId}`
+          const channelLabel = ch?.type === 'DM' ? `@${authorName}` : `#${ch?.name ?? channelId}`
           const truncated = content.length > 120 ? content.slice(0, 120) + '…' : content
-          if (isMentioned) {
-            sendNotification({ title: `${channelName} · ${authorName} mentioned you`, body: truncated })
-          } else if (!isActiveChannel) {
-            if (platform.hasWindowBadge) {
+          if (platform.hasWindowBadge) {
+            // Desktop: mentions always fire; regular messages only when unfocused
+            if (isMentioned) {
+              notifyMessage({ channelId, channelLabel, authorName, body: truncated, isMention: true })
+            } else if (!isActiveChannel) {
               getCurrentWindow().isFocused().then(focused => {
                 if (focused) return
-                sendNotification({ title: `${channelName} · ${authorName}`, body: truncated })
+                notifyMessage({ channelId, channelLabel, authorName, body: truncated, isMention: false })
               }).catch(() => {})
-            } else {
-              sendNotification({ title: `${channelName} · ${authorName}`, body: truncated })
+            }
+          } else {
+            // Android: document visibility is the attention signal. Regular
+            // messages while the app is visible are suppressed (sidebar badges
+            // and the blip cover them); mentions fire unless the user is
+            // looking at that exact channel.
+            const visible = isAppVisible()
+            const shouldNotify = isMentioned
+              ? !(visible && isActiveChannel)
+              : !isActiveChannel && !visible
+            if (shouldNotify) {
+              notifyMessage({ channelId, channelLabel, authorName, body: truncated, isMention: isMentioned })
             }
           }
         }
@@ -632,6 +663,7 @@ export default function Main({ auth, onLogout }: Props) {
         }
         setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
         setMentionCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+        clearChannelNotification(channelId)
       } else if (event.type === 'user:banned') {
         const { userId } = event.payload
         if (userId === auth.userId) {
@@ -678,10 +710,16 @@ export default function Main({ auth, onLogout }: Props) {
           setNotifications(prev => [{ ...n, read: true }, ...prev])
         } else {
           setNotifications(prev => [n, ...prev])
-          // Non-mention notifications (invites, password resets, …) also raise a
-          // desktop notification — mentions already get one via the message:new path
+          // Non-mention notifications (invites, password resets, …) also raise an
+          // OS notification — mentions already get one via the message:new path.
+          // On Android, skip it when the user is visibly looking at the channel
+          // the notification is about.
           if (n.type !== 'mention') {
-            sendNotification({ title: n.title, ...(n.body ? { body: n.body } : {}) })
+            const suppress = !platform.hasWindowBadge && isAppVisible()
+              && !!meta.channelId && meta.channelId === activeChannelRef.current?.id
+            if (!suppress) {
+              notifySystem({ title: n.title, ...(n.body ? { body: n.body } : {}) })
+            }
           }
         }
       } else if (event.type === 'user:archived') {
@@ -719,14 +757,31 @@ export default function Main({ auth, onLogout }: Props) {
     function wake() {
       if (document.visibilityState !== 'hidden') wsRef.current?.forceReconnect()
     }
-    document.addEventListener('visibilitychange', wake)
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') {
+        lastHiddenAtRef.current = Date.now()
+        return
+      }
+      wsRef.current?.forceReconnect()
+      // If the socket survived backgrounding, events may have been frozen while
+      // the WebView was suspended — the reconnect handler won't fire, so refetch
+      // explicitly after a long absence.
+      const hiddenFor = lastHiddenAtRef.current ? Date.now() - lastHiddenAtRef.current : 0
+      if (hiddenFor > 30_000 && wsRef.current?.status === 'online') loadBaseData()
+      // The channel on screen is being read — drop its OS notification
+      const activeId = activeChannelRef.current?.id
+      if (activeId) clearChannelNotification(activeId)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('online', wake)
     window.addEventListener('focus', wake)
     return () => {
-      document.removeEventListener('visibilitychange', wake)
+      document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('online', wake)
       window.removeEventListener('focus', wake)
     }
+  // loadBaseData is stable for the lifetime of this auth session
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Disconnect from voice on unmount
@@ -746,8 +801,16 @@ export default function Main({ auth, onLogout }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // Track window focus for rich presence
+  // Track window focus for rich presence. The tao focus event never fires on
+  // Android (windowFocused would be stuck true forever, breaking presence,
+  // the blip gate and mention auto-read) — use document visibility there.
   useEffect(() => {
+    if (platform.isMobile) {
+      const handler = () => setWindowFocused(isAppVisible())
+      handler()
+      document.addEventListener('visibilitychange', handler)
+      return () => document.removeEventListener('visibilitychange', handler)
+    }
     const win = getCurrentWindow()
     let unlistenFocus: (() => void) | null = null
     win.isFocused().then(focused => setWindowFocused(focused))
@@ -774,32 +837,42 @@ export default function Main({ auth, onLogout }: Props) {
     return () => { unlisten?.() }
   }, [])
 
+  // Push-to-talk press/release — shared by the keyboard handler (desktop)
+  // and the on-screen hold-to-talk bar (touch)
+  async function pttPress() {
+    const room = voiceRoomRef.current
+    if (!room) return
+    await room.localParticipant.setMicrophoneEnabled(true, { noiseSuppression, echoCancellation, autoGainControl }, { audioPreset: AudioPresets.musicHighQualityStereo })
+    // Apply RNNoise on first PTT press if enabled and not yet applied
+    if (rnnoiseEnabledRef.current && !rnnoiseProcessorRef.current) {
+      const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone)
+      const track = pub?.track
+      if (track instanceof LocalAudioTrack) {
+        const proc = new RNNoiseProcessor()
+        rnnoiseProcessorRef.current = proc
+        await track.setProcessor(proc as never)
+      }
+    }
+    setIsMuted(false)
+    wsRef.current?.send({ type: 'voice:state', payload: { muted: false, deafened: false, videoEnabled: isCameraOnRef.current, screenSharing: isScreenSharingRef.current } })
+  }
+
+  async function pttRelease() {
+    await voiceRoomRef.current?.localParticipant.setMicrophoneEnabled(false)
+    setIsMuted(true)
+    wsRef.current?.send({ type: 'voice:state', payload: { muted: true, deafened: false, videoEnabled: isCameraOnRef.current, screenSharing: isScreenSharingRef.current } })
+  }
+
   // Push-to-talk keyboard handler
   useEffect(() => {
     if (!pttMode || !voiceChannelId) return
-    const down = async (e: KeyboardEvent) => {
+    const down = (e: KeyboardEvent) => {
       if (e.code !== pttKey || e.repeat) return
-      const room = voiceRoomRef.current
-      if (!room) return
-      await room.localParticipant.setMicrophoneEnabled(true, { noiseSuppression, echoCancellation, autoGainControl }, { audioPreset: AudioPresets.musicHighQualityStereo })
-      // Apply RNNoise on first PTT press if enabled and not yet applied
-      if (rnnoiseEnabledRef.current && !rnnoiseProcessorRef.current) {
-        const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone)
-        const track = pub?.track
-        if (track instanceof LocalAudioTrack) {
-          const proc = new RNNoiseProcessor()
-          rnnoiseProcessorRef.current = proc
-          await track.setProcessor(proc as never)
-        }
-      }
-      setIsMuted(false)
-      wsRef.current?.send({ type: 'voice:state', payload: { muted: false, deafened: false, videoEnabled: isCameraOnRef.current, screenSharing: isScreenSharingRef.current } })
+      void pttPress()
     }
-    const up = async (e: KeyboardEvent) => {
+    const up = (e: KeyboardEvent) => {
       if (e.code !== pttKey) return
-      await voiceRoomRef.current?.localParticipant.setMicrophoneEnabled(false)
-      setIsMuted(true)
-      wsRef.current?.send({ type: 'voice:state', payload: { muted: true, deafened: false, videoEnabled: isCameraOnRef.current, screenSharing: isScreenSharingRef.current } })
+      void pttRelease()
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -807,6 +880,8 @@ export default function Main({ auth, onLogout }: Props) {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
     }
+  // pttPress/pttRelease read their audio settings from the deps below
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pttMode, voiceChannelId, pttKey, noiseSuppression, echoCancellation, autoGainControl])
 
   async function handleJoinVoice(channel: Channel) {
@@ -1401,6 +1476,7 @@ export default function Main({ auth, onLogout }: Props) {
   function markChannelRead(channelId: string) {
     setUnreadCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
     setMentionCounts(prev => { const next = { ...prev }; delete next[channelId]; return next })
+    clearChannelNotification(channelId)
     const lastReadAt = new Date().toISOString()
     lastReadMapRef.current[channelId] = lastReadAt
     api.markChannelsRead(auth.token, [{ channelId, lastReadAt }]).catch(() => {})
@@ -1693,7 +1769,12 @@ export default function Main({ auth, onLogout }: Props) {
         participantVoiceState={participantVoiceState}
         onWatchStream={handleWatchStream}
         isOpen={sidebarOpen}
+        onOpen={() => setSidebarOpen(true)}
         onClose={() => setSidebarOpen(false)}
+        onOpenQuickSwitcher={() => { setSidebarOpen(false); setQuickSwitcherOpen(true) }}
+        pttEnabled={pttMode}
+        onPttDown={() => { void pttPress() }}
+        onPttUp={() => { void pttRelease() }}
         hiddenUtilityIds={hiddenUtilityIds}
         onToggleUtilityVisibility={handleToggleUtilityVisibility}
         onOpenUtility={openUtility}
@@ -1719,6 +1800,14 @@ export default function Main({ auth, onLogout }: Props) {
           aria-label="open navigation"
         >
           [≡]
+        </button>
+        <button
+          type="button"
+          className={styles.socialToggle}
+          onClick={() => setSocialOpen(true)}
+          aria-label="open members"
+        >
+          [@]
         </button>
         {(() => {
           const isScreenType = streamViewType === 'screen'
@@ -1821,7 +1910,13 @@ export default function Main({ auth, onLogout }: Props) {
         onUserClick={handleUserLeftClick}
         onUserRightClick={handleUserRightClick}
         token={auth.token}
-        onNavigateToMessage={handleNavigateToMessage}
+        onNavigateToMessage={(channelId, messageId, createdAt) => {
+          setSocialOpen(false)
+          handleNavigateToMessage(channelId, messageId, createdAt)
+        }}
+        isOpen={socialOpen}
+        onOpen={() => setSocialOpen(true)}
+        onClose={() => setSocialOpen(false)}
       />
       </div>
       {profileTarget && (

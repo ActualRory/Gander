@@ -273,11 +273,54 @@
   margin-top: 2px;
 }
 
-/* Hide on mobile — must be last so it overrides the display rules above */
+.backdrop {
+  display: none;
+}
+
+@keyframes backdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Mobile: panel becomes a right-side slide-in drawer (mirror of the sidebar).
+   Must be last so it overrides the display rules above. */
 @media (max-width: 640px) {
-  .panel,
-  .collapsed {
+  .panel {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    min-width: 0;
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+    z-index: 100;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  .panel.open {
+    transform: translateX(0);
+  }
+
+  /* Desktop collapse concept doesn't exist in the drawer */
+  .collapsed,
+  .collapseBtn {
     display: none;
+  }
+
+  .backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+    animation: backdropIn 0.15s ease;
+  }
+
+  .user {
+    padding: 8px 12px;
   }
 }
 

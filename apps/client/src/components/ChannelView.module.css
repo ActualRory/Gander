@@ -1071,9 +1071,11 @@
 
 /* ---- Mobile layout ---- */
 @media (max-width: 640px) {
-  /* Offset header content so it isn't obscured by the hamburger button (49px wide) */
+  /* Offset header content so it isn't obscured by the hamburger (left) and
+     members-toggle (right) buttons (49px wide each) */
   .header {
     padding-left: 58px;
+    padding-right: 58px;
   }
 }
 

@@ -54,8 +54,34 @@
   background: var(--bg-elevated);
 }
 
+/* Members toggle: mirror of the hamburger on the right edge */
+.socialToggle {
+  display: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 49px;
+  width: 49px;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 14px;
+  z-index: 10;
+  cursor: pointer;
+  padding: 0;
+  min-height: unset;
+  min-width: unset;
+}
+
+.socialToggle:hover {
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+}
+
 @media (max-width: 640px) {
-  .hamburger {
+  .hamburger,
+  .socialToggle {
     display: flex;
     align-items: center;
     justify-content: center;

@@ -6,6 +6,8 @@ import type { Channel, Message, User, OgData, PinnedMessageEntry } from '@gander
 import type { GanderWS } from '../lib/ws.ts'
 import { api, resolveAttachmentUrl } from '../lib/api.ts'
 import { getServerConfig } from '../lib/config.ts'
+import { platform } from '../lib/platform.ts'
+import { useLongPress } from '../lib/useLongPress.ts'
 import { useToast, toastApiError } from '../lib/toast.tsx'
 import ContextMenu from './ContextMenu.tsx'
 import ReactionPicker from './ReactionPicker.tsx'
@@ -241,7 +243,9 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
 
   function handleMsgPointerDown(msg: Message, e: React.PointerEvent) {
     startMsgLongPress(msg.id, e.clientX, e.clientY)
-    if (e.pointerType === 'touch') {
+    // Touches starting in the left edge zone belong to the sidebar drawer's
+    // edge-swipe gesture, not swipe-to-reply
+    if (e.pointerType === 'touch' && e.clientX > 24) {
       swipeState.current = { msgId: msg.id, startX: e.clientX, startY: e.clientY, dx: 0, active: false, el: e.currentTarget as HTMLElement }
     }
   }
@@ -960,6 +964,12 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
 
   async function downloadImage(url: string, filename: string) {
     if (imageSaved) return
+    // Blob-anchor downloads no-op in the Android WebView (no DownloadListener
+    // for blob URLs) — hand off to the system browser where the user can save
+    if (platform.isMobile) {
+      await openUrl(url).catch(() => {})
+      return
+    }
     const res = await fetch(url)
     const blob = await res.blob()
     const a = document.createElement('a')
@@ -1320,7 +1330,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
             onClick={e => e.stopPropagation()}
           />
           <div className={styles.lightboxControls}>
-            <button type="button" className={`${styles.lightboxClose}${imageSaved ? ` ${styles.lightboxSaved}` : ''}`} disabled={imageSaved} onClick={e => { e.stopPropagation(); void downloadImage(lightbox.url, lightbox.filename) }}>{imageSaved ? '[saved]' : '[save]'}</button>
+            <button type="button" className={`${styles.lightboxClose}${imageSaved ? ` ${styles.lightboxSaved}` : ''}`} disabled={imageSaved} onClick={e => { e.stopPropagation(); void downloadImage(lightbox.url, lightbox.filename) }}>{imageSaved ? '[saved]' : platform.isMobile ? '[open]' : '[save]'}</button>
             <button type="button" className={styles.lightboxClose} onClick={() => setLightbox(null)}>[close]</button>
           </div>
         </div>,
@@ -1359,7 +1369,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
           y={imgMenu.y}
           items={[
             {
-              label: 'save image',
+              label: platform.isMobile ? 'open image' : 'save image',
               action: () => void downloadImage(imgMenu.url, imgMenu.filename),
             },
             {
@@ -1558,6 +1568,15 @@ interface MessageRowProps {
 // parent, typing in the composer (or any state change that doesn't touch a
 // row's own props) skips reconciliation of every message row.
 const MessageRow = memo(function MessageRow({ msg, grouped, showDateSep, isFirstUnread, isPending, pendingState, isEditing, editDraft, users, channels, token, currentUserId, currentUsername, ogData, editTextareaRef, handlers: H }: MessageRowProps) {
+  // Touch parity for the right-click-only menus: long-press on the author
+  // opens the user menu, long-press on an image opens the image menu.
+  // pointerdown stops propagation so the row's own long-press/swipe stays out.
+  const userLongPress = useLongPress((x, y) => H.onUserRightClick(msg.authorId, x, y))
+  const imgTargetRef = useRef<{ url: string; filename: string } | null>(null)
+  const imgLongPress = useLongPress((x, y) => {
+    const t = imgTargetRef.current
+    if (t) H.openImgMenu(t.url, t.filename, x, y)
+  })
   return (
     <div
       data-msg-id={msg.id}
@@ -1671,6 +1690,10 @@ const MessageRow = memo(function MessageRow({ msg, grouped, showDateSep, isFirst
         <span
           className={styles.author}
           onContextMenu={e => { e.preventDefault(); e.stopPropagation(); H.onUserRightClick(msg.authorId, e.clientX, e.clientY) }}
+          onPointerDown={e => { e.stopPropagation(); userLongPress.onPointerDown(e) }}
+          onPointerUp={userLongPress.onPointerUp}
+          onPointerCancel={userLongPress.onPointerCancel}
+          onPointerLeave={userLongPress.onPointerLeave}
         >{msg.authorName}</span>
         <span className={styles.time}>{formatTime(msg.createdAt)}</span>
         {msg.postNumber != null && (
@@ -1742,6 +1765,10 @@ const MessageRow = memo(function MessageRow({ msg, grouped, showDateSep, isFirst
               loading="lazy"
               onClick={() => H.openLightbox(resolveAttachmentUrl(att.url), att.filename)}
               onContextMenu={e => { e.preventDefault(); e.stopPropagation(); H.openImgMenu(resolveAttachmentUrl(att.url), att.filename, e.clientX, e.clientY) }}
+              onPointerDown={e => { e.stopPropagation(); imgTargetRef.current = { url: resolveAttachmentUrl(att.url), filename: att.filename }; imgLongPress.onPointerDown(e) }}
+              onPointerUp={imgLongPress.onPointerUp}
+              onPointerCancel={imgLongPress.onPointerCancel}
+              onPointerLeave={imgLongPress.onPointerLeave}
               title={`${att.filename} (${formatBytes(att.size)})`}
             />
           ) : isVideoMime(att.mimeType) ? (
@@ -1779,6 +1806,10 @@ const MessageRow = memo(function MessageRow({ msg, grouped, showDateSep, isFirst
             loading="lazy"
             onClick={() => H.openLightbox(url, urlFilename)}
             onContextMenu={e => { e.preventDefault(); e.stopPropagation(); H.openImgMenu(url, urlFilename, e.clientX, e.clientY) }}
+            onPointerDown={e => { e.stopPropagation(); imgTargetRef.current = { url, filename: urlFilename }; imgLongPress.onPointerDown(e) }}
+            onPointerUp={imgLongPress.onPointerUp}
+            onPointerCancel={imgLongPress.onPointerCancel}
+            onPointerLeave={imgLongPress.onPointerLeave}
           />
         )
       })}

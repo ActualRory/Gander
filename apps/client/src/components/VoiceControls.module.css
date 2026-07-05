@@ -110,3 +110,40 @@
   background: #5a3030;
   color: #c87060;
 }
+
+/* On-screen hold-to-talk: touch replacement for the PTT keybind */
+.pttBar {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .pttBar {
+    display: block;
+    width: 100%;
+    min-height: 52px;
+    margin-top: 8px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: pointer;
+  }
+
+  .pttBar:active {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+  }
+
+  .statsIcon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
+  }
+}

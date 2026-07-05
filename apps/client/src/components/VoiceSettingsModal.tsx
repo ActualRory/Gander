@@ -264,16 +264,19 @@ export default function VoiceSettingsModal({
             </label>
           </div>
           {pttMode && (
-            <div className={styles.pttRow}>
-              <span className={styles.fieldLabel}>key</span>
-              <button
-                type="button"
-                className={`${styles.keyBtn} ${capturingKey ? styles.keyBtnCapturing : ''}`}
-                onClick={startKeyCapture}
-              >
-                {capturingKey ? 'press a key...' : `[${formatKeyCode(pttKey)}]`}
-              </button>
-            </div>
+            <>
+              <div className={styles.pttRow}>
+                <span className={styles.fieldLabel}>key</span>
+                <button
+                  type="button"
+                  className={`${styles.keyBtn} ${capturingKey ? styles.keyBtnCapturing : ''}`}
+                  onClick={startKeyCapture}
+                >
+                  {capturingKey ? 'press a key...' : `[${formatKeyCode(pttKey)}]`}
+                </button>
+              </div>
+              <div className={styles.pttTouchHint}>use the [hold to talk] bar in the sidebar while connected</div>
+            </>
           )}
         </section>
 

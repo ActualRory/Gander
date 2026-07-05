@@ -67,3 +67,21 @@
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
+
+/* Mobile: modal becomes a full-width bottom sheet */
+@media (max-width: 640px) {
+  .overlay {
+    align-items: flex-end;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px));
+    overflow-y: auto;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+  }
+}

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import styles from './VoiceControls.module.css'
 
@@ -17,11 +17,24 @@ interface Props {
   onToggleCamera: () => void
   onToggleScreenShare: () => void
   onLeave: () => void
+  pttEnabled: boolean
+  onPttDown: () => void
+  onPttUp: () => void
 }
 
-export default function VoiceControls({ channelName, voiceStats, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onLeave }: Props) {
+export default function VoiceControls({ channelName, voiceStats, isCameraOn, isScreenSharing, onToggleCamera, onToggleScreenShare, onLeave, pttEnabled, onPttDown, onPttUp }: Props) {
   const iconRef = useRef<HTMLSpanElement>(null)
   const [tooltipAnchor, setTooltipAnchor] = useState<DOMRect | null>(null)
+
+  // Tap-away closes the tap-toggled stats tooltip (hover close handles desktop)
+  useEffect(() => {
+    if (!tooltipAnchor) return
+    function onDocPointerDown(e: PointerEvent) {
+      if (iconRef.current && !iconRef.current.contains(e.target as Node)) setTooltipAnchor(null)
+    }
+    window.addEventListener('pointerdown', onDocPointerDown)
+    return () => window.removeEventListener('pointerdown', onDocPointerDown)
+  }, [tooltipAnchor])
 
   return (
     <>
@@ -35,6 +48,7 @@ export default function VoiceControls({ channelName, voiceStats, isCameraOn, isS
                 className={`${styles.statsIcon} ${styles[`quality_${voiceStats.quality}`]}`}
                 onMouseEnter={() => setTooltipAnchor(iconRef.current?.getBoundingClientRect() ?? null)}
                 onMouseLeave={() => setTooltipAnchor(null)}
+                onClick={() => setTooltipAnchor(a => a ? null : (iconRef.current?.getBoundingClientRect() ?? null))}
               >
                 [~]
               </span>
@@ -68,6 +82,19 @@ export default function VoiceControls({ channelName, voiceStats, isCameraOn, isS
             [scr]
           </button>
         </div>
+        {pttEnabled && (
+          <button
+            type="button"
+            className={styles.pttBar}
+            onPointerDown={e => { e.preventDefault(); onPttDown() }}
+            onPointerUp={onPttUp}
+            onPointerCancel={onPttUp}
+            onPointerLeave={onPttUp}
+            onContextMenu={e => e.preventDefault()}
+          >
+            [hold to talk]
+          </button>
+        )}
       </div>
       {tooltipAnchor && voiceStats && createPortal(
         <div
