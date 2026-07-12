@@ -72,7 +72,7 @@ gander/
 
 ### Message rendering (ChannelView.tsx)
 - Three-layer renderer: fenced code blocks → inline markdown (`` `code` ``, `**bold**`, `*italic*`, `~~strike~~`, `||spoiler||`) → entities (URLs, @mentions, #post, #channel-name, [[book/shelf]])
-- Consecutive messages from the same author within 7 min are grouped (no repeated avatar/meta; hover shows time in the avatar gutter)
+- Every message shows its own avatar/author/time/post number (grouping deliberately reverted; MessageRow still supports `grouped` rendering if it returns as a setting)
 - Hover action toolbar (react/reply/edit/more) on desktop pointers; hidden via `@media (hover: none)`
 - Touch: long-press opens the message context menu, swipe-right replies
 - ArrowUp in an empty input edits your last message

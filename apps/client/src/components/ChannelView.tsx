@@ -143,6 +143,7 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   const firstUnreadRef = useRef<HTMLDivElement | null>(null)
   const isAtBottomRef = useRef(true)
   const initialScrollDoneRef = useRef(false)
+  const ownSendScrollRef = useRef(false)
   // tempId → original payload: tracks optimistic messages awaiting server
   // echo, and holds what's needed to re-send on retry
   const pendingOwnMsgs = useRef<Map<string, { content: string; replyToId?: string; attachmentIds?: string[] }>>(new Map())
@@ -471,7 +472,12 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
         firstUnreadRef.current.scrollIntoView({ block: 'center' })
       } else {
         const el = messagesContainerRef.current
-        if (el) el.scrollTop = el.scrollHeight
+        if (el) {
+          el.scrollTop = el.scrollHeight
+          // Re-assert next frame: virtualized row estimates settle to real
+          // heights after first paint, shifting scrollHeight
+          requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
+        }
       }
       initialScrollDoneRef.current = true
     })
@@ -479,12 +485,22 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading])
 
-  // Auto-scroll on new messages only when already at bottom
+  // Auto-scroll on new messages only when already at bottom. Own sends pin
+  // instantly — a smooth scroll is cancellable mid-animation and lands short
+  // when row heights settle after the fact (virtualized rows materializing,
+  // URL-embedded images without dimensions). Incoming messages keep the glide.
   useEffect(() => {
     if (!initialScrollDoneRef.current) return
-    if (isAtBottomRef.current) {
-      const el = messagesContainerRef.current
-      if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    if (!isAtBottomRef.current) return
+    const el = messagesContainerRef.current
+    if (!el) return
+    if (ownSendScrollRef.current) {
+      ownSendScrollRef.current = false
+      el.scrollTop = el.scrollHeight
+      // Re-assert next frame to absorb late layout
+      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
+    } else {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
     }
   }, [messages])
 
@@ -724,7 +740,12 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
     setReplyingTo(null)
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     onMarkRead()
-    scrollToBottom()
+    // Pin to bottom once the optimistic row has rendered (the messages effect
+    // handles it) — scrolling here would read the pre-render scrollHeight
+    ownSendScrollRef.current = true
+    isAtBottomRef.current = true
+    setIsAtBottom(true)
+    setNewWhileScrolled(0)
   }
 
   // Re-send a failed optimistic message under a fresh tempId
@@ -1183,18 +1204,14 @@ export default function ChannelView({ channel, token, ws, users, channels, curre
             new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString()
           const isPending = pendingOwnMsgs.current.has(msg.id)
           const pendingState = isPending ? pendingStates[msg.id] : undefined
-          // Discord-style grouping: consecutive messages from the same author within
-          // 7 minutes collapse into one block (no repeated avatar/name/time)
-          const grouped = !!prevMsg && !msg.isSystem && !prevMsg.isSystem &&
-            prevMsg.authorId === msg.authorId && !msg.replyTo &&
-            !showDateSep && !isFirstUnread &&
-            new Date(msg.createdAt).getTime() - new Date(prevMsg.createdAt).getTime() < 7 * 60 * 1000
 
           return (
             <MessageRow
               key={msg.id}
               msg={msg}
-              grouped={grouped}
+              // Every message shows its own avatar/author/time/post number;
+              // MessageRow retains grouped rendering if this ever becomes a setting
+              grouped={false}
               showDateSep={showDateSep}
               isFirstUnread={isFirstUnread}
               isPending={isPending}

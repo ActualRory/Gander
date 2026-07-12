@@ -79,9 +79,15 @@
 .message {
   margin-top: 14px;
   touch-action: pan-y;
-  /* CSS-only virtualization: off-screen messages skip layout/paint entirely.
-     The intrinsic-size estimate keeps the scrollbar stable; 'auto' remembers
-     the real size once a row has been rendered. */
+}
+
+/* CSS-only virtualization: off-screen messages skip layout/paint entirely.
+   The intrinsic-size estimate keeps the scrollbar stable; 'auto' remembers
+   the real size once a row has been rendered.
+   Containment's paint clip would cut off the hover action toolbar (it
+   overhangs the top of the row), so lift it while the row is hovered or
+   focused — off-screen rows are never either, keeping the optimization. */
+.message:not(:hover):not(:focus-within) {
   content-visibility: auto;
   contain-intrinsic-size: auto 64px;
 }
