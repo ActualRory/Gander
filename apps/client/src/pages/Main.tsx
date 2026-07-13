@@ -1077,8 +1077,26 @@ export default function Main({ auth, onLogout }: Props) {
         }
       }, 50)
 
-      await room.connect(url, token)
-      await room.startAudio()
+      // Any of the awaits below can hang forever on an Android WebView
+      // (silently blocked socket, dropped permission prompt, AudioContext
+      // stuck without user activation) — fail loudly instead of leaving the
+      // UI on 'connecting'
+      const withTimeout = <T,>(p: Promise<T>, ms: number, label: string) =>
+        Promise.race([
+          p,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms)),
+        ])
+
+      await withTimeout(room.connect(url, token), 20_000, 'voice server connection')
+      // Autoplay policy can block audio without a fresh user gesture — don't
+      // hold up the join; retry on the next tap instead
+      room.startAudio().catch(err => vlog('startAudio blocked (will retry on tap)', err))
+      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        if (!room.canPlaybackAudio) {
+          window.addEventListener('pointerdown', () => { room.startAudio().catch(() => {}) }, { once: true })
+        }
+      })
       vlog('connected', { channel: channel.name })
 
       setVoiceStats({ quality: 'unknown', ping: null, jitter: null, packetsLost: null })
@@ -1128,7 +1146,11 @@ export default function Main({ auth, onLogout }: Props) {
         await room.localParticipant.setMicrophoneEnabled(false)
         setIsMuted(true)
       } else {
-        await room.localParticipant.setMicrophoneEnabled(true, { noiseSuppression, echoCancellation, autoGainControl }, { audioPreset: AudioPresets.musicHighQualityStereo })
+        await withTimeout(
+          room.localParticipant.setMicrophoneEnabled(true, { noiseSuppression, echoCancellation, autoGainControl }, { audioPreset: AudioPresets.musicHighQualityStereo }),
+          15_000,
+          'microphone access'
+        )
         setIsMuted(false)
         // Apply RNNoise if enabled
         if (rnnoiseEnabled) {
@@ -1147,7 +1169,14 @@ export default function Main({ auth, onLogout }: Props) {
       setVoiceConnectingChannelId(null)
     } catch (err) {
       vlog('connect failed', err)
+      // Tear the room down — a timed-out connect can still succeed later and
+      // leave a ghost connection holding the mic
+      const failedRoom = voiceRoomRef.current
       voiceRoomRef.current = null
+      if (failedRoom) {
+        intentionalDisconnectRef.current = true
+        failedRoom.disconnect().catch(() => {})
+      }
       setVoiceConnectingChannelId(null)
       const msg = err instanceof Error ? err.message : String(err)
       setErrorMessage(`voice connect failed: ${msg}`)
